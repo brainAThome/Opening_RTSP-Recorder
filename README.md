@@ -137,6 +137,10 @@ thumb_path: /local/thumbnails
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
+## Audit Report
+
+See [AUDIT_REPORT_v1.0.6.md](AUDIT_REPORT_v1.0.6.md) for the full v1.0.6 audit report.
+
 ## License
 
 MIT License - See LICENSE file for details.
