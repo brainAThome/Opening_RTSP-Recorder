@@ -5,10 +5,15 @@ import time
 import urllib.request
 import aiohttp
 
-try:
-    from . import _inference_stats
-except ImportError:
-    _inference_stats = None
+# Lazy access to stats tracker from parent module
+def _get_inference_stats():
+    """Get the inference stats tracker from the parent module."""
+    try:
+        from . import _inference_stats as stats
+        return stats
+    except ImportError:
+        return None
+
 from datetime import datetime
 from typing import Any
 
@@ -352,8 +357,9 @@ async def analyze_recording(
                                     data = await resp.json()
                                 _detect_ms = (time.perf_counter() - _detect_start) * 1000
                                 _used_device = data.get("device", device)
-                                if _inference_stats:
-                                    _inference_stats.record(_used_device, _detect_ms, 1)
+                                _stats = _get_inference_stats()
+                                if _stats:
+                                    _stats.record(_used_device, _detect_ms, 1)
                             dets = data.get("objects", [])
                             if objects:
                                 dets = [d for d in dets if d.get("label") in objects]
@@ -383,8 +389,9 @@ async def analyze_recording(
                             score_threshold=detector_confidence,
                         )
                         _detect_ms = (time.perf_counter() - _detect_start) * 1000
-                        if _inference_stats:
-                            _inference_stats.record(device, _detect_ms, 1)
+                        _stats = _get_inference_stats()
+                        if _stats:
+                            _stats.record(device, _detect_ms, 1)
                         if objects:
                             dets = [d for d in dets if d["label"] in objects]
                         time_s = idx * interval_s

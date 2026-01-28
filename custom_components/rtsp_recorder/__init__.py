@@ -463,6 +463,31 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                         "entity_id": entity_id,
                         "filename": snap_full_path
                     })
+
+                # 3. Auto-Analyze after recording (if "Automatisch neue Videos analysieren" is enabled)
+                if analysis_enabled:
+                    # Wait for recording to finish (duration + small buffer)
+                    await asyncio.sleep(duration + 2)
+                    
+                    if os.path.exists(full_path):
+                        log_to_file(f"Auto-analyzing new recording: {full_path}")
+                        try:
+                            perf_snapshot = _sensor_snapshot()
+                            await analyze_recording(
+                                video_path=full_path,
+                                output_root=analysis_output_path,
+                                objects=analysis_objects,
+                                device=analysis_device,
+                                interval_s=analysis_frame_interval,
+                                perf_snapshot=perf_snapshot,
+                                detector_url=analysis_detector_url,
+                                detector_confidence=analysis_detector_confidence,
+                            )
+                            log_to_file(f"Auto-analysis completed for: {full_path}")
+                        except Exception as ae:
+                            log_to_file(f"Auto-analysis error: {ae}")
+                    else:
+                        log_to_file(f"Recording not found for auto-analysis: {full_path}")
                 
             except Exception as e:
                 log_to_file(f"Error in save_recording: {e}")
