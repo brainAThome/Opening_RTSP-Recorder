@@ -376,7 +376,7 @@ class RtspRecorderCard extends HTMLElement {
             
             <div class="fm-container animated" id="container">
                 <div class="fm-header">
-                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.0.4</span></div>
+                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.0.5</span></div>
                     <div class="fm-toolbar">
                         <button class="fm-btn active" id="btn-date">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams">Kameras</button>
