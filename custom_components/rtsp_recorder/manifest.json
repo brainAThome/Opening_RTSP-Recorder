@@ -1,0 +1,15 @@
+{
+    "domain": "rtsp_recorder",
+    "name": "RTSP Recorder",
+    "config_flow": true,
+    "version": "1.0.4",
+    "documentation": "https://github.com/brainAThome/RTSP-Recorder",
+    "dependencies": [
+        "ffmpeg"
+    ],
+    "codeowners": [
+        "@antigravity"
+    ],
+    "requirements": [],
+    "iot_class": "local_push"
+}

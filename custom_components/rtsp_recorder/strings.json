@@ -1,0 +1,116 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "🎬 RTSP Recorder einrichten",
+                "description": "Willkommen! Konfiguriere den Speicherort für deine Kamera-Aufnahmen.",
+                "data": {
+                    "storage_path": "📁 Speicherpfad",
+                    "retention_days": "📅 Aufbewahrung (Tage)",
+                    "retention_hours": "⏰ Zusätzliche Stunden"
+                },
+                "data_description": {
+                    "storage_path": "z.B. /media/rtsp_recordings",
+                    "retention_days": "Wie lange Videos behalten werden",
+                    "retention_hours": "Optional: Extra Stunden zur Aufbewahrung"
+                }
+            }
+        },
+        "error": {
+            "auth_error": "Zugriffsfehler",
+            "invalid_path": "Ungültiger Pfad - muss mit / beginnen",
+            "invalid_retention": "Aufbewahrung muss mindestens 1 Tag sein",
+            "unknown": "Unbekannter Fehler"
+        },
+        "abort": {
+            "single_instance_allowed": "Bereits konfiguriert. Nutze 'Konfigurieren' zum Bearbeiten."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "⚙️ RTSP Recorder Einstellungen",
+                "description": "Globale Aufbewahrungszeit und Kamera-Konfiguration.\n\n✅ = Kamera ist bereits konfiguriert",
+                "data": {
+                    "retention_days": "🎬 Video-Aufbewahrung",
+                    "snapshot_retention_days": "📸 Thumbnail-Aufbewahrung",
+                    "camera_selection": "📹 Kamera konfigurieren"
+                },
+                "data_description": {
+                    "retention_days": "Aufnahmen werden nach X Tagen automatisch gelöscht",
+                    "snapshot_retention_days": "Vorschaubilder werden nach X Tagen gelöscht",
+                    "camera_selection": "Wähle eine Kamera um Bewegungssensor und Aufnahmedauer einzustellen"
+                }
+            },
+            "analysis": {
+                "title": "🧠 Offline-Analyse",
+                "description": "Analysiert gespeicherte Videos lokal und speichert Ergebnisse im Analyse-Ordner.",
+                "data": {
+                    "analysis_enabled": "Analyse aktiv",
+                    "analysis_device": "Hardware",
+                    "analysis_objects": "Objekte",
+                    "analysis_output_path": "Analyse-Ordner",
+                    "analysis_frame_interval": "Frame-Intervall (Sekunden)",
+                    "analysis_detector_url": "Detector URL",
+                    "analysis_detector_confidence": "Schwelle",
+                    "analysis_auto_enabled": "Automatik aktiv",
+                    "analysis_auto_mode": "Modus",
+                    "analysis_auto_time": "Uhrzeit (HH:MM)",
+                    "analysis_auto_interval_hours": "Intervall (Stunden)",
+                    "analysis_auto_since_days": "Zeitraum (Tage)",
+                    "analysis_auto_limit": "Limit pro Lauf",
+                    "analysis_auto_skip_existing": "Nur neue Dateien",
+                    "analysis_perf_cpu_entity": "CPU Sensor",
+                    "analysis_perf_igpu_entity": "iGPU Sensor",
+                    "analysis_perf_coral_entity": "Coral Sensor"
+                },
+                "data_description": {
+                    "analysis_enabled": "Aktiviert die Offline-Analyse",
+                    "analysis_device": "Rechenziel für Analyse (Coral, iGPU, CPU)",
+                    "analysis_objects": "Welche Objekte gesucht werden sollen",
+                    "analysis_output_path": "Ordner für Analyse-Ergebnisse",
+                    "analysis_frame_interval": "Alle X Sekunden ein Frame extrahieren",
+                    "analysis_detector_url": "URL des Detector-Add-ons (z.B. http://a0d7b954-rtsp_recorder_detector:5000)",
+                    "analysis_detector_confidence": "Mindest-Konfidenz für Erkennung",
+                    "analysis_auto_enabled": "Analysiert Aufnahmen automatisch nach Zeitplan",
+                    "analysis_auto_mode": "Täglich oder in festen Abständen",
+                    "analysis_auto_time": "Uhrzeit für tägliche Analyse (z.B. 03:00)",
+                    "analysis_auto_interval_hours": "Intervall in Stunden (nur bei Modus Intervall)",
+                    "analysis_auto_since_days": "Nur Aufnahmen der letzten X Tage",
+                    "analysis_auto_limit": "Maximale Anzahl pro Lauf (0 = unbegrenzt)",
+                    "analysis_auto_skip_existing": "Vorhandene Analysen überspringen",
+                    "analysis_perf_cpu_entity": "Sensor für CPU-Auslastung",
+                    "analysis_perf_igpu_entity": "Sensor für iGPU-Auslastung",
+                    "analysis_perf_coral_entity": "Sensor für Coral-Auslastung"
+                }
+            },
+            "camera_config": {
+                "title": "📹 {camera_name} konfigurieren",
+                "description": "Bewegungserkennung und Aufnahme-Einstellungen für diese Kamera.",
+                "data": {
+                    "motion_sensor": "🏃 Bewegungssensor",
+                    "recording_duration": "⏱️ Aufnahmedauer",
+                    "snapshot_delay": "📸 Snapshot-Verzögerung",
+                    "camera_retention": "🗑️ Eigene Aufbewahrung (Stunden)",
+                    "configure_another": "🔄 Weitere Kamera konfigurieren"
+                },
+                "data_description": {
+                    "motion_sensor": "Binary Sensor der die Aufnahme startet (z.B. Bewegungssensor)",
+                    "recording_duration": "Wie lange nach Bewegung aufgenommen wird (Sekunden)",
+                    "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung für bessere Bilder",
+                    "camera_retention": "0 = Globale Einstellung nutzen. Sonst: Stunden für diese Kamera",
+                    "configure_another": "Aktivieren um danach eine weitere Kamera einzurichten"
+                }
+            }
+        },
+        "error": {
+            "invalid_path": "Ungültiger Pfad - muss mit / beginnen (z.B. /media/recordings)",
+            "invalid_camera_name": "Bitte einen Kameranamen angeben",
+            "invalid_rtsp": "RTSP-URL ungültig (muss mit rtsp:// oder rtsps:// beginnen)",
+            "camera_exists": "Kamera existiert bereits",
+            "invalid_time": "Ungültige Uhrzeit (HH:MM)",
+            "invalid_interval": "Intervall muss mindestens 1 Stunde sein",
+            "invalid_number": "Ungültiger Wert"
+        }
+    }
+}

@@ -1,0 +1,113 @@
+save_recording:
+  name: Save Recording (Auto-Name)
+  description: Records a camera entity using automatic naming conventions based on Friendly Name.
+  fields:
+    entity_id:
+      name: Camera Entity
+      description: The camera entity to record.
+      required: true
+      selector:
+        entity:
+          domain: camera
+    duration:
+      name: Duration
+      description: Length of recording in seconds.
+      default: 120
+      selector:
+        number:
+          min: 10
+          max: 600
+          unit_of_measurement: seconds
+    snapshot_delay:
+      name: Snapshot Delay
+      description: Seconds to wait before taking the thumbnail snapshot.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: seconds
+
+delete_recording:
+  name: Delete Recording
+  description: Deletes a recording file and its thumbnail from storage.
+  fields:
+    media_id:
+      name: Media ID
+      description: The media_content_id of the recording to delete.
+      required: true
+      selector:
+        text:
+analyze_recording:
+  name: Aufnahme analysieren
+  description: Analysiert eine Aufnahme lokal und speichert Ergebnisse im Analyse-Ordner
+  fields:
+    media_id:
+      name: Media ID
+      description: media-source://media_source/local/...
+      example: media-source://media_source/local/rtsp_recordings/Camera/Camera_20260127_120000.mp4
+      required: true
+      selector:
+        text:
+    objects:
+      name: Objekte
+      description: Liste der zu erkennenden Objekte
+      example: ["person", "car"]
+      required: false
+      selector:
+        object:
+    device:
+      name: Gerät
+      description: Rechenziel (coral_usb, coral_pcie, igpu, cpu)
+      example: coral_usb
+      required: false
+      selector:
+        text:
+
+analyze_all_recordings:
+  name: Alle Aufnahmen analysieren
+  description: Analysiert alle Aufnahmen im Speicherordner (optional filterbar)
+  fields:
+    camera:
+      name: Kamera
+      description: Optionaler Kameraname (Ordnername)
+      required: false
+      selector:
+        text:
+    since_days:
+      name: Zeitraum (Tage)
+      description: Nur Aufnahmen der letzten X Tage (0 = alle)
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 365
+          unit_of_measurement: Tage
+    limit:
+      name: Limit
+      description: Maximal zu analysierende Dateien (0 = unbegrenzt)
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 1000
+    skip_existing:
+      name: Nur neue Dateien
+      description: Bereits analysierte Aufnahmen überspringen
+      required: false
+      selector:
+        boolean:
+    objects:
+      name: Objekte
+      description: Liste der zu erkennenden Objekte
+      example: ["person", "car"]
+      required: false
+      selector:
+        object:
+    device:
+      name: Gerät
+      description: Rechenziel (coral_usb, coral_pcie, igpu, cpu)
+      example: coral_usb
+      required: false
+      selector:
+        text:
