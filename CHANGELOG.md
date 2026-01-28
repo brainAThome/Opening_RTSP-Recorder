@@ -2,6 +2,29 @@
 
 All notable changes to RTSP Recorder will be documented in this file.
 
+## [1.0.6 BETA] - 2026-01-29
+
+### Added
+- **Auto analyze new recordings**: Optional switch to analyze new recordings right after saving
+- **Per-camera object list parity**: Camera config object list aligned with offline analysis
+- **Footer visibility toggle**: Settings now control footer visibility on main dashboard
+- **Persistent UI settings**: Footer visibility saved in localStorage
+
+### Fixed
+- **Encoding issues**: UTF-8 normalization to prevent garbled characters
+- **Resource loading**: Frontend resource encoding corrected
+- **Performance test button**: Always available for repeated testing
+- **Storage tab noise**: _analysis folder excluded from recording stats
+
+### Changed
+- Dashboard badge updated to v1.0.6
+- Detector add-on metadata version bumped to 1.0.6
+
+### Technical
+- Integration version: 1.0.6
+- Dashboard card version: 1.0.6 BETA
+- Detector add-on version: 1.0.6
+
 ## [1.0.5 BETA] - 2026-01-28
 
 ### Added

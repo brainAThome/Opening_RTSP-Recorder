@@ -1,4 +1,4 @@
-console.info("%c RTSP RECORDER CARD \n%c v1.0.5 BETA ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #fff; background: #e67e22; padding: 5px;");
+console.info("%c RTSP RECORDER CARD \n%c v1.0.6 ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;");
 
 class RtspRecorderCard extends HTMLElement {
     constructor() {
@@ -12,7 +12,14 @@ class RtspRecorderCard extends HTMLElement {
         this._activeTab = 'general';
         this._currentEvent = null;
         this._currentVideoUrl = null;
-        this._analysisObjects = ['person', 'car', 'truck', 'bicycle', 'motorcycle', 'cat', 'dog', 'package'];
+        // Erweiterte Objektliste: Outdoor + Indoor (v1.0.6)
+        this._analysisObjects = [
+            'person', 'cat', 'dog', 'bird',
+            'car', 'truck', 'bicycle', 'motorcycle', 'bus',
+            'tv', 'couch', 'chair', 'bed', 'dining table', 'potted plant',
+            'laptop', 'cell phone', 'remote',
+            'bottle', 'cup', 'book', 'backpack', 'umbrella', 'suitcase', 'package'
+        ];
         this._analysisSelected = new Set(['person']);
         this._analysisDevice = 'cpu';
         this._analysisOverview = { items: [], stats: {} };
@@ -25,12 +32,12 @@ class RtspRecorderCard extends HTMLElement {
         this._analysisInterval = 2;
         this._analysisFrameSize = null;
         this._showPerfTab = true;
-        this._showFooter = true;
         this._showPerfPanel = false;
+        this._showFooter = true;
+        this._settingsKey = 'rtsp_recorder_settings';
+        this.loadLocalSettings();
         this._detectorStats = null;
         this._statsPolling = null;
-        this._analysisConfig = null;
-        this._analysisConfigLoaded = false;
         this._systemSensors = {
             cpu: 'sensor.processor_use',
             memory: 'sensor.memory_use_percent',
@@ -58,7 +65,37 @@ class RtspRecorderCard extends HTMLElement {
             this.render();
             this._renderDone = true;
             this.loadData();
+            this.loadAnalysisConfig(); // v1.0.6: Lade globale Analyse-Einstellungen
             this.renderCalendar();
+        }
+    }
+
+    // v1.0.6: Laedt globale Analyse-Konfiguration aus der Integration
+    async loadAnalysisConfig() {
+        try {
+            const config = await this._hass.callWS({
+                type: 'rtsp_recorder/get_analysis_config'
+            });
+            if (config && config.analysis_objects && config.analysis_objects.length > 0) {
+                // Aktualisiere die ausgewaehlten Objekte mit den globalen Einstellungen
+                this._analysisSelected = new Set(config.analysis_objects);
+                console.log('[RTSP-Recorder] Loaded global analysis objects:', config.analysis_objects);
+                
+                // Aktualisiere die Checkboxen in der UI falls bereits gerendert
+                this.shadowRoot.querySelectorAll('.fm-obj').forEach(cb => {
+                    cb.checked = this._analysisSelected.has(cb.value);
+                });
+            }
+            if (config && config.analysis_device) {
+                this._analysisDevice = config.analysis_device;
+                // Aktualisiere das Device-Dropdown falls vorhanden
+                const deviceSelect = this.shadowRoot.querySelector('#analysis-device');
+                if (deviceSelect) {
+                    deviceSelect.value = this._analysisDevice;
+                }
+            }
+        } catch (e) {
+            console.warn('[RTSP-Recorder] Could not load analysis config:', e);
         }
     }
 
@@ -376,17 +413,17 @@ class RtspRecorderCard extends HTMLElement {
             
             <div class="fm-container animated" id="container">
                 <div class="fm-header">
-                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.0.5</span></div>
+                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.0.6</span></div>
                     <div class="fm-toolbar">
                         <button class="fm-btn active" id="btn-date">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams">Kameras</button>
-                        <button class="fm-btn" id="btn-menu">Menü</button>
+                        <button class="fm-btn" id="btn-menu">Menue</button>
                     </div>
                 </div>
                 <div class="fm-main">
                     <div class="fm-player-col">
                         <div class="fm-player-body">
-                            <div class="fm-overlay-tl" id="txt-cam">Wähle Aufnahme</div>
+                            <div class="fm-overlay-tl" id="txt-cam">Waehle Aufnahme</div>
                             <div class="fm-overlay-tr" id="txt-date">BETA VERSION</div>
                             <video id="main-video" controls autoplay muted playsinline></video>
                             <canvas id="overlay-canvas"></canvas>
@@ -397,9 +434,9 @@ class RtspRecorderCard extends HTMLElement {
                                     <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
                                     Download
                                 </button>
-                                <button class="fm-ctrl-btn danger" id="btn-delete" title="Löschen">
+                                <button class="fm-ctrl-btn danger" id="btn-delete" title="Loeschen">
                                     <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
-                                    Löschen
+                                    Loeschen
                                 </button>
                                 <button class="fm-ctrl-btn" id="btn-overlay" title="Overlay">
                                     <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 3C4.5 3 1.73 5.11.46 8c1.27 2.89 4.04 5 7.54 5s6.27-2.11 7.54-5C14.27 5.11 11.5 3 8 3zm0 8.5A3.5 3.5 0 1 1 8 4.5a3.5 3.5 0 0 1 0 7z"/><path d="M8 6.5A1.5 1.5 0 1 0 8 9.5a1.5 1.5 0 0 0 0-3z"/></svg>
@@ -411,7 +448,7 @@ class RtspRecorderCard extends HTMLElement {
                                 <button class="fm-ctrl-btn fm-speed-btn" data-speed="2">2x</button>
                             </div>
                         </div>
-                        <div class="fm-player-footer" id="player-footer" style="display: ${this._showFooter ? 'flex' : 'none'}">
+                        <div class="fm-player-footer" id="player-footer">
                             <div class="fm-footer-left">
                                 <label class="fm-toggle">
                                     <input id="footer-overlay" type="checkbox" ${this._overlayEnabled ? 'checked' : ''} />
@@ -444,7 +481,7 @@ class RtspRecorderCard extends HTMLElement {
                 <!-- Menu -->
                 <div class="fm-menu-overlay" id="menu-overlay">
                     <div class="fm-menu-card">
-                        <div class="fm-menu-header"><div class="fm-menu-title">Einstellungen</div><div class="fm-menu-close" id="menu-close">✕</div></div>
+                        <div class="fm-menu-header"><div class="fm-menu-title">Einstellungen</div><div class="fm-menu-close" id="menu-close">X</div></div>
                         <div class="fm-tabs">
                             <div class="fm-tab active" data-tab="general">Allgemein</div>
                             <div class="fm-tab" data-tab="storage">Speicher</div>
@@ -458,12 +495,12 @@ class RtspRecorderCard extends HTMLElement {
                 <!-- Delete Confirmation -->
                 <div class="fm-confirm-overlay" id="confirm-overlay">
                     <div class="fm-confirm-card">
-                        <div style="font-size:2em;margin-bottom:15px;">🗑️</div>
-                        <div style="font-size:1.1em;font-weight:500;">Aufnahme löschen?</div>
+                        <div style="font-size:2em;margin-bottom:15px;">!</div>
+                        <div style="font-size:1.1em;font-weight:500;">Aufnahme loeschen?</div>
                         <div style="color:#888;margin-top:10px;" id="confirm-filename"></div>
                         <div class="fm-confirm-btns">
                             <button class="fm-btn" id="confirm-cancel">Abbrechen</button>
-                            <button class="fm-btn-danger" id="confirm-delete" style="padding:10px 20px;">Endgültig löschen</button>
+                            <button class="fm-btn-danger" id="confirm-delete" style="padding:10px 20px;">Endgueltig loeschen</button>
                         </div>
                     </div>
                 </div>
@@ -471,6 +508,7 @@ class RtspRecorderCard extends HTMLElement {
         `;
 
         this.setupListeners();
+        this.updateFooterVisibility();
     }
 
     setupListeners() {
@@ -629,14 +667,14 @@ class RtspRecorderCard extends HTMLElement {
                     <div style="display:flex;justify-content:space-between;align-items:center;">
                         <div>
                             <span style="font-weight:500;">Animationen</span>
-                            <div style="font-size:0.8em;color:#888;margin-top:4px;">Sanfte Übergänge und Hover-Effekte</div>
+                            <div style="font-size:0.8em;color:#888;margin-top:4px;">Sanfte Uebergaenge und Hover-Effekte</div>
                         </div>
                         <input type="checkbox" id="chk-animations" ${this._animationsEnabled ? 'checked' : ''} style="transform:scale(1.3);cursor:pointer;">
                     </div>
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:15px;border-top:1px solid #333;">
                         <div>
                             <span style="font-weight:500;">Footer anzeigen</span>
-                            <div style="font-size:0.8em;color:#888;margin-top:4px;">Leistungsanzeige unter dem Video</div>
+                            <div style="font-size:0.8em;color:#888;margin-top:4px;">Zeigt die Footer-Leiste unter dem Video</div>
                         </div>
                         <input type="checkbox" id="chk-footer" ${this._showFooter ? 'checked' : ''} style="transform:scale(1.3);cursor:pointer;">
                     </div>
@@ -652,8 +690,8 @@ class RtspRecorderCard extends HTMLElement {
             };
             container.querySelector('#chk-footer').onchange = () => {
                 this._showFooter = !this._showFooter;
-                const footer = this.shadowRoot.querySelector('#player-footer');
-                if (footer) footer.style.display = this._showFooter ? 'flex' : 'none';
+                this.updateFooterVisibility();
+                this.saveLocalSettings();
             };
         } else if (this._activeTab === 'storage') {
             // Storage Tab
@@ -663,6 +701,36 @@ class RtspRecorderCard extends HTMLElement {
         } else {
             // Analysis Tab
             this.renderAnalysisTab(container);
+        }
+    }
+
+    updateFooterVisibility() {
+        const footer = this.shadowRoot.querySelector('#player-footer');
+        if (!footer) return;
+        footer.style.display = this._showFooter ? 'flex' : 'none';
+    }
+
+    loadLocalSettings() {
+        try {
+            const raw = localStorage.getItem(this._settingsKey);
+            if (!raw) return;
+            const data = JSON.parse(raw);
+            if (typeof data.showFooter === 'boolean') {
+                this._showFooter = data.showFooter;
+            }
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    saveLocalSettings() {
+        try {
+            const data = {
+                showFooter: this._showFooter,
+            };
+            localStorage.setItem(this._settingsKey, JSON.stringify(data));
+        } catch (e) {
+            // ignore
         }
     }
 
@@ -731,7 +799,7 @@ class RtspRecorderCard extends HTMLElement {
                 <!-- Live System Stats -->
                 <div style="margin-bottom:20px;">
                     <div style="font-weight:500; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
-                        <span style="color:#4caf50;">●</span> Live System
+                        <span style="color:#4caf50;">OK</span> Live System
                     </div>
                     <div style="display:flex; gap:12px; flex-wrap:wrap;">
                         ${gaugeCard('CPU Auslastung', cpu.toFixed(1), '%', cpuColor)}
@@ -746,7 +814,7 @@ class RtspRecorderCard extends HTMLElement {
                         <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:16px; min-width:160px; flex:1;">
                             <div style="font-size:0.85em; color:#888; margin-bottom:8px;">Coral USB</div>
                             <div style="font-size:1.4em; font-weight:600; color:${hasCoralUsb ? (coralActive ? '#4caf50' : '#ff9800') : '#666'};">
-                                ${hasCoralUsb ? (coralActive ? '● Aktiv' : '○ Bereit') : '✗ Nicht verbunden'}
+                                ${hasCoralUsb ? (coralActive ? 'Aktiv' : 'Bereit') : 'Nicht verbunden'}
                             </div>
                         </div>
                         <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:16px; min-width:160px; flex:1;">
@@ -764,7 +832,7 @@ class RtspRecorderCard extends HTMLElement {
                             </div>
                         ` : ''}
                         <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:16px; min-width:160px; flex:1;">
-                            <div style="font-size:0.85em; color:#888; margin-bottom:8px;">Ø Inferenzzeit</div>
+                            <div style="font-size:0.85em; color:#888; margin-bottom:8px;">Inferenzzeit</div>
                             <div style="font-size:1.8em; font-weight:600; color:#03a9f4;">
                                 ${avgMs > 0 ? avgMs.toFixed(0) + 'ms' : '-'}
                             </div>
@@ -776,12 +844,12 @@ class RtspRecorderCard extends HTMLElement {
                     </div>
                     ${!hasInf ? `
                         <div style="margin-top:10px; color:#888; font-size:0.9em;">
-                            Coral-Nutzung wird nur bei aktiver Live-Erkennung oder neuer Videoanalyse gezählt.
+                            Coral-Nutzung wird nur bei aktiver Live-Erkennung oder neuer Videoanalyse gezaehlt.
                         </div>
                     ` : ''}
                     <div style="margin-top:12px;">
                         <button id="test-inference-btn" style="background:#03a9f4; color:#fff; border:none; padding:10px 20px; border-radius:6px; cursor:pointer; font-size:0.95em;">
-                            🧪 Test-Inferenz starten
+                            Test-Inferenz starten
                         </button>
                         <span id="test-inference-status" style="margin-left:10px; color:#888; font-size:0.9em;"></span>
                     </div>
@@ -804,7 +872,7 @@ class RtspRecorderCard extends HTMLElement {
                 <!-- Info -->
                 <div style="margin-top:20px; padding:12px; background:#222; border-radius:8px; color:#888; font-size:0.85em;">
                     <strong>Hinweis:</strong> Die Statistiken werden alle 5 Sekunden aktualisiert. 
-                    Die Coral-Nutzung zeigt den Anteil der Inferenzen, die auf dem Coral USB Accelerator ausgeführt wurden.
+                    Die Coral-Nutzung zeigt den Anteil der Inferenzen, die auf dem Coral USB Accelerator ausgefuehrt wurden.
                 </div>
             </div>
         `;
@@ -822,7 +890,7 @@ class RtspRecorderCard extends HTMLElement {
         const btn = this.shadowRoot.querySelector('#test-inference-btn');
         const status = this.shadowRoot.querySelector('#test-inference-status');
         if (btn) btn.disabled = true;
-        if (status) status.textContent = 'Läuft...';
+        if (status) status.textContent = 'Laeuft...';
         
         try {
             const result = await this._hass.callWS({ type: 'rtsp_recorder/test_inference' });
@@ -832,23 +900,17 @@ class RtspRecorderCard extends HTMLElement {
                 // Refresh stats after successful test
                 await this.fetchDetectorStats();
             } else {
-                if (status) status.innerHTML = `<span style="color:#f44336;">✗ ${result.message}</span>`;
+                if (status) status.innerHTML = `<span style="color:#f44336;">Fehler: ${result.message}</span>`;
             }
         } catch (e) {
             console.error('[RTSP-Recorder] Test inference failed:', e);
-            if (status) status.innerHTML = `<span style="color:#f44336;">✗ Fehler: ${e.message || e}</span>`;
+            if (status) status.innerHTML = `<span style="color:#f44336;">Fehler: ${e.message || e}</span>`;
         }
         
         if (btn) btn.disabled = false;
     }
 
     renderAnalysisTab(container) {
-        // Load analysis config if not yet loaded
-        if (!this._analysisConfigLoaded) {
-            this.loadAnalysisConfig();
-        }
-        const cfg = this._analysisConfig || {};
-        
         const deviceOptions = (this._analysisDeviceOptions && this._analysisDeviceOptions.length)
             ? this._analysisDeviceOptions
             : [
@@ -937,12 +999,12 @@ class RtspRecorderCard extends HTMLElement {
         }).join('');
 
         const overviewHtml = this._analysisLoading
-            ? '<div style="color:#888;">Lade Analyseübersicht...</div>'
+            ? '<div style="color:#888;">Lade Analyseuebersicht...</div>'
             : (items.length ? itemsHtml : '<div style="color:#888;">Keine Analysen gefunden</div>');
 
         container.innerHTML = `
             <div style="padding:10px;">
-                <div style="margin-bottom:15px; font-weight:500;">Objekte auswählen</div>
+                <div style="margin-bottom:15px; font-weight:500;">Objekte auswaehlen</div>
                 <div style="max-height:180px; overflow:auto; border:1px solid #333; border-radius:8px; padding:10px;">
                     ${objectCheckboxes}
                 </div>
@@ -960,76 +1022,6 @@ class RtspRecorderCard extends HTMLElement {
                     <span>Objekte im Video anzeigen</span>
                 </label>
                 <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
-                    <div style="font-weight:500; margin-bottom:10px;">⏰ Automatische Analyse</div>
-                    ${this._analysisConfigLoaded ? `
-                        <div style="background:${cfg.analysis_auto_enabled ? '#1b4332' : '#333'}; border:1px solid ${cfg.analysis_auto_enabled ? '#2d6a4f' : '#444'}; border-radius:8px; padding:12px; margin-bottom:15px;">
-                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                                <span style="font-size:1.2em;">${cfg.analysis_auto_enabled ? '✅' : '⏸️'}</span>
-                                <span style="font-weight:500; color:${cfg.analysis_auto_enabled ? '#52b788' : '#888'};">
-                                    ${cfg.analysis_auto_enabled ? 'Zeitplan aktiv' : 'Zeitplan inaktiv'}
-                                </span>
-                            </div>
-                            ${cfg.analysis_auto_enabled ? `
-                                <div style="font-size:0.85em; color:#aaa; margin-left:28px;">
-                                    ${cfg.analysis_auto_mode === 'interval' 
-                                        ? `Alle <b>${cfg.analysis_auto_interval_hours || 24} Stunden</b>` 
-                                        : `Täglich um <b>${cfg.analysis_auto_time || '03:00'}</b> Uhr`}
-                                    · Max. ${cfg.analysis_auto_since_days || 1} Tag(e) alt
-                                    · Limit: ${cfg.analysis_auto_limit || 50}
-                                </div>
-                            ` : `
-                                <div style="font-size:0.85em; color:#666; margin-left:28px;">
-                                    Keine automatische Analyse konfiguriert
-                                </div>
-                            `}
-                        </div>
-                    ` : `
-                        <div style="color:#888; font-size:0.9em; margin-bottom:15px;">Lade Zeitplan-Konfiguration...</div>
-                    `}
-                    <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                        <input id="auto-analyze-enabled" type="checkbox" ${cfg.analysis_auto_enabled ? 'checked' : ''} />
-                        <span>Automatisch neue Videos analysieren</span>
-                    </label>
-                    <div id="auto-analyze-options" style="display:${cfg.analysis_auto_enabled ? 'block' : 'none'};">
-                        <div style="margin-bottom:10px;">
-                            <div style="font-size:0.85em;color:#888;margin-bottom:6px;">Modus</div>
-                            <select id="auto-analyze-mode" style="width:100%;padding:8px;background:#222;color:#eee;border:1px solid #333;border-radius:6px;">
-                                <option value="daily" ${cfg.analysis_auto_mode === 'daily' ? 'selected' : ''}>Täglich um Uhrzeit</option>
-                                <option value="interval" ${cfg.analysis_auto_mode === 'interval' ? 'selected' : ''}>Regelmäßiges Intervall</option>
-                            </select>
-                        </div>
-                        <div id="daily-options" style="display:${cfg.analysis_auto_mode !== 'interval' ? 'block' : 'none'};">
-                            <label style="display:flex;flex-direction:column;gap:6px;">
-                                <span style="font-size:0.8em;color:#888;">Uhrzeit</span>
-                                <input id="auto-analyze-time" type="time" value="${cfg.analysis_auto_time || '03:00'}" style="padding:8px;background:#222;color:#eee;border:1px solid #333;border-radius:6px;" />
-                            </label>
-                        </div>
-                        <div id="interval-options" style="display:${cfg.analysis_auto_mode === 'interval' ? 'block' : 'none'};">
-                            <label style="display:flex;flex-direction:column;gap:6px;">
-                                <span style="font-size:0.8em;color:#888;">Intervall (Stunden)</span>
-                                <input id="auto-analyze-interval" type="number" min="1" value="${cfg.analysis_auto_interval_hours || 24}" style="padding:8px;background:#222;color:#eee;border:1px solid #333;border-radius:6px;" />
-                            </label>
-                        </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
-                            <label style="display:flex;flex-direction:column;gap:6px;">
-                                <span style="font-size:0.8em;color:#888;">Max. Alter (Tage)</span>
-                                <input id="auto-analyze-days" type="number" min="1" value="${cfg.analysis_auto_since_days || 1}" style="padding:8px;background:#222;color:#eee;border:1px solid #333;border-radius:6px;" />
-                            </label>
-                            <label style="display:flex;flex-direction:column;gap:6px;">
-                                <span style="font-size:0.8em;color:#888;">Limit pro Durchlauf</span>
-                                <input id="auto-analyze-limit" type="number" min="1" value="${cfg.analysis_auto_limit || 50}" style="padding:8px;background:#222;color:#eee;border:1px solid #333;border-radius:6px;" />
-                            </label>
-                        </div>
-                        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
-                            <input id="auto-analyze-skip" type="checkbox" ${cfg.analysis_auto_skip_existing !== false ? 'checked' : ''} />
-                            <span>Nur neue Dateien (bereits analysierte überspringen)</span>
-                        </label>
-                    </div>
-                    <button class="fm-btn" id="btn-save-schedule" style="margin-top:12px;width:100%;justify-content:center;">
-                        💾 Zeitplan speichern
-                    </button>
-                </div>
-                <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
                     <div style="font-weight:500; margin-bottom:10px;">Alle Aufnahmen analysieren</div>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
                         <label style="display:flex;flex-direction:column;gap:6px;">
@@ -1046,19 +1038,19 @@ class RtspRecorderCard extends HTMLElement {
                         <span>Nur neue Dateien</span>
                     </label>
                     <button class="fm-btn" id="btn-analyze-all" style="margin-top:12px; width:100%; justify-content:center;">
-                        🚀 Alle Aufnahmen analysieren
+                        Alle Aufnahmen analysieren
                     </button>
                 </div>
                 <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
-                    <div style="font-weight:500; margin-bottom:10px;">Analyseübersicht</div>
+                    <div style="font-weight:500; margin-bottom:10px;">Analyseuebersicht</div>
                     ${overviewHtml}
                 </div>
                 <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
-                    <div style="font-weight:500; margin-bottom:10px;">Verlauf (Gerät & Leistung)</div>
+                    <div style="font-weight:500; margin-bottom:10px;">Verlauf (Geraet & Leistung)</div>
                     ${this._analysisLoading ? '<div style="color:#888;">Lade Verlauf...</div>' : (historyHtml || '<div style="color:#888;">Keine Daten</div>')}
                 </div>
                 <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
-                    <div style="font-weight:500; margin-bottom:10px;">Leistungsübersicht</div>
+                    <div style="font-weight:500; margin-bottom:10px;">Leistungsuebersicht</div>
                     <div style="display:flex; gap:10px; flex-wrap:wrap;">
                         <div style="background:#222; padding:10px 12px; border-radius:8px; min-width:120px;">
                             <div style="font-size:1.2em; font-weight:600; color:var(--primary-color);">${stats.total || 0}</div>
@@ -1066,11 +1058,11 @@ class RtspRecorderCard extends HTMLElement {
                         </div>
                         <div style="background:#222; padding:10px 12px; border-radius:8px; min-width:120px;">
                             <div style="font-size:1.2em; font-weight:600; color:var(--primary-color);">${stats.avg_duration_sec || 0}s</div>
-                            <div style="font-size:0.75em;color:#888;">Ø Dauer</div>
+                            <div style="font-size:0.75em;color:#888;">Dauer</div>
                         </div>
                         <div style="background:#222; padding:10px 12px; border-radius:8px; min-width:120px;">
                             <div style="font-size:1.2em; font-weight:600; color:var(--primary-color);">${stats.avg_frame_count || 0}</div>
-                            <div style="font-size:0.75em;color:#888;">Ø Frames</div>
+                            <div style="font-size:0.75em;color:#888;">Frames</div>
                         </div>
                     </div>
                     <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
@@ -1079,7 +1071,7 @@ class RtspRecorderCard extends HTMLElement {
                         ${perfCard('Coral', perf.coral)}
                     </div>
                     <div style="margin-top:12px;">
-                        <div style="font-size:0.8em;color:#888;margin-bottom:6px;">Geräte-Nutzung</div>
+                        <div style="font-size:0.8em;color:#888;margin-bottom:6px;">Geraete-Nutzung</div>
                         ${deviceBreakdown || '<div style="color:#888;">Keine Daten</div>'}
                     </div>
                 </div>
@@ -1118,107 +1110,17 @@ class RtspRecorderCard extends HTMLElement {
         container.querySelector('#btn-analyze-all').onclick = () => {
             this.analyzeAllRecordings();
         };
-
-        // Auto-Analyze Toggle
-        const autoEnabled = container.querySelector('#auto-analyze-enabled');
-        if (autoEnabled) {
-            autoEnabled.onchange = () => {
-                const opts = container.querySelector('#auto-analyze-options');
-                if (opts) opts.style.display = autoEnabled.checked ? 'block' : 'none';
-            };
-        }
-
-        // Mode selector
-        const modeSelect = container.querySelector('#auto-analyze-mode');
-        if (modeSelect) {
-            modeSelect.onchange = () => {
-                const dailyOpts = container.querySelector('#daily-options');
-                const intervalOpts = container.querySelector('#interval-options');
-                if (dailyOpts) dailyOpts.style.display = modeSelect.value === 'daily' ? 'block' : 'none';
-                if (intervalOpts) intervalOpts.style.display = modeSelect.value === 'interval' ? 'block' : 'none';
-            };
-        }
-
-        // Save schedule button
-        const saveBtn = container.querySelector('#btn-save-schedule');
-        if (saveBtn) {
-            saveBtn.onclick = () => this.saveAnalysisSchedule();
-        }
-    }
-
-    async loadAnalysisConfig() {
-        try {
-            const data = await this._hass.callWS({
-                type: 'rtsp_recorder/get_analysis_config'
-            });
-            this._analysisConfig = data || {};
-            this._analysisConfigLoaded = true;
-            // Re-render if on analysis tab
-            if (this._activeTab === 'analysis') {
-                this.renderAnalysisTab(this.shadowRoot.querySelector('#menu-content'));
-            }
-        } catch (e) {
-            console.error('Failed to load analysis config:', e);
-            this._analysisConfig = {};
-            this._analysisConfigLoaded = true;
-            // Show user-friendly error if WebSocket fails
-            if (this.showToast) {
-                this.showToast('Zeitplan konnte nicht geladen werden', 'warning');
-            }
-        }
-    }
-
-    async saveAnalysisSchedule() {
-        const root = this.shadowRoot;
-        const autoEnabled = root.querySelector('#auto-analyze-enabled')?.checked || false;
-        const mode = root.querySelector('#auto-analyze-mode')?.value || 'daily';
-        const time = root.querySelector('#auto-analyze-time')?.value || '03:00';
-        const interval = parseInt(root.querySelector('#auto-analyze-interval')?.value || '24', 10);
-        const days = parseInt(root.querySelector('#auto-analyze-days')?.value || '1', 10);
-        const limit = parseInt(root.querySelector('#auto-analyze-limit')?.value || '50', 10);
-        const skip = root.querySelector('#auto-analyze-skip')?.checked !== false;
-
-        try {
-            const result = await this._hass.callWS({
-                type: 'rtsp_recorder/set_analysis_config',
-                analysis_auto_enabled: autoEnabled,
-                analysis_auto_mode: mode,
-                analysis_auto_time: time,
-                analysis_auto_interval_hours: interval,
-                analysis_auto_since_days: days,
-                analysis_auto_limit: limit,
-                analysis_auto_skip_existing: skip
-            });
-
-            if (result.success) {
-                this._analysisConfig = {
-                    ...this._analysisConfig,
-                    analysis_auto_enabled: autoEnabled,
-                    analysis_auto_mode: mode,
-                    analysis_auto_time: time,
-                    analysis_auto_interval_hours: interval,
-                    analysis_auto_since_days: days,
-                    analysis_auto_limit: limit,
-                    analysis_auto_skip_existing: skip
-                };
-                this.showToast('Zeitplan gespeichert! Integration neu laden für Aktivierung.', 'success');
-            } else {
-                this.showToast('Fehler: ' + result.message, 'error');
-            }
-        } catch (e) {
-            this.showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
-        }
     }
 
     async analyzeCurrentVideo() {
         if (!this._currentEvent) {
-            this.showToast('Bitte zuerst eine Aufnahme auswählen', 'warning');
+            this.showToast('Bitte zuerst eine Aufnahme auswaehlen', 'warning');
             return;
         }
 
         const objects = Array.from(this._analysisSelected);
         if (objects.length === 0) {
-            this.showToast('Bitte mindestens ein Objekt auswählen', 'warning');
+            this.showToast('Bitte mindestens ein Objekt auswaehlen', 'warning');
             return;
         }
 
@@ -1246,7 +1148,7 @@ class RtspRecorderCard extends HTMLElement {
         const objects = Array.from(this._analysisSelected);
 
         if (objects.length === 0) {
-            this.showToast('Bitte mindestens ein Objekt auswählen', 'warning');
+            this.showToast('Bitte mindestens ein Objekt auswaehlen', 'warning');
             return;
         }
 
@@ -1258,7 +1160,7 @@ class RtspRecorderCard extends HTMLElement {
                 objects,
                 device: this._analysisDevice
             });
-            this.showToast('Analyse für alle Aufnahmen gestartet', 'success');
+            this.showToast('Analyse fuer alle Aufnahmen gestartet', 'success');
         } catch (e) {
             this.showToast('Analyse fehlgeschlagen: ' + e.message, 'error');
         }
@@ -1446,8 +1348,10 @@ class RtspRecorderCard extends HTMLElement {
             const coralActive = tracker.last_device === 'coral_usb';
             const coralPct = tracker.recent_coral_pct ?? 0;
             const hasInf = tracker.total_inferences > 0;
-            const coralDisplay = `${coralPct}%`;
-            const coralColor = coralPct > 50
+            const coralDisplay = hasInf ? `${coralPct}%` : '-';
+            const coralColor = !hasInf
+                ? '#666'
+                : coralPct > 50
                     ? '#4caf50'
                     : coralPct > 0
                         ? '#ff9800'
@@ -1456,7 +1360,7 @@ class RtspRecorderCard extends HTMLElement {
                 <div class="fm-perf-card">
                     <div class="fm-perf-label">Coral USB</div>
                     <div class="fm-perf-value" style="color: ${coralActive ? '#4caf50' : '#888'}">
-                        ${coralActive ? '● Aktiv' : '○ Bereit'}
+                        ${coralActive ? 'Aktiv' : 'Bereit'}
                     </div>
                 </div>
                 <div class="fm-perf-card">
@@ -1478,22 +1382,21 @@ class RtspRecorderCard extends HTMLElement {
         // Inference stats
         let inferenceHtml = '';
         let inferenceHint = '';
-        const avgMs = (tracker.avg_inference_ms || 0).toFixed(0);
-        const totalInferences = tracker.total_inferences || 0;
-        inferenceHtml = `
-            <div class="fm-perf-card">
-                <div class="fm-perf-label">Ø Inferenz</div>
-                <div class="fm-perf-value">${avgMs}ms</div>
-            </div>
-            <div class="fm-perf-card">
-                <div class="fm-perf-label">Gesamt</div>
-                <div class="fm-perf-value">${totalInferences}</div>
-            </div>
-        `;
-        if (totalInferences === 0) {
+        if (tracker.total_inferences > 0) {
+            inferenceHtml = `
+                <div class="fm-perf-card">
+                    <div class="fm-perf-label">Inferenz</div>
+                    <div class="fm-perf-value">${(tracker.avg_inference_ms || 0).toFixed(0)}ms</div>
+                </div>
+                <div class="fm-perf-card">
+                    <div class="fm-perf-label">Gesamt</div>
+                    <div class="fm-perf-value">${tracker.total_inferences}</div>
+                </div>
+            `;
+        } else {
             inferenceHint = `
                 <div style="flex-basis:100%; font-size:0.85em; color:#888; margin-top:6px;">
-                    Coral-Nutzung wird nur bei aktiver Live-Erkennung oder neuer Videoanalyse gezählt.
+                    Coral-Nutzung wird nur bei aktiver Live-Erkennung oder neuer Videoanalyse gezaehlt.
                 </div>
             `;
         }
@@ -1617,7 +1520,7 @@ class RtspRecorderCard extends HTMLElement {
                     </div>
                     <div class="fm-stat-card">
                         <div class="fm-stat-value">~${(totalEvents * 0.05).toFixed(1)}</div>
-                        <div class="fm-stat-label">GB geschätzt</div>
+                        <div class="fm-stat-label">GB geschaetzt</div>
                     </div>
                 </div>
                 
@@ -1627,7 +1530,7 @@ class RtspRecorderCard extends HTMLElement {
                 </div>
                 
                 <button class="fm-btn-danger" id="btn-refresh-storage" style="margin-top:20px;">
-                    🔄 Aktualisieren
+                    Aktualisieren
                 </button>
             </div>
         `;
@@ -1657,6 +1560,7 @@ class RtspRecorderCard extends HTMLElement {
             if (root && root.children) {
                 for (const folder of root.children) {
                     if (folder.media_class !== 'directory') continue;
+                    if (folder.title === '_analysis') continue;
                     const res = await hass.callWS({ type: 'media_source/browse_media', media_content_id: folder.media_content_id });
                     if (res.children) {
                         res.children.forEach(f => {
@@ -1760,7 +1664,7 @@ class RtspRecorderCard extends HTMLElement {
         const grid = this.shadowRoot.querySelector('#cal-grid');
         const lbl = this.shadowRoot.querySelector('#cal-month-year');
         if (!grid || !lbl) return;
-        const months = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+        const months = ["Januar", "Februar", "Maerz", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
         lbl.innerText = `${months[this._calMonth]} ${this._calYear}`;
         grid.innerHTML = '';
         const firstDay = new Date(this._calYear, this._calMonth, 1).getDay();
@@ -1782,7 +1686,7 @@ class RtspRecorderCard extends HTMLElement {
     // ========== DOWNLOAD ==========
     async downloadCurrentVideo() {
         if (!this._currentVideoUrl || !this._currentEvent) {
-            this.showToast('Bitte zuerst eine Aufnahme auswählen', 'warning');
+            this.showToast('Bitte zuerst eine Aufnahme auswaehlen', 'warning');
             return;
         }
         
@@ -1799,7 +1703,7 @@ class RtspRecorderCard extends HTMLElement {
                     }]
                 });
                 
-                this.showToast('Download läuft...', 'info');
+                this.showToast('Download laeuft...', 'info');
                 
                 // Fetch the video
                 const response = await fetch(this._currentVideoUrl);
@@ -1834,7 +1738,7 @@ class RtspRecorderCard extends HTMLElement {
     // ========== DELETE ==========
     showDeleteConfirm() {
         if (!this._currentEvent) {
-            this.showToast('Bitte zuerst eine Aufnahme auswählen', 'warning');
+            this.showToast('Bitte zuerst eine Aufnahme auswaehlen', 'warning');
             return;
         }
         const filename = `${this._currentEvent.cam} - ${this._currentEvent.date.toLocaleString('de-DE')}`;
@@ -1863,15 +1767,15 @@ class RtspRecorderCard extends HTMLElement {
             // Clear video
             const video = this.shadowRoot.querySelector('#main-video');
             video.src = '';
-            this.shadowRoot.querySelector('#txt-cam').innerText = 'Wähle Aufnahme';
-            this.shadowRoot.querySelector('#txt-date').innerText = 'Gelöscht';
+            this.shadowRoot.querySelector('#txt-cam').innerText = 'Waehle Aufnahme';
+            this.shadowRoot.querySelector('#txt-date').innerText = 'Geloescht';
             
             this.hideDeleteConfirm();
             this.updateView();
-            this.showToast('Aufnahme gelöscht', 'success');
+            this.showToast('Aufnahme geloescht', 'success');
         } catch (e) {
             console.error('Delete failed:', e);
-            this.showToast('Fehler beim Löschen: ' + e.message, 'error');
+            this.showToast('Fehler beim Loeschen: ' + e.message, 'error');
             this.hideDeleteConfirm();
         }
     }

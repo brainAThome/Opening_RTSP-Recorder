@@ -25,7 +25,7 @@ def log_to_file(msg):
 
 def normalize_camera_name(name: str) -> str:
     """Normalize camera name for deduplication."""
-    clean = re.sub(r'[🎥📷📹]', '', name).strip()
+    clean = re.sub(r"[^\w\s-]", "", name).strip()
     clean = clean.replace("_", " ").lower()
     clean = " ".join(clean.split())
     return clean
@@ -39,7 +39,7 @@ def prettify_camera_name(name: str) -> str:
 
 def sanitize_camera_key(name: str) -> str:
     """Sanitize camera name for config keys and folders."""
-    clean = name.replace("🎥", "").strip().replace(" ", "_")
+    clean = re.sub(r"[^\w\s-]", "", name).strip().replace(" ", "_")
     for char in [":", "/", "\\", "?", "*", "\"", "<", ">", "|"]:
         clean = clean.replace(char, "")
     return clean or "unknown"
@@ -121,7 +121,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """
         HAUPTSEITE: Globale Einstellungen + Kamera-Auswahl
-        Alles auf einer Seite für schnellen Zugriff.
+        Alles auf einer Seite fuer schnellen Zugriff.
         """
         log_to_file("OptionsFlow: Hauptseite")
         errors = {}
@@ -168,18 +168,18 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         
         # Check allowlist status for description
         is_allowed = self._check_allowlist(storage)
-        allowlist_status = "✅ Pfad ist freigegeben" if is_allowed else "⚠️ Pfad muss in configuration.yaml freigegeben werden!"
+        allowlist_status = "Pfad ist freigegeben" if is_allowed else "Pfad muss in configuration.yaml freigegeben werden!"
 
         # Build camera options
         cam_options = [
-            {"value": "__NONE__", "label": "— Keine Kamera konfigurieren —"},
-            {"value": "__MANUAL__", "label": "➕ Manuelle RTSP-Kamera hinzufügen"}
+            {"value": "__NONE__", "label": "-- Keine Kamera konfigurieren --"},
+            {"value": "__MANUAL__", "label": "Manuelle RTSP-Kamera hinzufuegen"}
         ]
         for cam in sorted(self._camera_list):
             display = prettify_camera_name(cam)
             safe_name = cam.replace(" ", "_")
             has_sensor = f"sensor_{safe_name}" in self.config_cache
-            icon = "✅" if has_sensor else "📹"
+            icon = "✅" if has_sensor else "🆕"
             cam_options.append({"value": cam, "label": f"{icon} {display}"})
 
         schema = vol.Schema({
@@ -237,6 +237,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         key_delay = f"snapshot_delay_{safe_name}"
         key_retention = f"retention_hours_{safe_name}"
         key_rtsp = f"rtsp_url_{safe_name}"
+        key_objects = f"analysis_objects_{safe_name}"  # v1.0.6: Pro-Kamera Objekt-Filter
         
         if user_input is not None:
             # Save sensor (if selected)
@@ -266,6 +267,13 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             elif key_retention in self.config_cache:
                 del self.config_cache[key_retention]
             
+            # v1.0.6: Save camera-specific analysis objects
+            cam_objects = user_input.get("camera_objects", [])
+            if cam_objects:
+                self.config_cache[key_objects] = cam_objects
+            elif key_objects in self.config_cache:
+                del self.config_cache[key_objects]  # Use global default
+            
             # Check if user wants to configure another camera
             if user_input.get("configure_another", False):
                 return await self.async_step_init()
@@ -279,6 +287,39 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         cur_delay = self.config_cache.get(key_delay, 0)
         cur_retention = self.config_cache.get(key_retention, 0)
         cur_rtsp = self.config_cache.get(key_rtsp, "")
+        
+        # v1.0.6: Camera-specific object filter (falls back to global)
+        global_objects = self.config_cache.get("analysis_objects", ["person"])
+        cur_objects = self.config_cache.get(key_objects, [])  # Empty = use global
+        
+        # Objektliste fuer Kamera-Auswahl
+        cam_object_options = [
+            {"value": "person", "label": "Person"},
+            {"value": "cat", "label": "Katze"},
+            {"value": "dog", "label": "Hund"},
+            {"value": "bird", "label": "Vogel"},
+            {"value": "car", "label": "Auto"},
+            {"value": "truck", "label": "LKW"},
+            {"value": "bicycle", "label": "Fahrrad"},
+            {"value": "motorcycle", "label": "Motorrad"},
+            {"value": "bus", "label": "Bus"},
+            {"value": "tv", "label": "Fernseher"},
+            {"value": "couch", "label": "Sofa"},
+            {"value": "chair", "label": "Stuhl"},
+            {"value": "bed", "label": "Bett"},
+            {"value": "dining table", "label": "Esstisch"},
+            {"value": "potted plant", "label": "Pflanze"},
+            {"value": "laptop", "label": "Laptop"},
+            {"value": "cell phone", "label": "Handy"},
+            {"value": "remote", "label": "Fernbedienung"},
+            {"value": "bottle", "label": "Flasche"},
+            {"value": "cup", "label": "Tasse"},
+            {"value": "book", "label": "Buch"},
+            {"value": "backpack", "label": "Rucksack"},
+            {"value": "umbrella", "label": "Regenschirm"},
+            {"value": "suitcase", "label": "Koffer"},
+            {"value": "package", "label": "Paket"},
+        ]
 
         schema = vol.Schema({
             vol.Optional("motion_sensor", description={"suggested_value": cur_sensor}): selector.EntitySelector(
@@ -311,6 +352,10 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                     unit_of_measurement="Std"
                 )
             ),
+            # v1.0.6: Camera-specific analysis objects
+            vol.Optional("camera_objects", default=cur_objects): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=cam_object_options, multiple=True, mode=selector.SelectSelectorMode.DROPDOWN)
+            ),
             vol.Optional("configure_another", default=False): selector.BooleanSelector(),
         })
         
@@ -323,7 +368,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_manual_camera(self, user_input=None):
         """
-        SEITE 2b: Manuelle RTSP-Kamera hinzufügen
+        SEITE 2b: Manuelle RTSP-Kamera hinzufuegen
         """
         errors = {}
 
@@ -432,6 +477,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 errors["analysis_output_path"] = "invalid_path"
 
             auto_enabled = bool(user_input.get("analysis_auto_enabled", False))
+            auto_new = bool(user_input.get("analysis_auto_new", False))
             auto_mode = user_input.get("analysis_auto_mode", "daily")
             auto_time = (user_input.get("analysis_auto_time") or "").strip()
             auto_interval = int(user_input.get("analysis_auto_interval_hours", 24))
@@ -465,21 +511,45 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 self.config_cache["analysis_auto_since_days"] = auto_since_days
                 self.config_cache["analysis_auto_limit"] = auto_limit
                 self.config_cache["analysis_auto_skip_existing"] = bool(user_input.get("analysis_auto_skip_existing", True))
+                self.config_cache["analysis_auto_new"] = auto_new
                 self.config_cache["analysis_perf_cpu_entity"] = user_input.get("analysis_perf_cpu_entity")
                 self.config_cache["analysis_perf_igpu_entity"] = user_input.get("analysis_perf_igpu_entity")
                 self.config_cache["analysis_perf_coral_entity"] = user_input.get("analysis_perf_coral_entity")
 
                 return self.async_create_entry(title="", data=self.config_cache)
 
+        # Erweiterte Objektliste: Outdoor + Indoor Objekte (v1.0.6)
         object_options = [
-            {"value": "person", "label": "👤 Person"},
-            {"value": "car", "label": "🚗 Auto"},
-            {"value": "truck", "label": "🚚 LKW"},
-            {"value": "bicycle", "label": "🚲 Fahrrad"},
-            {"value": "motorcycle", "label": "🏍️ Motorrad"},
-            {"value": "cat", "label": "🐱 Katze"},
-            {"value": "dog", "label": "🐶 Hund"},
-            {"value": "package", "label": "📦 Paket"},
+            # Personen & Tiere
+            {"value": "person", "label": "Person"},
+            {"value": "cat", "label": "Katze"},
+            {"value": "dog", "label": "Hund"},
+            {"value": "bird", "label": "Vogel"},
+            # Fahrzeuge (Outdoor)
+            {"value": "car", "label": "Auto"},
+            {"value": "truck", "label": "LKW"},
+            {"value": "bicycle", "label": "Fahrrad"},
+            {"value": "motorcycle", "label": "Motorrad"},
+            {"value": "bus", "label": "Bus"},
+            # Haushalt (Indoor)
+            {"value": "tv", "label": "Fernseher"},
+            {"value": "couch", "label": "Sofa"},
+            {"value": "chair", "label": "Stuhl"},
+            {"value": "bed", "label": "Bett"},
+            {"value": "dining table", "label": "Esstisch"},
+            {"value": "potted plant", "label": "Pflanze"},
+            # Elektronik
+            {"value": "laptop", "label": "Laptop"},
+            {"value": "cell phone", "label": "Handy"},
+            {"value": "remote", "label": "Fernbedienung"},
+            # Gegenstaende
+            {"value": "bottle", "label": "Flasche"},
+            {"value": "cup", "label": "Tasse"},
+            {"value": "book", "label": "Buch"},
+            {"value": "backpack", "label": "Rucksack"},
+            {"value": "umbrella", "label": "Regenschirm"},
+            {"value": "suitcase", "label": "Koffer"},
+            {"value": "package", "label": "Paket"},
         ]
 
         detector_url = self.config_cache.get("analysis_detector_url", "")
@@ -518,6 +588,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         cur_auto_since_days = int(self.config_cache.get("analysis_auto_since_days", 1))
         cur_auto_limit = int(self.config_cache.get("analysis_auto_limit", 50))
         cur_auto_skip_existing = bool(self.config_cache.get("analysis_auto_skip_existing", True))
+        cur_auto_new = bool(self.config_cache.get("analysis_auto_new", False))
         cur_perf_cpu = self.config_cache.get("analysis_perf_cpu_entity")
         cur_perf_igpu = self.config_cache.get("analysis_perf_igpu_entity")
         cur_perf_coral = self.config_cache.get("analysis_perf_coral_entity")
@@ -545,10 +616,11 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 selector.NumberSelectorConfig(min=0.1, max=0.9, step=0.05, mode=selector.NumberSelectorMode.SLIDER)
             ),
             vol.Required("analysis_auto_enabled", default=cur_auto_enabled): selector.BooleanSelector(),
+            vol.Required("analysis_auto_new", default=cur_auto_new): selector.BooleanSelector(),
             vol.Required("analysis_auto_mode", default=cur_auto_mode): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
-                        {"value": "daily", "label": "Täglich (Uhrzeit)"},
+                        {"value": "daily", "label": "Taeglich (Uhrzeit)"},
                         {"value": "interval", "label": "Intervall (Stunden)"},
                     ],
                     mode=selector.SelectSelectorMode.DROPDOWN,

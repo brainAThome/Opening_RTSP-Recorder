@@ -1,10 +1,12 @@
 {
   "name": "RTSP Recorder Detector",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "slug": "rtsp_recorder_detector",
   "description": "Local object detector with Coral USB EdgeTPU support (Frigate-compatible)",
   "url": "https://github.com/brainAThome/RTSP-Recorder",
-  "arch": ["amd64"],
+  "arch": [
+    "amd64"
+  ],
   "startup": "services",
   "boot": "auto",
   "init": false,

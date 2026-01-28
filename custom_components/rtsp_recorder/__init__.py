@@ -1,6 +1,7 @@
 """RTSP Recorder Integration."""
 import logging
 import os
+import re
 import traceback
 import asyncio
 import datetime
@@ -289,6 +290,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
     analysis_auto_since_days = int(config_data.get("analysis_auto_since_days", 1))
     analysis_auto_limit = int(config_data.get("analysis_auto_limit", 50))
     analysis_auto_skip_existing = bool(config_data.get("analysis_auto_skip_existing", True))
+    analysis_auto_new = bool(config_data.get("analysis_auto_new", False))
     analysis_perf_cpu_entity = config_data.get("analysis_perf_cpu_entity")
     analysis_perf_igpu_entity = config_data.get("analysis_perf_igpu_entity")
     analysis_perf_coral_entity = config_data.get("analysis_perf_coral_entity")
@@ -316,6 +318,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         "analysis_auto_since_days",
         "analysis_auto_limit",
         "analysis_auto_skip_existing",
+        "analysis_auto_new",
         "analysis_perf_cpu_entity",
         "analysis_perf_igpu_entity",
         "analysis_perf_coral_entity",
@@ -372,7 +375,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                     friendly_name = state.attributes.get("friendly_name", entity_id)
                     
                     # Sanitize
-                    clean_name_raw = friendly_name.replace("🎥", "").strip().replace(" ", "_")
+                    clean_name_raw = re.sub(r"[^\w\s-]", "", friendly_name).strip().replace(" ", "_")
                     clean_name = clean_name_raw
                     
                     # Override params if provided in call
@@ -387,7 +390,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                     # Find matching entity for recording service (if needed)
                     found_entity = None
                     for state in hass.states.async_all("camera"):
-                        fn = state.attributes.get("friendly_name", "").replace("🎥", "").strip().replace(" ", "_")
+                        fn = re.sub(r"[^\w\s-]", "", state.attributes.get("friendly_name", "")).strip().replace(" ", "_")
                         if fn == clean_name or clean_name in state.entity_id:
                             found_entity = state.entity_id
                             break
@@ -465,7 +468,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                     })
 
                 # 3. Auto-Analyze after recording (if "Automatisch neue Videos analysieren" is enabled)
-                if analysis_enabled:
+                if analysis_enabled and analysis_auto_new:
                     # Wait for recording to finish (duration + small buffer)
                     await asyncio.sleep(duration + 2)
                     
@@ -473,10 +476,16 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                         log_to_file(f"Auto-analyzing new recording: {full_path}")
                         try:
                             perf_snapshot = _sensor_snapshot()
+                            
+                            # v1.0.6: Use camera-specific objects if configured
+                            cam_objects_key = f"analysis_objects_{clean_name}"
+                            cam_specific_objects = config_data.get(cam_objects_key, [])
+                            objects_to_use = cam_specific_objects if cam_specific_objects else analysis_objects
+                            
                             await analyze_recording(
                                 video_path=full_path,
                                 output_root=analysis_output_path,
-                                objects=analysis_objects,
+                                objects=objects_to_use,
                                 device=analysis_device,
                                 interval_s=analysis_frame_interval,
                                 perf_snapshot=perf_snapshot,
@@ -677,7 +686,12 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         def _create_motion_handler(cam_name, record_duration, snap_delay):
             async def _motion_changed(event):
                 new_state = event.data.get("new_state")
-                if new_state and new_state.state == "on":
+                old_state = event.data.get("old_state")
+                old_state_val = old_state.state if old_state else "None"
+                new_state_val = new_state.state if new_state else "None"
+                log_to_file(f"Motion state change: {event.data['entity_id']} [{old_state_val} -> {new_state_val}]")
+                # Only trigger on actual off->on transition
+                if new_state and new_state.state == "on" and old_state and old_state.state != "on":
                     log_to_file(f"Motion detected on {event.data['entity_id']} -> Triggering {cam_name}")
                     await handle_save_recording(camera_name=cam_name, duration=record_duration, snapshot_delay=snap_delay)
             return _motion_changed
@@ -700,11 +714,13 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                     
                     log_to_file(f"Setup Auto-Record: {motion_entity} -> {camera_target} ({record_duration}s, delay {snap_delay}s)")
                     
-                    async_track_state_change_event(
+                    # Register listener and store unsubscribe callback for cleanup on reload
+                    unsub = async_track_state_change_event(
                         hass, 
                         [motion_entity], 
                         _create_motion_handler(camera_target, record_duration, snap_delay)
                     )
+                    entry.async_on_unload(unsub)
             except Exception as e:
                 log_to_file(f"Error setting up auto-record for {key}: {e}")
                 _LOGGER.error(f"Error setting up auto-record: {e}")
@@ -735,8 +751,9 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         # Run once on startup (after 30s delay)
         hass.loop.call_later(30, lambda: hass.async_create_task(run_cleanup()))
         
-        # Run daily at same time
-        async_track_time_interval(hass, run_cleanup, timedelta(hours=24))
+        # Run daily at same time - register with async_on_unload for cleanup on reload
+        unsub_cleanup = async_track_time_interval(hass, run_cleanup, timedelta(hours=24))
+        entry.async_on_unload(unsub_cleanup)
 
         # Auto Analysis Scheduler
         async def run_auto_analysis(now=None):
@@ -757,10 +774,12 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         if analysis_enabled and analysis_auto_enabled:
             if analysis_auto_mode == "interval":
                 interval_hours = max(1, int(analysis_auto_interval_hours or 24))
-                async_track_time_interval(hass, run_auto_analysis, timedelta(hours=interval_hours))
+                unsub_analysis = async_track_time_interval(hass, run_auto_analysis, timedelta(hours=interval_hours))
+                entry.async_on_unload(unsub_analysis)
             else:
                 hhmm = _parse_hhmm(analysis_auto_time) or (3, 0)
-                async_track_time_change(hass, run_auto_analysis, hour=hhmm[0], minute=hhmm[1], second=0)
+                unsub_analysis = async_track_time_change(hass, run_auto_analysis, hour=hhmm[0], minute=hhmm[1], second=0)
+                entry.async_on_unload(unsub_analysis)
         
         # Register update listener
         entry.async_on_unload(entry.add_update_listener(update_listener))
@@ -972,11 +991,28 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         @websocket_api.websocket_command(
             {
                 vol.Required("type"): "rtsp_recorder/get_analysis_config",
+                vol.Optional("camera"): str,  # v1.0.6: Optional camera name for specific config
             }
         )
         @websocket_api.async_response
         async def ws_get_analysis_config(hass, connection, msg):
             """Return current analysis schedule configuration."""
+            camera = msg.get("camera")
+            
+            # v1.0.6: Get camera-specific objects if camera is specified
+            cam_objects = None
+            if camera:
+                safe_cam = camera.replace(" ", "_").replace("-", "_")
+                cam_objects_key = f"analysis_objects_{safe_cam}"
+                cam_objects = config_data.get(cam_objects_key, [])
+            
+            # v1.0.6: Build camera_objects map for all cameras
+            camera_objects_map = {}
+            for key, value in config_data.items():
+                if key.startswith("analysis_objects_"):
+                    cam_name = key.replace("analysis_objects_", "")
+                    camera_objects_map[cam_name] = value
+            
             result = {
                 "analysis_enabled": analysis_enabled,
                 "analysis_auto_enabled": analysis_auto_enabled,
@@ -986,8 +1022,11 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 "analysis_auto_since_days": analysis_auto_since_days,
                 "analysis_auto_limit": analysis_auto_limit,
                 "analysis_auto_skip_existing": analysis_auto_skip_existing,
+                "analysis_auto_new": analysis_auto_new,
                 "analysis_device": analysis_device,
                 "analysis_objects": analysis_objects,
+                "camera_objects": cam_objects,  # Specific camera objects (if requested)
+                "camera_objects_map": camera_objects_map,  # All camera-specific settings
             }
             connection.send_result(msg["id"], result)
 
@@ -1004,6 +1043,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 vol.Optional("analysis_auto_since_days"): int,
                 vol.Optional("analysis_auto_limit"): int,
                 vol.Optional("analysis_auto_skip_existing"): bool,
+                vol.Optional("analysis_auto_new"): bool,
             }
         )
         @websocket_api.async_response
@@ -1019,6 +1059,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                     "analysis_auto_since_days",
                     "analysis_auto_limit",
                     "analysis_auto_skip_existing",
+                    "analysis_auto_new",
                 ]
                 
                 # Build updates dict
@@ -1050,6 +1091,55 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 })
 
         websocket_api.async_register_command(hass, ws_set_analysis_config)
+
+        # v1.0.6: WebSocket API: Set Camera-Specific Objects
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "rtsp_recorder/set_camera_objects",
+                vol.Required("camera"): str,
+                vol.Required("objects"): list,
+            }
+        )
+        @websocket_api.async_response
+        async def ws_set_camera_objects(hass, connection, msg):
+            """Set camera-specific analysis objects."""
+            try:
+                camera = msg["camera"]
+                objects = msg["objects"]
+                
+                # Create safe key
+                safe_cam = camera.replace(" ", "_").replace("-", "_")
+                cam_objects_key = f"analysis_objects_{safe_cam}"
+                
+                # Update config
+                new_data = dict(entry.data)
+                new_options = dict(entry.options) if entry.options else {}
+                
+                if objects:  # Non-empty list = use specific objects
+                    new_data[cam_objects_key] = objects
+                    new_options[cam_objects_key] = objects
+                else:  # Empty list = use global objects
+                    new_data.pop(cam_objects_key, None)
+                    new_options.pop(cam_objects_key, None)
+                
+                hass.config_entries.async_update_entry(entry, data=new_data, options=new_options)
+                
+                log_to_file(f"Set camera objects for {camera}: {objects}")
+                
+                connection.send_result(msg["id"], {
+                    "success": True,
+                    "camera": camera,
+                    "objects": objects,
+                    "message": f"Objects for {camera} updated"
+                })
+            except Exception as e:
+                log_to_file(f"Set camera objects error: {e}")
+                connection.send_result(msg["id"], {
+                    "success": False,
+                    "message": str(e)
+                })
+
+        websocket_api.async_register_command(hass, ws_set_camera_objects)
 
         log_to_file("Setup Success.")
 

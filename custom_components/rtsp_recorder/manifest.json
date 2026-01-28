@@ -2,7 +2,7 @@
     "domain": "rtsp_recorder",
     "name": "RTSP Recorder",
     "config_flow": true,
-    "version": "1.0.5",
+    "version": "1.0.6",
     "documentation": "https://github.com/brainAThome/RTSP-Recorder",
     "dependencies": [
         "ffmpeg"

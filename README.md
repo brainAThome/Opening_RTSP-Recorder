@@ -2,7 +2,7 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.0.5%20BETA-orange)
+![Version](https://img.shields.io/badge/version-1.0.6%20BETA-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
