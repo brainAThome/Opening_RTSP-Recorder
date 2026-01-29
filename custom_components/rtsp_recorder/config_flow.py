@@ -561,6 +561,10 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 self.config_cache["analysis_frame_interval"] = int(user_input.get("analysis_frame_interval", 2))
                 self.config_cache["analysis_detector_url"] = (user_input.get("analysis_detector_url") or "").strip()
                 self.config_cache["analysis_detector_confidence"] = float(user_input.get("analysis_detector_confidence", 0.4))
+                # Face Detection Settings (v1.0.7)
+                self.config_cache["analysis_face_enabled"] = bool(user_input.get("analysis_face_enabled", False))
+                self.config_cache["analysis_face_match_threshold"] = float(user_input.get("analysis_face_match_threshold", 0.35))
+                self.config_cache["person_entities_enabled"] = bool(user_input.get("person_entities_enabled", False))
                 self.config_cache["analysis_auto_enabled"] = auto_enabled
                 self.config_cache["analysis_auto_mode"] = auto_mode
                 self.config_cache["analysis_auto_time"] = auto_time or "03:00"
@@ -651,6 +655,10 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         cur_perf_coral = self.config_cache.get("analysis_perf_coral_entity")
         cur_detector_url = self.config_cache.get("analysis_detector_url", "")
         cur_detector_conf = float(self.config_cache.get("analysis_detector_confidence", 0.4))
+        # Face Detection Settings (v1.0.7)
+        cur_face_enabled = bool(self.config_cache.get("analysis_face_enabled", False))
+        cur_face_threshold = float(self.config_cache.get("analysis_face_match_threshold", 0.35))
+        cur_person_entities = bool(self.config_cache.get("person_entities_enabled", False))
 
         schema = vol.Schema({
             vol.Required("analysis_enabled", default=cur_enabled): selector.BooleanSelector(),
@@ -672,6 +680,12 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             vol.Required("analysis_detector_confidence", default=cur_detector_conf): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0.1, max=0.9, step=0.05, mode=selector.NumberSelectorMode.SLIDER)
             ),
+            # Face Detection Settings (v1.0.7)
+            vol.Required("analysis_face_enabled", default=cur_face_enabled): selector.BooleanSelector(),
+            vol.Required("analysis_face_match_threshold", default=cur_face_threshold): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0.2, max=0.9, step=0.05, mode=selector.NumberSelectorMode.SLIDER)
+            ),
+            vol.Required("person_entities_enabled", default=cur_person_entities): selector.BooleanSelector(),
             vol.Required("analysis_auto_enabled", default=cur_auto_enabled): selector.BooleanSelector(),
             vol.Required("analysis_auto_new", default=cur_auto_new): selector.BooleanSelector(),
             vol.Required("analysis_auto_mode", default=cur_auto_mode): selector.SelectSelector(
