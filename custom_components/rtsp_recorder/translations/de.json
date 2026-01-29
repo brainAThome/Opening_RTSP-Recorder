@@ -86,7 +86,7 @@
           "analysis_detector_confidence": "Mindest-Konfidenz für Objekterkennung (0.1-0.9)",
           "analysis_face_enabled": "Aktiviert Gesichtserkennung und Embedding-Extraktion bei der Analyse",
           "analysis_face_match_threshold": "Schwellwert für Gesichts-Matching (niedriger = mehr Matches, empfohlen: 0.35)",
-          "person_entities_enabled": "Erstellt binary_sensor.rtsp_recorder_person_<name> für Automationen",
+          "person_entities_enabled": "Erstellt binary_sensor.rtsp_recorder_person_NAME für Automationen",
           "analysis_auto_enabled": "Analysiert Aufnahmen automatisch nach Zeitplan",
           "analysis_auto_mode": "Täglich oder in festen Abständen",
           "analysis_auto_time": "Uhrzeit für tägliche Analyse (z.B. 03:00)",
