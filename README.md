@@ -123,6 +123,90 @@ Der **Face Match Threshold** (Standard: 0.6) bestimmt, wie strikt das Matching i
 
 ---
 
+## 🏠 Entitäten für Automationen
+
+RTSP Recorder erstellt automatisch **Binary Sensors** für erkannte Personen, die du in Home Assistant Automationen verwenden kannst!
+
+### Automatisch erstellte Entitäten
+
+| Entität | Typ | Beschreibung |
+|---------|-----|--------------|
+| `binary_sensor.rtsp_recorder_person_<name>` | Binary Sensor | Wird `on` wenn Person erkannt wird |
+
+### Entitäts-Attribute
+
+Jede Person-Entität hat folgende Attribute:
+
+| Attribut | Beschreibung |
+|----------|--------------|
+| `person_name` | Name der Person |
+| `similarity` | Matching-Score (0.0 - 1.0) |
+| `camera` | Kamera, die die Person erkannt hat |
+| `video_path` | Pfad zur Aufnahme |
+| `last_seen` | Zeitstempel der letzten Erkennung |
+
+### Beispiel: Automation bei Personenerkennung
+
+```yaml
+automation:
+  - alias: "Benachrichtigung wenn Thorin erkannt wird"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.rtsp_recorder_person_thorin
+        to: "on"
+    condition: []
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Person erkannt!"
+          message: >
+            {{ state_attr('binary_sensor.rtsp_recorder_person_thorin', 'person_name') }} 
+            wurde an Kamera {{ state_attr('binary_sensor.rtsp_recorder_person_thorin', 'camera') }} 
+            erkannt (Similarity: {{ state_attr('binary_sensor.rtsp_recorder_person_thorin', 'similarity') | round(2) }})
+```
+
+### Beispiel: Willkommensnachricht
+
+```yaml
+automation:
+  - alias: "Willkommen zuhause"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.rtsp_recorder_person_sven
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: person.sven
+        state: "not_home"
+    action:
+      - service: tts.google_translate_say
+        data:
+          entity_id: media_player.wohnzimmer
+          message: "Willkommen zuhause, Sven!"
+```
+
+### Beispiel: Unbekannte Person-Alarm
+
+```yaml
+automation:
+  - alias: "Alarm bei unbekannter Person"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.rtsp_recorder_person_unknown
+        to: "on"
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "⚠️ Unbekannte Person!"
+          message: "Eine unbekannte Person wurde erkannt"
+          data:
+            image: "/local/thumbnails/latest_face.jpg"
+```
+
+> **Hinweis:** Die Binary Sensors werden für 30 Sekunden auf `on` gesetzt und dann automatisch auf `off` zurückgesetzt. Dies ermöglicht präzise Automationen.
+
+---
+
 ## 🔧 Coral USB EdgeTPU
 
 ### Voraussetzungen
