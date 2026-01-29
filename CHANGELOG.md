@@ -2,6 +2,32 @@
 
 All notable changes to RTSP Recorder will be documented in this file.
 
+## [1.0.7 BETA] - 2026-01-29
+
+### Added
+- **Face detection & embeddings**: Face pipeline in offline analysis with embeddings
+- **Person database**: Create, rename, delete persons; assign embeddings
+- **Persons UI**: Thumbnails, sample selection, and training workflow in the card
+- **Person entities**: Optional per-person `binary_sensor` entities for automations
+- **Auto Coral toggle**: Option to force Coral on automatic analyses
+- **Face thumbnails**: Stored in analysis results for quick review
+- **Auto-analysis file readiness**: Waits for stable file size before analyzing
+
+### Fixed
+- **Analysis start latency**: Manual analysis now starts in background task
+- **People actions reliability**: Robust ID handling and fallback matching
+- **Face detection reliability**: Retry with lower confidence when no faces found
+- **False matches**: Fallback embeddings excluded from matching
+
+### Changed
+- Dashboard badge updated to v1.0.7
+- Detector add-on now exposes `/faces`
+
+### Technical
+- Integration version: 1.0.7
+- Dashboard card version: 1.0.7 BETA
+- Detector add-on version: 1.0.7
+
 ## [1.0.6 BETA] - 2026-01-29
 
 ### Added

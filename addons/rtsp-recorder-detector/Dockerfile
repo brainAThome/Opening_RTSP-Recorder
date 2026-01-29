@@ -28,14 +28,14 @@ RUN curl -sL -o /tmp/libedgetpu1-max.deb \
     && ldconfig \
     && rm -rf /tmp/libedgetpu1-max.deb /tmp/edgetpu
 
-# Install Python packages
+# Install Python packages with pinned versions (LOW-007 Fix)
 RUN pip3 install --no-cache-dir --break-system-packages \
       "numpy==1.26.4" \
       "tflite-runtime==2.14.0" \
-      Pillow \
-      fastapi \
-      python-multipart \
-      "uvicorn[standard]"
+      "Pillow==10.2.0" \
+      "fastapi==0.109.0" \
+      "python-multipart==0.0.6" \
+      "uvicorn[standard]==0.27.0"
 
 # Pre-download Frigate's tested models (mobiledet - much better than old mobilenet)
 RUN mkdir -p /data/models \

@@ -6,6 +6,7 @@ import traceback
 import asyncio
 import datetime
 import json
+import uuid
 from datetime import timedelta
 from typing import Any
 import voluptuous as vol
@@ -99,8 +100,15 @@ class InferenceStatsTracker:
 
 _inference_stats = InferenceStatsTracker()
 
-def get_system_stats() -> dict:
-    """Read system stats directly from /proc."""
+import sys as _sys
+
+# ===== Platform Detection (MED-001 Fix) =====
+IS_LINUX = _sys.platform.startswith('linux')
+
+def _get_system_stats_sync() -> dict:
+    """Read system stats (Linux: /proc, other platforms: defaults)."""
+    import time as _t
+    
     stats = {
         "cpu_percent": 0.0,
         "memory_percent": 0.0,
@@ -108,10 +116,12 @@ def get_system_stats() -> dict:
         "memory_total_mb": 0,
     }
     
+    # MED-001 Fix: Only access /proc on Linux
+    if not IS_LINUX:
+        return stats
+    
     try:
         # CPU usage - read /proc/stat twice with delay
-        import time as _t
-        
         def read_cpu():
             with open("/proc/stat", "r") as f:
                 line = f.readline()
@@ -122,7 +132,7 @@ def get_system_stats() -> dict:
             return idle, total
         
         idle1, total1 = read_cpu()
-        _t.sleep(0.1)
+        _t.sleep(0.1)  # Safe: runs in executor thread, not event loop
         idle2, total2 = read_cpu()
         
         idle_delta = idle2 - idle1
@@ -148,15 +158,216 @@ def get_system_stats() -> dict:
         if total_kb > 0:
             stats["memory_percent"] = round(100.0 * used_kb / total_kb, 1)
             
-    except Exception as e:
-        _LOGGER.warning(f"Failed to read system stats: {e}")
+    except Exception:
+        pass  # Return default stats on error
     
     return stats
+
+
+def get_system_stats() -> dict:
+    """Get system stats (wrapper for sync contexts)."""
+    return _get_system_stats_sync()
 # ===== End Stats Tracker =====
 
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "rtsp_recorder"
+
+PEOPLE_DB_VERSION = 1
+PEOPLE_DB_DEFAULT_PATH = "/config/rtsp_recorder_people.json"
+_people_lock = asyncio.Lock()
+
+# ===== Rate Limiting (MED-004 Fix) =====
+# Semaphore to limit concurrent analysis operations
+MAX_CONCURRENT_ANALYSES = 2
+_analysis_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_analysis_semaphore() -> asyncio.Semaphore:
+    """Get or create the analysis semaphore."""
+    global _analysis_semaphore
+    if _analysis_semaphore is None:
+        _analysis_semaphore = asyncio.Semaphore(MAX_CONCURRENT_ANALYSES)
+    return _analysis_semaphore
+# ===== End Rate Limiting =====
+
+
+# ===== Path Validation (HIGH-001 Fix) =====
+def _validate_media_path(media_id: str, allowed_base: str = "/media/rtsp_recordings") -> str | None:
+    """Validate media_id and return safe path, or None if invalid.
+    
+    Prevents path traversal attacks by ensuring the resolved path
+    stays within the allowed base directory.
+    """
+    if not media_id:
+        return None
+    
+    try:
+        # Extract relative path from media_id
+        if "local/" in media_id:
+            relative_path = media_id.split("local/", 1)[1]
+        else:
+            return None
+        
+        # Construct and resolve the full path
+        video_path = os.path.join("/media", relative_path)
+        resolved_path = os.path.realpath(video_path)
+        
+        # Security check: ensure path is within allowed directory
+        if not resolved_path.startswith(allowed_base):
+            _LOGGER.warning(f"Path traversal attempt blocked: {media_id} -> {resolved_path}")
+            return None
+        
+        # Additional checks for dangerous patterns
+        if ".." in relative_path or relative_path.startswith("/"):
+            _LOGGER.warning(f"Suspicious path pattern blocked: {media_id}")
+            return None
+        
+        return resolved_path
+    except Exception as e:
+        _LOGGER.error(f"Path validation error: {e}")
+        return None
+# ===== End Path Validation =====
+
+
+# ===== Input Validation Constants (MED-002 Fix) =====
+MAX_PERSON_NAME_LENGTH = 100
+VALID_NAME_PATTERN = re.compile(r'^[\w\s\-\.äöüÄÖÜß]+$')  # Allow letters, numbers, spaces, hyphens, dots, German umlauts
+
+
+def _validate_person_name(name: str) -> tuple[bool, str]:
+    """Validate person name for length and allowed characters.
+    
+    Returns (is_valid, error_message).
+    """
+    if not name:
+        return False, "Name darf nicht leer sein"
+    if len(name) > MAX_PERSON_NAME_LENGTH:
+        return False, f"Name zu lang (max {MAX_PERSON_NAME_LENGTH} Zeichen)"
+    if not VALID_NAME_PATTERN.match(name):
+        return False, "Name enthält ungültige Zeichen"
+    return True, ""
+# ===== End Input Validation =====
+
+
+def _default_people_db() -> dict[str, Any]:
+    # MED-005 Fix: Use timezone-aware datetime instead of deprecated utcnow()
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    return {
+        "version": PEOPLE_DB_VERSION,
+        "people": [],
+        "created_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
+        "updated_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
+    }
+
+
+async def _load_people_db(path: str) -> dict[str, Any]:
+    async with _people_lock:
+        if not os.path.exists(path):
+            data = _default_people_db()
+            def _write():
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            await asyncio.to_thread(_write)
+            return data
+        try:
+            def _read():
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            data = await asyncio.to_thread(_read)
+            if not isinstance(data, dict):
+                return _default_people_db()
+            if "people" not in data:
+                data["people"] = []
+            return data
+        except Exception:
+            return _default_people_db()
+
+
+async def _save_people_db(path: str, data: dict[str, Any]) -> None:
+    async with _people_lock:
+        # MED-005 Fix: Use timezone-aware datetime
+        data["updated_utc"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        def _write():
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        await asyncio.to_thread(_write)
+
+
+# ===== Atomic People DB Update (HIGH-002 Fix) =====
+async def _update_people_db(path: str, update_fn) -> dict[str, Any]:
+    """Atomically update People DB with a modifier function.
+    
+    Ensures the entire read-modify-write cycle is protected by a single lock
+    to prevent race conditions between concurrent updates.
+    
+    Args:
+        path: Path to people DB JSON file
+        update_fn: Function that takes the current data dict and returns modified data
+    
+    Returns:
+        The updated data dict
+    """
+    async with _people_lock:
+        # Read current data
+        if not os.path.exists(path):
+            data = _default_people_db()
+        else:
+            try:
+                def _read():
+                    with open(path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                data = await asyncio.to_thread(_read)
+                if not isinstance(data, dict):
+                    data = _default_people_db()
+                if "people" not in data:
+                    data["people"] = []
+            except Exception:
+                data = _default_people_db()
+        
+        # Apply update function
+        data = update_fn(data)
+        
+        # Save updated data (MED-005 Fix: timezone-aware)
+        data["updated_utc"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        def _write():
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        await asyncio.to_thread(_write)
+        
+        return data
+# ===== End Atomic People DB Update =====
+
+
+def _public_people_view(people: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for p in people:
+        thumbs = []
+        try:
+            for emb in (p.get("embeddings") or [])[-5:]:
+                if isinstance(emb, dict):
+                    t = emb.get("thumb")
+                    if t:
+                        thumbs.append(t)
+        except Exception:
+            thumbs = []
+        out.append({
+            "id": str(p.get("id")) if p.get("id") is not None else None,
+            "name": p.get("name"),
+            "created_utc": p.get("created_utc"),
+            "embeddings_count": len(p.get("embeddings", []) or []),
+            "recent_thumbs": thumbs,
+        })
+    return out
+
+
+def _normalize_embedding_simple(values: list[float]) -> list[float]:
+    if not values:
+        return []
+    norm = sum((v * v) for v in values) ** 0.5
+    if norm == 0:
+        return values
+    return [v / norm for v in values]
 
 def _parse_hhmm(value: str) -> tuple[int, int] | None:
     if not value:
@@ -187,6 +398,118 @@ def _list_video_files(storage_path: str, camera: str | None = None) -> list[str]
             if fname.lower().endswith(".mp4"):
                 results.append(os.path.join(root, fname))
     return results
+
+
+def _cosine_similarity_simple(a: list[float], b: list[float]) -> float:
+    """Calculate cosine similarity between two embedding vectors."""
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+
+def _match_face_simple(
+    embedding: list[float], 
+    people: list[dict[str, Any]], 
+    threshold: float = 0.6
+) -> dict[str, Any] | None:
+    """Match a face embedding against the people database."""
+    if not embedding or not people:
+        return None
+    best = None
+    best_score = -1.0
+    for person in people:
+        p_id = person.get("id")
+        p_name = person.get("name")
+        for emb in person.get("embeddings", []) or []:
+            if isinstance(emb, dict):
+                emb_vec = emb.get("vector", [])
+            else:
+                emb_vec = emb
+            if not emb_vec or not isinstance(emb_vec, list):
+                continue
+            try:
+                emb_list = [float(v) for v in emb_vec]
+            except (TypeError, ValueError):
+                continue
+            score = _cosine_similarity_simple(embedding, emb_list)
+            if score > best_score:
+                best_score = score
+                best = {"person_id": p_id, "name": p_name, "similarity": round(float(score), 4)}
+    if best and best_score >= float(threshold):
+        return best
+    return None
+
+
+async def _update_all_face_matches(
+    output_dir: str, 
+    people: list[dict[str, Any]], 
+    threshold: float = 0.6
+) -> int:
+    """Re-match all faces in existing analysis results against updated people database.
+    
+    Returns the number of updated result files.
+    """
+    if not os.path.exists(output_dir):
+        return 0
+    
+    updated_count = 0
+    
+    def _process_analyses():
+        nonlocal updated_count
+        for name in os.listdir(output_dir):
+            if not name.startswith("analysis_"):
+                continue
+            job_dir = os.path.join(output_dir, name)
+            result_path = os.path.join(job_dir, "result.json")
+            if not os.path.exists(result_path):
+                continue
+            try:
+                with open(result_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                
+                modified = False
+                detections = data.get("detections", [])
+                
+                for detection in detections:
+                    faces = detection.get("faces", [])
+                    for face in faces:
+                        embedding = face.get("embedding")
+                        if not embedding or not isinstance(embedding, list):
+                            continue
+                        try:
+                            emb_list = [float(v) for v in embedding]
+                        except (TypeError, ValueError):
+                            continue
+                        
+                        # Re-match this face
+                        new_match = _match_face_simple(emb_list, people, threshold)
+                        old_match = face.get("match")
+                        
+                        # Update if match changed
+                        if new_match != old_match:
+                            if new_match:
+                                face["match"] = new_match
+                            elif "match" in face:
+                                del face["match"]
+                            modified = True
+                
+                if modified:
+                    with open(result_path, "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+                    updated_count += 1
+                    
+            except Exception:
+                continue
+        
+        return updated_count
+    
+    await asyncio.to_thread(_process_analyses)
+    return updated_count
 
 
 def _read_analysis_results(output_dir: str, limit: int = 50) -> list[dict[str, Any]]:
@@ -248,15 +571,34 @@ def _summarize_analysis(items: list[dict[str, Any]]) -> dict[str, Any]:
         "avg_frame_count": avg_frames,
     }
 
-def log_to_file(msg):
-    """Fallback logging to file + Standard Logger."""
+def log_to_file(msg: str) -> None:
+    """Log message to both standard logger and fallback debug file.
+    
+    This dual logging approach ensures messages are captured by Home
+    Assistant's debug logging system while also maintaining a persistent
+    file log for troubleshooting deployment issues.
+    
+    Args:
+        msg: Message to log
+    
+    Note:
+        File logging is async-safe and will use asyncio.to_thread
+        when called from an async context.
+    """
     # Write to standard logger for "Enable Debug Logging" support
     _LOGGER.debug(msg)
     
     # Keep file logging for fallback
     try:
-        with open("/config/rtsp_debug.log", "a") as f:
-            f.write(f"INIT: {msg}\n")
+        def _write_log():
+            with open("/config/rtsp_debug.log", "a") as f:
+                f.write(f"INIT: {msg}\n")
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(asyncio.to_thread(_write_log))
+        except RuntimeError:
+            _write_log()
     except Exception:
         pass
 
@@ -283,6 +625,11 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
     analysis_frame_interval = int(config_data.get("analysis_frame_interval", 2))
     analysis_detector_url = config_data.get("analysis_detector_url", "")
     analysis_detector_confidence = float(config_data.get("analysis_detector_confidence", 0.4))
+    analysis_face_enabled = bool(config_data.get("analysis_face_enabled", False))
+    analysis_face_confidence = float(config_data.get("analysis_face_confidence", 0.6))
+    analysis_face_match_threshold = float(config_data.get("analysis_face_match_threshold", 0.35))
+    analysis_face_store_embeddings = bool(config_data.get("analysis_face_store_embeddings", True))
+    people_db_path = config_data.get("people_db_path", PEOPLE_DB_DEFAULT_PATH)
     analysis_auto_enabled = config_data.get("analysis_auto_enabled", False)
     analysis_auto_mode = config_data.get("analysis_auto_mode", "daily")
     analysis_auto_time = config_data.get("analysis_auto_time", "03:00")
@@ -291,6 +638,8 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
     analysis_auto_limit = int(config_data.get("analysis_auto_limit", 50))
     analysis_auto_skip_existing = bool(config_data.get("analysis_auto_skip_existing", True))
     analysis_auto_new = bool(config_data.get("analysis_auto_new", False))
+    analysis_auto_force_coral = bool(config_data.get("analysis_auto_force_coral", False))
+    person_entities_enabled = bool(config_data.get("person_entities_enabled", False))
     analysis_perf_cpu_entity = config_data.get("analysis_perf_cpu_entity")
     analysis_perf_igpu_entity = config_data.get("analysis_perf_igpu_entity")
     analysis_perf_coral_entity = config_data.get("analysis_perf_coral_entity")
@@ -311,6 +660,11 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         "analysis_frame_interval",
         "analysis_detector_url",
         "analysis_detector_confidence",
+        "analysis_face_enabled",
+        "analysis_face_confidence",
+        "analysis_face_match_threshold",
+        "analysis_face_store_embeddings",
+        "people_db_path",
         "analysis_auto_enabled",
         "analysis_auto_mode",
         "analysis_auto_time",
@@ -319,6 +673,8 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         "analysis_auto_limit",
         "analysis_auto_skip_existing",
         "analysis_auto_new",
+        "analysis_auto_force_coral",
+        "person_entities_enabled",
         "analysis_perf_cpu_entity",
         "analysis_perf_igpu_entity",
         "analysis_perf_coral_entity",
@@ -350,6 +706,9 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             os.makedirs(snapshot_path_base, exist_ok=True)
         if not os.path.exists(analysis_output_path):
             os.makedirs(analysis_output_path, exist_ok=True)
+
+        # People DB sicherstellen
+        await _load_people_db(people_db_path)
             
         # 2. Define Recording Logic (Reusable)
         async def handle_save_recording(call: ServiceCall = None, camera_name: str = None, duration: int = 30, snapshot_delay: float = 0):
@@ -469,34 +828,55 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
 
                 # 3. Auto-Analyze after recording (if "Automatisch neue Videos analysieren" is enabled)
                 if analysis_enabled and analysis_auto_new:
-                    # Wait for recording to finish (duration + small buffer)
-                    await asyncio.sleep(duration + 2)
-                    
-                    if os.path.exists(full_path):
-                        log_to_file(f"Auto-analyzing new recording: {full_path}")
+                    async def _auto_analyze_when_ready(path: str, cam_name: str, rec_duration: int):
                         try:
+                            # Wait for recording to finish (duration + small buffer)
+                            await asyncio.sleep(rec_duration + 2)
+
+                            ready = await _wait_for_file_ready(path, max_wait_s=120, stable_checks=3, interval_s=3)
+                            if not ready:
+                                log_to_file(f"Recording not ready for auto-analysis (timeout): {path}")
+                                return
+
+                            log_to_file(f"Auto-analyzing new recording: {path}")
                             perf_snapshot = _sensor_snapshot()
-                            
+
                             # v1.0.6: Use camera-specific objects if configured
-                            cam_objects_key = f"analysis_objects_{clean_name}"
+                            cam_objects_key = f"analysis_objects_{cam_name}"
                             cam_specific_objects = config_data.get(cam_objects_key, [])
                             objects_to_use = cam_specific_objects if cam_specific_objects else analysis_objects
-                            
-                            await analyze_recording(
-                                video_path=full_path,
+
+                            people_data = await _load_people_db(people_db_path)
+                            people = people_data.get("people", [])
+                            auto_device = await _resolve_auto_device()
+                            result = await analyze_recording(
+                                video_path=path,
                                 output_root=analysis_output_path,
                                 objects=objects_to_use,
-                                device=analysis_device,
+                                device=auto_device,
                                 interval_s=analysis_frame_interval,
                                 perf_snapshot=perf_snapshot,
                                 detector_url=analysis_detector_url,
                                 detector_confidence=analysis_detector_confidence,
+                                face_enabled=analysis_face_enabled,
+                                face_confidence=analysis_face_confidence,
+                                face_match_threshold=analysis_face_match_threshold,
+                                face_store_embeddings=analysis_face_store_embeddings,
+                                people_db=people,
+                                face_detector_url=analysis_detector_url,
                             )
-                            log_to_file(f"Auto-analysis completed for: {full_path}")
+                            if person_entities_enabled:
+                                try:
+                                    updated = _update_person_entities_from_result(result or {})
+                                    if not updated:
+                                        _update_person_entities_for_video(path)
+                                except Exception:
+                                    pass
+                            log_to_file(f"Auto-analysis completed for: {path}")
                         except Exception as ae:
                             log_to_file(f"Auto-analysis error: {ae}")
-                    else:
-                        log_to_file(f"Recording not found for auto-analysis: {full_path}")
+
+                    hass.async_create_task(_auto_analyze_when_ready(full_path, clean_name, int(duration or 0)))
                 
             except Exception as e:
                 log_to_file(f"Error in save_recording: {e}")
@@ -521,8 +901,31 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 "cpu": _get_value(analysis_perf_cpu_entity),
                 "igpu": _get_value(analysis_perf_igpu_entity),
                 "coral": _get_value(analysis_perf_coral_entity),
-                "ts": datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S"),
+                "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S"),
             }
+
+        async def _wait_for_file_ready(path: str, max_wait_s: int = 120, stable_checks: int = 3, interval_s: int = 3) -> bool:
+            """Wait until a file exists and its size is stable."""
+            checks = 0
+            last_size = -1
+            waited = 0
+            while waited <= max_wait_s:
+                exists = await hass.async_add_executor_job(os.path.exists, path)
+                if exists:
+                    try:
+                        size = await hass.async_add_executor_job(os.path.getsize, path)
+                    except Exception:
+                        size = -1
+                    if size > 0 and size == last_size:
+                        checks += 1
+                    else:
+                        checks = 0
+                    last_size = size
+                    if checks >= stable_checks:
+                        return True
+                await asyncio.sleep(interval_s)
+                waited += interval_s
+            return False
 
         async def _analyze_batch(
             *,
@@ -550,23 +953,40 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             if limit and limit > 0:
                 files = files[:limit]
 
+            people_data = await _load_people_db(people_db_path)
+            people = people_data.get("people", [])
+
+            # MED-004 Fix: Use semaphore for rate limiting
+            semaphore = _get_analysis_semaphore()
+            
             processed = 0
             for path in files:
-                try:
-                    perf_snapshot = _sensor_snapshot()
-                    await analyze_recording(
-                        video_path=path,
-                        output_root=analysis_output_path,
-                        objects=objects,
-                        device=device,
-                        interval_s=analysis_frame_interval,
-                        perf_snapshot=perf_snapshot,
-                        detector_url=analysis_detector_url,
-                        detector_confidence=analysis_detector_confidence,
-                    )
-                    processed += 1
-                except Exception as e:
-                    log_to_file(f"Batch analysis error for {path}: {e}")
+                async with semaphore:  # Limit concurrent analyses
+                    try:
+                        perf_snapshot = _sensor_snapshot()
+                        result = await analyze_recording(
+                            video_path=path,
+                            output_root=analysis_output_path,
+                            objects=objects,
+                            device=device,
+                            interval_s=analysis_frame_interval,
+                            perf_snapshot=perf_snapshot,
+                            detector_url=analysis_detector_url,
+                            detector_confidence=analysis_detector_confidence,
+                            face_enabled=analysis_face_enabled,
+                            face_confidence=analysis_face_confidence,
+                            face_match_threshold=analysis_face_match_threshold,
+                            face_store_embeddings=analysis_face_store_embeddings,
+                            people_db=people,
+                            face_detector_url=analysis_detector_url,
+                        )
+                        if person_entities_enabled and result:
+                            updated = _update_person_entities_from_result(result)
+                            if not updated:
+                                _update_person_entities_for_video(result.get("video_path"))
+                        processed += 1
+                    except Exception as e:
+                        log_to_file(f"Batch analysis error for {path}: {e}")
                 await asyncio.sleep(0)
 
             return processed
@@ -595,18 +1015,39 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                     return
 
                 output_dir = analysis_output_path
-                perf_snapshot = _sensor_snapshot()
-                result = await analyze_recording(
-                    video_path=video_path,
-                    output_root=output_dir,
-                    objects=objects,
-                    device=device,
-                    interval_s=analysis_frame_interval,
-                    perf_snapshot=perf_snapshot,
-                    detector_url=analysis_detector_url,
-                    detector_confidence=analysis_detector_confidence,
-                )
-                log_to_file(f"Analysis completed: {result.get('status')} -> {output_dir}")
+
+                async def _run_analysis():
+                    try:
+                        perf_snapshot = _sensor_snapshot()
+                        people_data = await _load_people_db(people_db_path)
+                        people = people_data.get("people", [])
+                        result = await analyze_recording(
+                            video_path=video_path,
+                            output_root=output_dir,
+                            objects=objects,
+                            device=device,
+                            interval_s=analysis_frame_interval,
+                            perf_snapshot=perf_snapshot,
+                            detector_url=analysis_detector_url,
+                            detector_confidence=analysis_detector_confidence,
+                            face_enabled=analysis_face_enabled,
+                            face_confidence=analysis_face_confidence,
+                            face_match_threshold=analysis_face_match_threshold,
+                            face_store_embeddings=analysis_face_store_embeddings,
+                            people_db=people,
+                            face_detector_url=analysis_detector_url,
+                        )
+                        if person_entities_enabled and result:
+                            updated = _update_person_entities_from_result(result)
+                            if not updated:
+                                _update_person_entities_for_video(result.get("video_path"))
+                        log_to_file(f"Analysis completed: {result.get('status')} -> {output_dir}")
+                    except Exception as e:
+                        log_to_file(f"Error analyzing recording: {e}")
+                        _LOGGER.error(f"Error analyzing recording: {e}")
+
+                hass.async_create_task(_run_analysis())
+                log_to_file(f"Analysis queued: {video_path}")
             except Exception as e:
                 log_to_file(f"Error analyzing recording: {e}")
                 _LOGGER.error(f"Error analyzing recording: {e}")
@@ -645,13 +1086,10 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             log_to_file(f"Delete recording requested: {media_id}")
             
             try:
-                # media_id format: media-source://media_source/local/rtsp_recordings/Camera/file.mp4
-                # Extract path from media_id
-                if "local/" in media_id:
-                    relative_path = media_id.split("local/", 1)[1]
-                    video_path = f"/media/{relative_path}"
-                else:
-                    log_to_file(f"Unknown media_id format: {media_id}")
+                # Validate media_id and get safe path (HIGH-001 Fix)
+                video_path = _validate_media_path(media_id)
+                if not video_path:
+                    log_to_file(f"Invalid or unsafe media_id rejected: {media_id}")
                     return
                 
                 # Delete video
@@ -760,8 +1198,9 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             if not analysis_enabled or not analysis_auto_enabled:
                 return
             try:
+                auto_device = await _resolve_auto_device()
                 processed = await _analyze_batch(
-                    device=analysis_device,
+                    device=auto_device,
                     objects=analysis_objects,
                     since_days=analysis_auto_since_days,
                     limit=analysis_auto_limit,
@@ -810,6 +1249,93 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                         return data.get("devices", [])
             except Exception:
                 return []
+
+        async def _resolve_auto_device() -> str:
+            if not analysis_auto_force_coral:
+                return analysis_device
+            devices = []
+            if analysis_detector_url:
+                devices = await _fetch_remote_devices(analysis_detector_url)
+            if not devices:
+                devices = await hass.async_add_executor_job(detect_available_devices)
+            return "coral_usb" if "coral_usb" in devices else analysis_device
+
+        def _person_entity_id(name: str) -> str:
+            slug = re.sub(r"[^a-z0-9_]+", "_", name.strip().lower())
+            slug = re.sub(r"_+", "_", slug).strip("_")
+            return f"binary_sensor.rtsp_recorder_person_{slug or 'unknown'}"
+
+        def _set_person_entity(name: str, similarity: float | None, video_path: str | None, camera: str | None):
+            if not person_entities_enabled:
+                return
+            entity_id = _person_entity_id(name)
+            attrs = {
+                "friendly_name": f"RTSP Person {name}",
+                "person_name": name,
+                "similarity": similarity,
+                "camera": camera,
+                "video_path": video_path,
+                "last_seen": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            }
+            hass.states.async_set(entity_id, "on", attrs)
+            timers = hass.data.setdefault(DOMAIN, {}).setdefault("person_entity_timers", {})
+            if entity_id in timers:
+                try:
+                    timers[entity_id].cancel()
+                except Exception:
+                    pass
+            timers[entity_id] = hass.loop.call_later(30, lambda: hass.states.async_set(entity_id, "off", attrs))
+
+        def _extract_person_matches(result: dict) -> dict[str, dict[str, Any]]:
+            matches: dict[str, dict[str, Any]] = {}
+
+            def _add_match(name: str, similarity: float | None):
+                if not name:
+                    return
+                prev = matches.get(name)
+                if prev is None:
+                    matches[name] = {"similarity": similarity}
+                else:
+                    prev_sim = prev.get("similarity")
+                    if similarity is not None and (prev_sim is None or similarity > prev_sim):
+                        matches[name]["similarity"] = similarity
+
+            detections = result.get("detections") or []
+            for det in detections:
+                for face in (det.get("faces") or []):
+                    match = face.get("match") or {}
+                    name = match.get("name") or face.get("name") or face.get("person_name")
+                    similarity = match.get("similarity") if match else face.get("similarity")
+                    _add_match(name, similarity)
+
+            # Fallback: support alternative layouts
+            for face in (result.get("faces") or []):
+                match = face.get("match") or {}
+                name = match.get("name") or face.get("name") or face.get("person_name")
+                similarity = match.get("similarity") if match else face.get("similarity")
+                _add_match(name, similarity)
+
+            return matches
+
+        def _update_person_entities_from_result(result: dict) -> bool:
+            if not person_entities_enabled:
+                return False
+            matches = _extract_person_matches(result)
+            if not matches:
+                return False
+            for name, info in matches.items():
+                _set_person_entity(name, info.get("similarity"), result.get("video_path"), None)
+            return True
+
+        def _update_person_entities_for_video(video_path: str | None):
+            if not person_entities_enabled or not video_path:
+                return
+            try:
+                result = _find_analysis_for_video(analysis_output_path, video_path)
+                if result:
+                    _update_person_entities_from_result(result)
+            except Exception:
+                pass
 
         @websocket_api.websocket_command(
             {
@@ -1023,14 +1549,222 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 "analysis_auto_limit": analysis_auto_limit,
                 "analysis_auto_skip_existing": analysis_auto_skip_existing,
                 "analysis_auto_new": analysis_auto_new,
+                "analysis_auto_force_coral": analysis_auto_force_coral,
+                "person_entities_enabled": person_entities_enabled,
                 "analysis_device": analysis_device,
                 "analysis_objects": analysis_objects,
+                "analysis_face_enabled": analysis_face_enabled,
+                "analysis_face_confidence": analysis_face_confidence,
+                "analysis_face_match_threshold": analysis_face_match_threshold,
+                "analysis_face_store_embeddings": analysis_face_store_embeddings,
                 "camera_objects": cam_objects,  # Specific camera objects (if requested)
                 "camera_objects_map": camera_objects_map,  # All camera-specific settings
             }
             connection.send_result(msg["id"], result)
 
         websocket_api.async_register_command(hass, ws_get_analysis_config)
+
+        # WebSocket API: People DB
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "rtsp_recorder/get_people",
+            }
+        )
+        @websocket_api.async_response
+        async def ws_get_people(hass, connection, msg):
+            data = await _load_people_db(people_db_path)
+            people_view = _public_people_view(data.get("people", []))
+            log_to_file(f"WS get_people -> {people_view}")
+            connection.send_result(msg["id"], {"people": people_view})
+
+        websocket_api.async_register_command(hass, ws_get_people)
+
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "rtsp_recorder/add_person",
+                vol.Required("name"): str,
+            }
+        )
+        @websocket_api.async_response
+        async def ws_add_person(hass, connection, msg):
+            name = (msg.get("name") or "").strip()
+            # MED-002 Fix: Validate name length and characters
+            is_valid, error_msg = _validate_person_name(name)
+            if not is_valid:
+                connection.send_error(msg["id"], "invalid_name", error_msg)
+                return
+            data = await _load_people_db(people_db_path)
+            person = {
+                "id": uuid.uuid4().hex,
+                "name": name,
+                "created_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S"),
+                "embeddings": [],
+            }
+            data.setdefault("people", []).append(person)
+            await _save_people_db(people_db_path, data)
+            connection.send_result(msg["id"], {"person": _public_people_view([person])[0]})
+
+        websocket_api.async_register_command(hass, ws_add_person)
+
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "rtsp_recorder/rename_person",
+                vol.Required("id"): vol.Any(str, int),
+                vol.Required("name"): str,
+            }
+        )
+        @websocket_api.async_response
+        async def ws_rename_person(hass, connection, msg):
+            person_id = str(msg.get("id"))
+            name = (msg.get("name") or "").strip()
+            # MED-002 Fix: Validate name length and characters
+            is_valid, error_msg = _validate_person_name(name)
+            if not is_valid:
+                connection.send_error(msg["id"], "invalid_name", error_msg)
+                return
+            data = await _load_people_db(people_db_path)
+            people = data.get("people", [])
+            updated = None
+            for p in people:
+                if str(p.get("id")) == person_id:
+                    p["name"] = name
+                    updated = p
+                    break
+            if not updated:
+                connection.send_error(msg["id"], "not_found", "Person nicht gefunden")
+                return
+            await _save_people_db(people_db_path, data)
+            connection.send_result(msg["id"], {"person": _public_people_view([updated])[0]})
+
+        websocket_api.async_register_command(hass, ws_rename_person)
+
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "rtsp_recorder/delete_person",
+                vol.Required("id"): vol.Any(str, int),
+                vol.Optional("name"): str,
+                vol.Optional("created_utc"): str,
+            }
+        )
+        @websocket_api.async_response
+        async def ws_delete_person(hass, connection, msg):
+            log_to_file(f"WS delete_person payload: {msg}")
+            person_id = str(msg.get("id"))
+            name = (msg.get("name") or "").strip()
+            created_utc = (msg.get("created_utc") or "").strip()
+            data = await _load_people_db(people_db_path)
+            people = data.get("people", [])
+            new_people = [p for p in people if str(p.get("id")) != person_id]
+            if len(new_people) == len(people):
+                # Fallback: accept numeric index from UI
+                if person_id.isdigit():
+                    idx = int(person_id)
+                    if 0 <= idx < len(people):
+                        new_people = [p for i, p in enumerate(people) if i != idx]
+                    else:
+                        new_people = people
+                else:
+                    new_people = people
+
+            if len(new_people) == len(people) and (name or created_utc):
+                def _match(p: dict[str, Any]) -> bool:
+                    if created_utc and p.get("created_utc") == created_utc:
+                        return True
+                    if name and p.get("name") == name:
+                        return True
+                    return False
+                new_people = [p for p in people if not _match(p)]
+
+            if len(new_people) == len(people):
+                connection.send_error(msg["id"], "not_found", "Person nicht gefunden")
+                return
+            data["people"] = new_people
+            await _save_people_db(people_db_path, data)
+            connection.send_result(msg["id"], {"deleted": True})
+
+        websocket_api.async_register_command(hass, ws_delete_person)
+
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "rtsp_recorder/add_person_embedding",
+                vol.Required("person_id"): vol.Any(str, int),
+                vol.Required("embedding"): list,
+                vol.Optional("name"): str,
+                vol.Optional("created_utc"): str,
+                vol.Optional("thumb"): str,
+                vol.Optional("source", default="manual"): str,
+            }
+        )
+        @websocket_api.async_response
+        async def ws_add_person_embedding(hass, connection, msg):
+            log_to_file(f"INIT: add_person_embedding called with person_id={msg.get('person_id')}, embedding_len={len(msg.get('embedding') or [])}")
+            try:
+                person_id = str(msg.get("person_id"))
+                name = (msg.get("name") or "").strip()
+                created_utc = (msg.get("created_utc") or "").strip()
+                thumb = msg.get("thumb")
+                embedding = msg.get("embedding") or []
+                try:
+                    embedding = [float(v) for v in embedding]
+                except Exception:
+                    connection.send_error(msg["id"], "invalid_embedding", "Embedding ungueltig")
+                    return
+                embedding = _normalize_embedding_simple(embedding)
+                if not embedding:
+                    connection.send_error(msg["id"], "invalid_embedding", "Embedding ungueltig")
+                    return
+                data = await _load_people_db(people_db_path)
+                people = data.get("people", [])
+                updated = None
+                def _append_embedding(p: dict[str, Any]) -> None:
+                    entry = {"vector": embedding, "source": msg.get("source")}
+                    if thumb:
+                        entry["thumb"] = thumb
+                    entry["created_utc"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+                    p.setdefault("embeddings", []).append(entry)
+
+                for p in people:
+                    if str(p.get("id")) == person_id:
+                        _append_embedding(p)
+                        updated = p
+                        break
+                if not updated and (name or created_utc):
+                    for p in people:
+                        if created_utc and p.get("created_utc") == created_utc:
+                            _append_embedding(p)
+                            updated = p
+                            break
+                        if name and p.get("name") == name:
+                            _append_embedding(p)
+                            updated = p
+                            break
+                if not updated:
+                    connection.send_error(msg["id"], "not_found", "Person nicht gefunden")
+                    return
+                await _save_people_db(people_db_path, data)
+                
+                # Send success response immediately (don't wait for re-matching)
+                connection.send_result(msg["id"], {"person": _public_people_view([updated])[0]})
+                
+                # Re-match all faces in background (fire-and-forget)
+                async def _background_rematch():
+                    try:
+                        updated_analyses = await _update_all_face_matches(
+                            analysis_output_path, 
+                            data.get("people", []), 
+                            analysis_face_match_threshold
+                        )
+                        log_to_file(f"INIT: Re-matched faces in {updated_analyses} analysis files after training")
+                    except Exception as e:
+                        log_to_file(f"INIT: Background re-match error: {e}")
+                
+                hass.async_create_task(_background_rematch())
+                
+            except Exception as exc:
+                log_to_file(f"INIT: add_person_embedding ERROR: {type(exc).__name__}: {exc}")
+                connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
+
+        websocket_api.async_register_command(hass, ws_add_person_embedding)
 
         # WebSocket API: Set Analysis Config (updates config entry)
         @websocket_api.websocket_command(

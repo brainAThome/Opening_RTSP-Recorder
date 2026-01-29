@@ -1,13 +1,32 @@
-"""Retention cleanup logic for RTSP Recorder."""
+"""Retention cleanup logic for RTSP Recorder.
+
+This module handles automatic cleanup of old recordings and snapshots
+based on configurable retention periods. Supports global settings and
+per-camera overrides.
+"""
 import logging
 import os
 import time
+from typing import Dict, Optional
 
 _LOGGER = logging.getLogger(__name__)
 
-def parse_retention_map(config_str):
-    """Parse string 'Folder:Hours; Folder2:Hours' into dict."""
-    mapping = {}
+
+def parse_retention_map(config_str: Optional[str]) -> Dict[str, int]:
+    """Parse retention configuration string into a dictionary.
+    
+    Args:
+        config_str: String in format 'Folder:Hours; Folder2:Hours'
+    
+    Returns:
+        Dictionary mapping folder names to retention hours.
+        Empty dict if config_str is None or empty.
+    
+    Example:
+        >>> parse_retention_map("Camera1:48; Camera2:72")
+        {'Camera1': 48, 'Camera2': 72}
+    """
+    mapping: Dict[str, int] = {}
     if not config_str:
         return mapping
     
@@ -23,8 +42,29 @@ def parse_retention_map(config_str):
                 _LOGGER.warning(f"Invalid retention rule: {part}")
     return mapping
 
-def cleanup_recordings(base_path, global_days, global_hours=0, override_map=None):
-    """Delete files older than retention period, with per-folder overrides."""
+
+def cleanup_recordings(
+    base_path: str,
+    global_days: int,
+    global_hours: int = 0,
+    override_map: Optional[Dict[str, int]] = None
+) -> None:
+    """Delete files older than the retention period.
+    
+    Walks the directory tree and removes files that exceed their
+    retention period. Supports per-folder overrides for cameras
+    with different retention requirements.
+    
+    Args:
+        base_path: Root directory containing recordings
+        global_days: Default retention period in days
+        global_hours: Additional hours to add to global retention
+        override_map: Optional dict mapping folder names to retention hours
+    
+    Note:
+        Override map takes precedence over global settings.
+        Files in folders matching override keys use the specified hours.
+    """
     
     # Calculate global cutoff
     global_seconds = (global_days * 86400) + (global_hours * 3600)
@@ -79,3 +119,5 @@ def cleanup_recordings(base_path, global_days, global_hours=0, override_map=None
     if count_deleted > 0:
         mb_freed = size_freed / (1024 * 1024)
         _LOGGER.info(f"Cleanup Finished: Deleted {count_deleted} files, freed {mb_freed:.2f} MB")
+    else:
+        _LOGGER.debug("Cleanup completed: No files exceeded retention period")

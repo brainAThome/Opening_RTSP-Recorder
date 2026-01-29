@@ -1,7 +1,14 @@
-"""RTSP Recorder Integration - Config Flow."""
+"""RTSP Recorder Integration - Configuration Flow.
+
+This module provides the configuration UI for setting up RTSP Recorder
+in Home Assistant. It handles initial setup, camera configuration,
+and options management through a multi-step flow.
+"""
 import logging
 import os
 import re
+from typing import Any, Dict, List, Optional
+
 import voluptuous as vol
 import aiohttp
 from homeassistant import config_entries
@@ -12,9 +19,23 @@ from .analysis import detect_available_devices
 DOMAIN = "rtsp_recorder"
 _LOGGER = logging.getLogger(__name__)
 
+# ===== Validation Constants (LOW-004 Fix) =====
+MIN_RETENTION_DAYS = 1
+MAX_RETENTION_DAYS = 365
+MIN_RETENTION_HOURS = 0
+MAX_RETENTION_HOURS = 23
+MIN_DURATION_SECONDS = 5
+MAX_DURATION_SECONDS = 3600
+VALID_PATH_PREFIXES = ("/media", "/config", "/share")
+# ===== End Validation Constants =====
 
-def log_to_file(msg):
-    """Debug logging."""
+
+def log_to_file(msg: str) -> None:
+    """Write debug message to log file.
+    
+    Args:
+        msg: Message to log
+    """
     _LOGGER.debug(msg)
     try:
         with open("/config/rtsp_debug.log", "a") as f:
@@ -24,7 +45,14 @@ def log_to_file(msg):
 
 
 def normalize_camera_name(name: str) -> str:
-    """Normalize camera name for deduplication."""
+    """Normalize camera name for deduplication and comparison.
+    
+    Args:
+        name: Original camera name
+    
+    Returns:
+        Normalized lowercase name with single spaces
+    """
     clean = re.sub(r"[^\w\s-]", "", name).strip()
     clean = clean.replace("_", " ").lower()
     clean = " ".join(clean.split())
@@ -32,13 +60,27 @@ def normalize_camera_name(name: str) -> str:
 
 
 def prettify_camera_name(name: str) -> str:
-    """Make camera name display-friendly."""
+    """Convert camera name to display-friendly format.
+    
+    Args:
+        name: Internal camera name
+    
+    Returns:
+        Title-cased name with spaces
+    """
     pretty = name.replace("_", " ")
     return pretty.title()
 
 
 def sanitize_camera_key(name: str) -> str:
-    """Sanitize camera name for config keys and folders."""
+    """Sanitize camera name for use as config key or folder name.
+    
+    Args:
+        name: Original camera name
+    
+    Returns:
+        Filesystem-safe key name
+    """
     clean = re.sub(r"[^\w\s-]", "", name).strip().replace(" ", "_")
     for char in [":", "/", "\\", "?", "*", "\"", "<", ">", "|"]:
         clean = clean.replace(char, "")
@@ -46,30 +88,45 @@ def sanitize_camera_key(name: str) -> str:
 
 
 class RtspRecorderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle initial config flow for RTSP Recorder."""
+    """Handle initial configuration flow for RTSP Recorder.
+    
+    This flow guides the user through initial setup including
+    storage paths and retention settings.
+    """
     
     VERSION = 1
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
-        """Get the options flow handler."""
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry):
+        """Get the options flow handler for reconfiguration."""
         return RtspRecorderOptionsFlow(config_entry)
 
-    async def async_step_user(self, user_input=None):
-        """Handle the initial setup step."""
-        errors = {}
+    async def async_step_user(
+        self, user_input: Optional[Dict[str, Any]] = None
+    ) -> config_entries.FlowResult:
+        """Handle the initial setup step.
+        
+        Validates storage paths and retention settings before
+        creating the config entry.
+        """
+        errors: Dict[str, str] = {}
         
         if user_input is not None:
             storage_path = user_input.get("storage_path", "")
             retention_days = user_input.get("retention_days", 7)
             snapshot_path = user_input.get("snapshot_path", "/config/www/thumbnails")
             
+            # LOW-004: Enhanced path validation
             if not storage_path or not storage_path.startswith("/"):
                 errors["storage_path"] = "invalid_path"
+            elif not any(storage_path.startswith(p) for p in VALID_PATH_PREFIXES):
+                _LOGGER.warning(f"Storage path {storage_path} not in recommended locations")
+            
             if not snapshot_path or not snapshot_path.startswith("/"):
                 errors["snapshot_path"] = "invalid_path"
-            elif retention_days < 1:
+            
+            if retention_days < MIN_RETENTION_DAYS or retention_days > MAX_RETENTION_DAYS:
                 errors["retention_days"] = "invalid_retention"
             
             if not errors:

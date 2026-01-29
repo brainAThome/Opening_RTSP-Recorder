@@ -4,6 +4,18 @@ import os
 import time
 import urllib.request
 import aiohttp
+import base64
+import io
+
+# ===== Memory Management Constants (HIGH-005 Fix) =====
+# Limit the number of faces with embedded thumbnails to prevent memory exhaustion
+# Each base64 thumbnail is ~6KB (80x80 JPEG), limiting to 50 faces = ~300KB max per analysis
+MAX_FACES_WITH_THUMBS = 50
+# Maximum thumbnail dimension to prevent oversized crops
+MAX_THUMB_SIZE = 80
+# JPEG quality for thumbnails (lower = smaller file)
+THUMB_JPEG_QUALITY = 70
+# ===== End Memory Management Constants =====
 
 # Lazy access to stats tracker from parent module
 def _get_inference_stats():
@@ -39,6 +51,78 @@ def _safe_mkdir(path: str) -> None:
 def _write_json(path: str, data: dict) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _safe_float_list(values: list[Any]) -> list[float]:
+    out: list[float] = []
+    for v in values:
+        try:
+            out.append(float(v))
+        except Exception:
+            continue
+    return out
+
+
+def _normalize_embedding(embedding: list[float]) -> list[float]:
+    if not embedding:
+        return []
+    if np is not None:
+        vec = np.array(embedding, dtype=np.float32)
+        norm = np.linalg.norm(vec)
+        if norm == 0:
+            return embedding
+        return (vec / norm).astype(float).tolist()
+    # Fallback ohne numpy
+    norm = sum((v * v) for v in embedding) ** 0.5
+    if norm == 0:
+        return embedding
+    return [v / norm for v in embedding]
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    if not a or not b:
+        return 0.0
+    if np is not None:
+        va = np.array(a, dtype=np.float32)
+        vb = np.array(b, dtype=np.float32)
+        if va.size != vb.size:
+            return 0.0
+        denom = (np.linalg.norm(va) * np.linalg.norm(vb))
+        if denom == 0:
+            return 0.0
+        return float(np.dot(va, vb) / denom)
+    # Fallback ohne numpy
+    if len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+
+def _match_face(embedding: list[float], people: list[dict[str, Any]], threshold: float) -> dict[str, Any] | None:
+    if not embedding or not people:
+        return None
+    best = None
+    best_score = -1.0
+    for person in people:
+        p_id = person.get("id")
+        p_name = person.get("name")
+        for emb in person.get("embeddings", []) or []:
+            if isinstance(emb, dict):
+                emb = emb.get("vector", [])
+            emb_list = _safe_float_list(emb)
+            if not emb_list:
+                continue
+            score = _cosine_similarity(embedding, emb_list)
+            if score > best_score:
+                best_score = score
+                best = {"person_id": p_id, "name": p_name, "similarity": round(float(score), 4)}
+    if best and best_score >= float(threshold):
+        return best
+    return None
 
 
 MODEL_DIR_NAME = "_models"
@@ -101,7 +185,7 @@ def _build_interpreter(model_path: str, device: str):
     return tflite.Interpreter(model_path=model_path)
 
 
-def _parse_outputs(output_details: list[dict[str, Any]], outputs: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+def _parse_outputs(output_details: list[dict[str, Any]], outputs: list[Any]) -> tuple[Any, Any, Any, int]:
     boxes = classes = scores = None
     count = 0
     for detail, output in zip(output_details, outputs):
@@ -288,6 +372,12 @@ async def analyze_recording(
     perf_snapshot: dict | None = None,
     detector_url: str | None = None,
     detector_confidence: float = 0.4,
+    face_enabled: bool = False,
+    face_confidence: float = 0.6,
+    face_match_threshold: float = 0.35,
+    face_store_embeddings: bool = False,
+    people_db: list[dict[str, Any]] | None = None,
+    face_detector_url: str | None = None,
 ) -> dict:
     """Offline analysis stub: extracts frames and writes a results JSON.
 
@@ -317,6 +407,12 @@ async def analyze_recording(
         "perf_snapshot": perf_snapshot or {},
         "frames": [],
         "detections": [],
+        "face_enabled": bool(face_enabled),
+        "face_confidence": float(face_confidence),
+        "face_match_threshold": float(face_match_threshold),
+        "face_store_embeddings": bool(face_store_embeddings),
+        "faces_detected": 0,
+        "faces_matched": 0,
         "frame_width": None,
         "frame_height": None,
         "frame_count": 0,
@@ -336,10 +432,11 @@ async def analyze_recording(
         result["status"] = "frames_extracted"
         _write_json(result_path, result)
 
+        detections: list[dict[str, Any]] = []
+
         # Run object detection on extracted frames (optional)
         if frames and objects:
             try:
-                detections = []
                 frame_w = frame_h = None
                 if detector_url:
                     async with aiohttp.ClientSession() as session:
@@ -409,6 +506,209 @@ async def analyze_recording(
                     result["annotated_video_error"] = str(e)
             except Exception as e:
                 result["detection_error"] = str(e)
+
+        # Run face detection + embeddings (optional)
+        if frames and face_enabled:
+            try:
+                face_url = face_detector_url or detector_url
+                if not face_url:
+                    raise RuntimeError("face detector url missing")
+
+                faces_detected = 0
+                faces_matched = 0
+
+                async with aiohttp.ClientSession() as session:
+                    for idx, frame_path in enumerate(frames):
+                        with open(frame_path, "rb") as f:
+                            frame_bytes = f.read()
+
+                        frame_img = None
+                        if Image is not None:
+                            try:
+                                frame_img = Image.open(io.BytesIO(frame_bytes)).convert("RGB")
+                            except Exception:
+                                frame_img = None
+
+                        embed_flag = "1" if (face_store_embeddings or (people_db and len(people_db) > 0)) else "0"
+                        form = aiohttp.FormData()
+                        form.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
+                        form.add_field("device", device)
+                        form.add_field("confidence", str(face_confidence))
+                        form.add_field("embed", embed_flag)
+
+                        _detect_start = time.perf_counter()
+                        async with session.post(f"{face_url.rstrip('/')}/faces", data=form, timeout=60) as resp:
+                            if resp.status != 200:
+                                raise RuntimeError(f"Face detector error {resp.status}")
+                            data = await resp.json()
+                        # Retry once with lower confidence if no faces found
+                        if not (data.get("faces") or []) and float(face_confidence) > 0.25:
+                            retry_conf = max(0.2, float(face_confidence) * 0.6)
+                            form_retry = aiohttp.FormData()
+                            form_retry.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
+                            form_retry.add_field("device", device)
+                            form_retry.add_field("confidence", str(retry_conf))
+                            form_retry.add_field("embed", embed_flag)
+                            async with session.post(f"{face_url.rstrip('/')}/faces", data=form_retry, timeout=60) as resp:
+                                if resp.status == 200:
+                                    data = await resp.json()
+                        _detect_ms = (time.perf_counter() - _detect_start) * 1000
+                        _used_device = data.get("device", device)
+                        _stats = _get_inference_stats()
+                        if _stats:
+                            _stats.record(_used_device, _detect_ms, 1)
+
+                        faces = data.get("faces", []) or []
+                        frame_w = data.get("frame_width")
+                        frame_h = data.get("frame_height")
+
+                        # If no faces found, try person crops (helps for small faces)
+                        if not faces and frame_img is not None and idx < len(detections):
+                            person_boxes = [o for o in (detections[idx].get("objects") or []) if o.get("label") == "person"]
+                            extra_faces = []
+                            for pobj in person_boxes:
+                                box = pobj.get("box") or {}
+                                x = max(int(box.get("x", 0)), 0)
+                                y = max(int(box.get("y", 0)), 0)
+                                w = max(int(box.get("w", 0)), 1)
+                                h = max(int(box.get("h", 0)), 1)
+                                pad = int(0.1 * max(w, h))
+                                x1 = max(x - pad, 0)
+                                y1 = max(y - pad, 0)
+                                x2 = min(x + w + pad, frame_img.width)
+                                y2 = min(y + h + pad, frame_img.height)
+                                if (x2 - x1) < 40 or (y2 - y1) < 40:
+                                    continue
+                                crop = frame_img.crop((x1, y1, x2, y2))
+
+                                async def _detect_crop(img, scale_factor: float, conf: float) -> list[dict[str, Any]]:
+                                    buf = io.BytesIO()
+                                    img.save(buf, format="JPEG", quality=80)
+                                    crop_bytes = buf.getvalue()
+                                    crop_form = aiohttp.FormData()
+                                    crop_form.add_field("file", crop_bytes, filename="crop.jpg", content_type="image/jpeg")
+                                    crop_form.add_field("device", device)
+                                    crop_form.add_field("confidence", str(conf))
+                                    crop_form.add_field("embed", embed_flag)
+                                    async with session.post(f"{face_url.rstrip('/')}/faces", data=crop_form, timeout=60) as resp:
+                                        if resp.status != 200:
+                                            return []
+                                        crop_data = await resp.json()
+                                    faces_out = []
+                                    for cf in (crop_data.get("faces") or []):
+                                        cbox = cf.get("box") or {}
+                                        sx = float(cbox.get("x", 0)) / scale_factor
+                                        sy = float(cbox.get("y", 0)) / scale_factor
+                                        sw = float(cbox.get("w", 0)) / scale_factor
+                                        sh = float(cbox.get("h", 0)) / scale_factor
+                                        cf_box = {
+                                            "x": int(sx) + x1,
+                                            "y": int(sy) + y1,
+                                            "w": int(sw),
+                                            "h": int(sh),
+                                        }
+                                        cf["box"] = cf_box
+                                        faces_out.append(cf)
+                                    return faces_out
+
+                                faces_crop = await _detect_crop(crop, 1.0, float(face_confidence))
+                                if not faces_crop:
+                                    max_dim = max(crop.width, crop.height)
+                                    if max_dim < 160:
+                                        scale_factor = 1.5
+                                        crop_up = crop.resize((int(crop.width * scale_factor), int(crop.height * scale_factor)))
+                                        crop_conf = max(0.15, float(face_confidence) * 0.7)
+                                        faces_crop = await _detect_crop(crop_up, scale_factor, crop_conf)
+                                if not faces_crop:
+                                    max_dim = max(crop.width, crop.height)
+                                    if max_dim < 120:
+                                        scale_factor = 2.0
+                                        crop_up = crop.resize((int(crop.width * scale_factor), int(crop.height * scale_factor)))
+                                        crop_conf = max(0.1, float(face_confidence) * 0.6)
+                                        faces_crop = await _detect_crop(crop_up, scale_factor, crop_conf)
+
+                                if faces_crop:
+                                    extra_faces.extend(faces_crop)
+                            if extra_faces:
+                                faces = extra_faces
+                        if frame_w and frame_h:
+                            result["frame_width"] = frame_w
+                            result["frame_height"] = frame_h
+                        normed_faces = []
+                        for face in faces:
+                            face_box = face.get("box") or {}
+                            score = face.get("score", 0.0)
+                            emb = face.get("embedding")
+                            emb_source = (face.get("embedding_source") or "").lower()
+                            emb_list = _safe_float_list(emb) if isinstance(emb, list) else []
+                            if emb_list:
+                                emb_list = _normalize_embedding(emb_list)
+                            match = None
+                            # Allow matching with any embedding type (including fallback)
+                            # for basic face recognition without dedicated embedding model
+                            if emb_list and people_db:
+                                match = _match_face(emb_list, people_db, face_match_threshold)
+                                if match:
+                                    faces_matched += 1
+
+                            # HIGH-005 Fix: Limit thumbnails to prevent memory exhaustion
+                            thumb_data = None
+                            total_thumbs_created = sum(
+                                1 for det in detections 
+                                for f in det.get("faces", []) 
+                                if f.get("thumb")
+                            )
+                            
+                            if frame_img is not None and total_thumbs_created < MAX_FACES_WITH_THUMBS:
+                                try:
+                                    x = max(int(face_box.get("x", 0)), 0)
+                                    y = max(int(face_box.get("y", 0)), 0)
+                                    w = max(int(face_box.get("w", 0)), 1)
+                                    h = max(int(face_box.get("h", 0)), 1)
+                                    x2 = min(x + w, frame_img.width)
+                                    y2 = min(y + h, frame_img.height)
+                                    crop = frame_img.crop((x, y, x2, y2))
+                                    crop = crop.resize((MAX_THUMB_SIZE, MAX_THUMB_SIZE))
+                                    buf = io.BytesIO()
+                                    crop.save(buf, format="JPEG", quality=THUMB_JPEG_QUALITY)
+                                    thumb_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+                                    thumb_data = f"data:image/jpeg;base64,{thumb_b64}"
+                                except Exception:
+                                    thumb_data = None
+
+                            face_item = {
+                                "score": round(float(score), 3),
+                                "box": {
+                                    "x": int(face_box.get("x", 0)),
+                                    "y": int(face_box.get("y", 0)),
+                                    "w": int(face_box.get("w", 0)),
+                                    "h": int(face_box.get("h", 0)),
+                                },
+                            }
+                            if match:
+                                face_item["match"] = match
+                            # Store embeddings regardless of source (including fallback)
+                            # so face samples can be collected even without a dedicated embedding model
+                            if emb_list and face_store_embeddings:
+                                face_item["embedding"] = emb_list
+                            if emb_source:
+                                face_item["embedding_source"] = emb_source
+                            if thumb_data:
+                                face_item["thumb"] = thumb_data
+                            normed_faces.append(face_item)
+
+                        faces_detected += len(normed_faces)
+                        time_s = idx * interval_s
+                        if idx < len(detections):
+                            detections[idx]["faces"] = normed_faces
+                        else:
+                            detections.append({"time_s": time_s, "faces": normed_faces})
+
+                result["detections"] = detections
+                result["faces_detected"] = faces_detected
+                result["faces_matched"] = faces_matched
+            except Exception as e:
+                result["face_detection_error"] = str(e)
 
         return result
     except asyncio.CancelledError:

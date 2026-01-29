@@ -1,4 +1,14 @@
-console.info("%c RTSP RECORDER CARD \n%c v1.0.6 ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;");
+// ===== RTSP Recorder Card v1.0.7 =====
+// MED-008 Fix: Debug logging behind feature flag
+const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
+const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
+const rtspInfo = (...args) => { if (RTSP_DEBUG) console.info('[RTSP]', ...args); };
+const rtspWarn = (...args) => console.warn('[RTSP]', ...args);  // Warnings always shown
+const rtspError = (...args) => console.error('[RTSP]', ...args);  // Errors always shown
+
+if (RTSP_DEBUG) {
+    console.info("%c RTSP RECORDER CARD \n%c v1.0.7 (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #e74c3c;");
+}
 
 class RtspRecorderCard extends HTMLElement {
     constructor() {
@@ -34,6 +44,10 @@ class RtspRecorderCard extends HTMLElement {
         this._showPerfTab = true;
         this._showPerfPanel = false;
         this._showFooter = true;
+        this._people = [];
+        this._peopleLoaded = false;
+        this._selectedPersonId = null;
+        this._analysisFaceSamples = [];
         this._settingsKey = 'rtsp_recorder_settings';
         this.loadLocalSettings();
         this._detectorStats = null;
@@ -411,52 +425,52 @@ class RtspRecorderCard extends HTMLElement {
                 }
             </style>
             
-            <div class="fm-container animated" id="container">
-                <div class="fm-header">
-                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.0.6</span></div>
-                    <div class="fm-toolbar">
-                        <button class="fm-btn active" id="btn-date">Letzte 24 Std</button>
-                        <button class="fm-btn" id="btn-cams">Kameras</button>
-                        <button class="fm-btn" id="btn-menu">Menue</button>
+            <div class="fm-container animated" id="container" role="application" aria-label="RTSP Recorder Kamera Archiv">
+                <div class="fm-header" role="banner">
+                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.0.7</span></div>
+                    <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
+                        <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
+                        <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>
+                        <button class="fm-btn" id="btn-menu" aria-label="Menue oeffnen">Menue</button>
                     </div>
                 </div>
-                <div class="fm-main">
+                <div class="fm-main" role="main">
                     <div class="fm-player-col">
                         <div class="fm-player-body">
-                            <div class="fm-overlay-tl" id="txt-cam">Waehle Aufnahme</div>
+                            <div class="fm-overlay-tl" id="txt-cam" aria-live="polite">Waehle Aufnahme</div>
                             <div class="fm-overlay-tr" id="txt-date">BETA VERSION</div>
-                            <video id="main-video" controls autoplay muted playsinline></video>
-                            <canvas id="overlay-canvas"></canvas>
+                            <video id="main-video" controls autoplay muted playsinline aria-label="Aufnahme Videoplayer"></video>
+                            <canvas id="overlay-canvas" aria-hidden="true"></canvas>
                         
                             <!-- Video Controls -->
-                            <div class="fm-video-controls" id="video-controls">
-                                <button class="fm-ctrl-btn" id="btn-download" title="Download">
-                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+                            <div class="fm-video-controls" id="video-controls" role="group" aria-label="Video Steuerung">
+                                <button class="fm-ctrl-btn" id="btn-download" title="Download" aria-label="Video herunterladen">
+                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
                                     Download
                                 </button>
-                                <button class="fm-ctrl-btn danger" id="btn-delete" title="Loeschen">
-                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                                <button class="fm-ctrl-btn danger" id="btn-delete" title="Loeschen" aria-label="Video loeschen">
+                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
                                     Loeschen
                                 </button>
-                                <button class="fm-ctrl-btn" id="btn-overlay" title="Overlay">
-                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 3C4.5 3 1.73 5.11.46 8c1.27 2.89 4.04 5 7.54 5s6.27-2.11 7.54-5C14.27 5.11 11.5 3 8 3zm0 8.5A3.5 3.5 0 1 1 8 4.5a3.5 3.5 0 0 1 0 7z"/><path d="M8 6.5A1.5 1.5 0 1 0 8 9.5a1.5 1.5 0 0 0 0-3z"/></svg>
+                                <button class="fm-ctrl-btn" id="btn-overlay" title="Overlay" aria-label="Erkennungs-Overlay umschalten" aria-pressed="false">
+                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3C4.5 3 1.73 5.11.46 8c1.27 2.89 4.04 5 7.54 5s6.27-2.11 7.54-5C14.27 5.11 11.5 3 8 3zm0 8.5A3.5 3.5 0 1 1 8 4.5a3.5 3.5 0 0 1 0 7z"/><path d="M8 6.5A1.5 1.5 0 1 0 8 9.5a1.5 1.5 0 0 0 0-3z"/></svg>
                                     Overlay
                                 </button>
-                                <div style="border-left: 1px solid #444; margin: 0 5px;"></div>
-                                <button class="fm-ctrl-btn fm-speed-btn" data-speed="0.5">0.5x</button>
-                                <button class="fm-ctrl-btn fm-speed-btn active" data-speed="1">1x</button>
-                                <button class="fm-ctrl-btn fm-speed-btn" data-speed="2">2x</button>
+                                <div style="border-left: 1px solid #444; margin: 0 5px;" aria-hidden="true"></div>
+                                <button class="fm-ctrl-btn fm-speed-btn" data-speed="0.5" aria-label="Geschwindigkeit 0.5x">0.5x</button>
+                                <button class="fm-ctrl-btn fm-speed-btn active" data-speed="1" aria-label="Geschwindigkeit Normal" aria-pressed="true">1x</button>
+                                <button class="fm-ctrl-btn fm-speed-btn" data-speed="2" aria-label="Geschwindigkeit 2x">2x</button>
                             </div>
                         </div>
-                        <div class="fm-player-footer" id="player-footer">
+                        <div class="fm-player-footer" id="player-footer" role="region" aria-label="Videooptionen">
                             <div class="fm-footer-left">
                                 <label class="fm-toggle">
-                                    <input id="footer-overlay" type="checkbox" ${this._overlayEnabled ? 'checked' : ''} />
-                                    <span>Objekte im Video</span>
+                                    <input id="footer-overlay" type="checkbox" ${this._overlayEnabled ? 'checked' : ''} aria-describedby="overlay-desc" />
+                                    <span id="overlay-desc">Objekte im Video</span>
                                 </label>
                                 <label class="fm-toggle">
-                                    <input id="footer-perf" type="checkbox" ${this._showPerfPanel ? 'checked' : ''} />
-                                    <span>Leistung anzeigen</span>
+                                    <input id="footer-perf" type="checkbox" ${this._showPerfPanel ? 'checked' : ''} aria-describedby="perf-desc" />
+                                    <span id="perf-desc">Leistung anzeigen</span>
                                 </label>
                             </div>
                             <div class="fm-footer-right" id="footer-perf-panel"></div>
@@ -473,31 +487,32 @@ class RtspRecorderCard extends HTMLElement {
                 <!-- Popups -->
                 <div class="fm-popup" id="pop-cam"></div>
                 <div class="fm-popup" id="pop-date">
-                    <div class="fm-cal-header"><button class="fm-cal-btn" id="cal-prev">&lt;</button><span id="cal-month-year"></span><button class="fm-cal-btn" id="cal-next">&gt;</button></div>
-                    <div class="fm-cal-grid" id="cal-grid"></div>
-                    <div style="padding: 10px; border-top: 1px solid #333; text-align: center;"><button id="btn-clear-date" class="fm-btn-danger">Filter Leeren</button></div>
+                    <div class="fm-cal-header"><button class="fm-cal-btn" id="cal-prev" aria-label="Vorheriger Monat">&lt;</button><span id="cal-month-year"></span><button class="fm-cal-btn" id="cal-next" aria-label="Naechster Monat">&gt;</button></div>
+                    <div class="fm-cal-grid" id="cal-grid" role="grid" aria-label="Kalender"></div>
+                    <div style="padding: 10px; border-top: 1px solid #333; text-align: center;"><button id="btn-clear-date" class="fm-btn-danger" aria-label="Datumsfilter zuruecksetzen">Filter Leeren</button></div>
                 </div>
                 
                 <!-- Menu -->
-                <div class="fm-menu-overlay" id="menu-overlay">
+                <div class="fm-menu-overlay" id="menu-overlay" role="dialog" aria-modal="true" aria-labelledby="menu-title">
                     <div class="fm-menu-card">
-                        <div class="fm-menu-header"><div class="fm-menu-title">Einstellungen</div><div class="fm-menu-close" id="menu-close">X</div></div>
-                        <div class="fm-tabs">
-                            <div class="fm-tab active" data-tab="general">Allgemein</div>
-                            <div class="fm-tab" data-tab="storage">Speicher</div>
-                            <div class="fm-tab" data-tab="analysis">Analyse</div>
-                            <div class="fm-tab ${this._showPerfTab ? '' : 'hidden'}" data-tab="performance">Leistung</div>
+                        <div class="fm-menu-header"><div class="fm-menu-title" id="menu-title">Einstellungen</div><div class="fm-menu-close" id="menu-close" role="button" aria-label="Menue schliessen" tabindex="0">X</div></div>
+                        <div class="fm-tabs" role="tablist" aria-label="Einstellungskategorien">
+                            <div class="fm-tab active" data-tab="general" role="tab" aria-selected="true" tabindex="0">Allgemein</div>
+                            <div class="fm-tab" data-tab="storage" role="tab" aria-selected="false" tabindex="-1">Speicher</div>
+                            <div class="fm-tab" data-tab="analysis" role="tab" aria-selected="false" tabindex="-1">Analyse</div>
+                            <div class="fm-tab" data-tab="people" role="tab" aria-selected="false" tabindex="-1">Personen</div>
+                            <div class="fm-tab ${this._showPerfTab ? '' : 'hidden'}" data-tab="performance" role="tab" aria-selected="false" tabindex="-1">Leistung</div>
                         </div>
-                        <div class="fm-menu-content" id="menu-content"></div>
+                        <div class="fm-menu-content" id="menu-content" role="tabpanel"></div>
                     </div>
                 </div>
                 
                 <!-- Delete Confirmation -->
-                <div class="fm-confirm-overlay" id="confirm-overlay">
+                <div class="fm-confirm-overlay" id="confirm-overlay" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-desc">
                     <div class="fm-confirm-card">
-                        <div style="font-size:2em;margin-bottom:15px;">!</div>
-                        <div style="font-size:1.1em;font-weight:500;">Aufnahme loeschen?</div>
-                        <div style="color:#888;margin-top:10px;" id="confirm-filename"></div>
+                        <div style="font-size:2em;margin-bottom:15px;" aria-hidden="true">!</div>
+                        <div style="font-size:1.1em;font-weight:500;" id="confirm-title">Aufnahme loeschen?</div>
+                        <div style="color:#888;margin-top:10px;" id="confirm-filename" id="confirm-desc"></div>
                         <div class="fm-confirm-btns">
                             <button class="fm-btn" id="confirm-cancel">Abbrechen</button>
                             <button class="fm-btn-danger" id="confirm-delete" style="padding:10px 20px;">Endgueltig loeschen</button>
@@ -696,6 +711,9 @@ class RtspRecorderCard extends HTMLElement {
         } else if (this._activeTab === 'storage') {
             // Storage Tab
             this.renderStorageTab(container);
+        } else if (this._activeTab === 'people') {
+            // People Tab
+            this.renderPeopleTab(container);
         } else if (this._activeTab === 'performance') {
             this.renderPerformanceTab(container);
         } else {
@@ -1112,6 +1130,310 @@ class RtspRecorderCard extends HTMLElement {
         };
     }
 
+    renderPeopleTab(container) {
+        if (!this._peopleLoaded) {
+            container.innerHTML = `<div style="color:#888; padding:20px;">Lade Personen...</div>`;
+            this.refreshPeople().then(() => {
+                if (this._activeTab === 'people') {
+                    this.renderPeopleTab(container);
+                }
+            });
+            return;
+        }
+
+        const people = this._people || [];
+        const peopleOptions = people.map(p => {
+            const selected = this._selectedPersonId === p.id ? 'selected' : '';
+            return `<option value="${p.id}" ${selected}>${p.name} (${p.embeddings_count})</option>`;
+        }).join('');
+
+        const peopleList = people.map(p => {
+            const thumbs = (p.recent_thumbs || []).map(t =>
+                `<img src="${t}" style="width:24px; height:24px; object-fit:cover; border-radius:4px; border:1px solid #333; margin-right:4px;" />`
+            ).join('');
+            return `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #333;">
+                    <div>
+                        <div style="font-weight:500;">${p.name}</div>
+                        <div style="font-size:0.8em; color:#888;">Embeddings: ${p.embeddings_count}</div>
+                        ${thumbs ? `<div style="margin-top:6px; display:flex; align-items:center;">${thumbs}</div>` : ''}
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button class="fm-btn" data-action="rename" data-id="${p.id}" style="padding:6px 10px;">Umbenennen</button>
+                        <button class="fm-btn-danger" data-action="delete" data-id="${p.id}" style="padding:6px 10px;">Loeschen</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        const faceSamples = this._analysisFaceSamples || [];
+        if (!this._enrolledSampleKeys) {
+            this._enrolledSampleKeys = new Set();
+        }
+        const faceList = faceSamples.length
+            ? faceSamples.slice(0, 30).map((f, idx) => {
+                const match = f.match ? `${f.match.name} (${Math.round(f.match.similarity * 100)}%)` : 'Unbekannt';
+                const sampleKey = `${f.time_s}|${f.thumb || ''}`;
+                const isEnrolled = this._enrolledSampleKeys.has(sampleKey);
+                const thumb = f.thumb
+                    ? `<img src="${f.thumb}" style="width:48px; height:48px; object-fit:cover; border-radius:6px; border:1px solid #333; margin-right:8px;" />`
+                    : '';
+                return `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #333; gap:8px; ${isEnrolled ? 'opacity:0.7;' : ''}">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            ${thumb}
+                            <div style="font-size:0.85em; color:#bbb;">
+                                t=${f.time_s}s · ${match}
+                                ${isEnrolled ? '<div style="font-size:0.75em; color:#6fdc6f;">Ausgewaehlt</div>' : ''}
+                            </div>
+                        </div>
+                        <button class="fm-btn" data-action="enroll" data-idx="${idx}" style="padding:6px 10px;" ${isEnrolled ? 'disabled' : ''}>${isEnrolled ? 'Ausgewaehlt' : 'Zu Person'}</button>
+                    </div>
+                `;
+            }).join('')
+            : '<div style="color:#888;">Keine Face-Samples geladen</div>';
+
+        container.innerHTML = `
+            <div style="padding:10px;">
+                <div style="font-weight:500; margin-bottom:10px;">Personen verwalten</div>
+                <div style="display:flex; gap:8px; margin-bottom:12px;">
+                    <input id="person-name" type="text" placeholder="Neuer Name" style="flex:1; padding:8px; background:#222; color:#eee; border:1px solid #333; border-radius:6px;" />
+                    <button class="fm-btn" id="btn-add-person">Hinzufuegen</button>
+                </div>
+                <div id="people-list">
+                    ${peopleList || '<div style="color:#888;">Keine Personen vorhanden</div>'}
+                </div>
+
+                <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
+                    <div style="font-weight:500; margin-bottom:10px;">Training aus Analyse</div>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
+                        <select id="people-select" style="flex:1; padding:8px; background:#222; color:#eee; border:1px solid #333; border-radius:6px;">
+                            <option value="">-- Person waehlen --</option>
+                            ${peopleOptions}
+                        </select>
+                        <button class="fm-btn" id="btn-load-faces">Analyse laden</button>
+                    </div>
+                    <div style="max-height:220px; overflow:auto; border:1px solid #333; border-radius:8px; padding:8px;">
+                        ${faceList}
+                    </div>
+                    <div style="margin-top:8px; font-size:0.8em; color:#888;">
+                        Hinweis: Embeddings werden nur gespeichert, wenn in der Analyse-Konfiguration aktiviert.
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const addBtn = container.querySelector('#btn-add-person');
+        if (addBtn) {
+            addBtn.onclick = async () => {
+                const input = container.querySelector('#person-name');
+                const name = input ? input.value.trim() : '';
+                if (!name) {
+                    this.showToast('Bitte Namen eingeben', 'warning');
+                    return;
+                }
+                await this.addPerson(name);
+                if (input) input.value = '';
+            };
+        }
+
+        container.querySelectorAll('[data-action="rename"]').forEach(btn => {
+            btn.onclick = async () => {
+                const id = btn.getAttribute('data-id');
+                const current = people.find(p => p.id === id);
+                const newName = prompt('Neuer Name', current ? current.name : '');
+                if (newName && newName.trim()) {
+                    await this.renamePerson(id, newName.trim());
+                }
+            };
+        });
+
+        container.querySelectorAll('[data-action="delete"]').forEach(btn => {
+            btn.onclick = async () => {
+                const id = btn.getAttribute('data-id');
+                const current = people.find(p => p.id === id);
+                if (confirm(`Person "${current ? current.name : ''}" wirklich loeschen?`)) {
+                    await this.deletePerson(current || { id });
+                }
+            };
+        });
+
+        const loadFacesBtn = container.querySelector('#btn-load-faces');
+        if (loadFacesBtn) {
+            loadFacesBtn.onclick = async () => {
+                if (this._loadingFaceSamples) return;
+                await this.loadFaceSamplesForCurrent();
+                if (this._activeTab === 'people') {
+                    this.renderPeopleTab(container);
+                }
+            };
+        }
+
+        const selectEl = container.querySelector('#people-select');
+        if (selectEl) {
+            selectEl.onchange = () => {
+                this._selectedPersonId = selectEl.value || null;
+            };
+        }
+
+        container.querySelectorAll('[data-action="enroll"]').forEach(btn => {
+            btn.onclick = async () => {
+                const idx = parseInt(btn.getAttribute('data-idx'), 10);
+                const personId = this._selectedPersonId;
+                if (!personId) {
+                    this.showToast('Bitte zuerst eine Person waehlen', 'warning');
+                    return;
+                }
+                const sample = this._analysisFaceSamples[idx];
+                if (!sample || !sample.embedding) {
+                    this.showToast('Kein Embedding im Sample vorhanden', 'warning');
+                    return;
+                }
+                await this.addEmbeddingToPerson(personId, sample.embedding, sample.thumb || null);
+            };
+        });
+    }
+
+    async refreshPeople() {
+        try {
+            const data = await this._hass.callWS({ type: 'rtsp_recorder/get_people' });
+            const peopleRaw = (data && data.people) ? data.people : [];
+            this._people = peopleRaw.map(p => ({
+                ...p,
+                id: String(p.id),
+                embeddings_count: (p.embeddings_count != null) ? p.embeddings_count : (p.embeddings ? p.embeddings.length : 0),
+                recent_thumbs: p.recent_thumbs || []
+            }));
+            this._peopleLoaded = true;
+        } catch (e) {
+            this._people = [];
+            this._peopleLoaded = true;
+        }
+    }
+
+    async addPerson(name) {
+        try {
+            await this._hass.callWS({ type: 'rtsp_recorder/add_person', name });
+            await this.refreshPeople();
+            this.showToast('Person hinzugefuegt', 'success');
+            if (this._activeTab === 'people') {
+                this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
+            }
+        } catch (e) {
+            this.showToast('Fehler beim Hinzufuegen: ' + (e.message || e), 'error');
+        }
+    }
+
+    async renamePerson(id, name) {
+        try {
+            await this._hass.callWS({ type: 'rtsp_recorder/rename_person', id: String(id), name });
+            await this.refreshPeople();
+            this.showToast('Person umbenannt', 'success');
+            if (this._activeTab === 'people') {
+                this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
+            }
+        } catch (e) {
+            this.showToast('Fehler beim Umbenennen: ' + (e.message || e), 'error');
+        }
+    }
+
+    async deletePerson(personOrId) {
+        try {
+            const payload = (personOrId && typeof personOrId === 'object')
+                ? {
+                    type: 'rtsp_recorder/delete_person',
+                    id: String(personOrId.id),
+                    name: personOrId.name || null,
+                    created_utc: personOrId.created_utc || null,
+                }
+                : { type: 'rtsp_recorder/delete_person', id: String(personOrId) };
+            await this._hass.callWS(payload);
+            await this.refreshPeople();
+            this.showToast('Person geloescht', 'success');
+            if (this._activeTab === 'people') {
+                this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
+            }
+        } catch (e) {
+            this.showToast('Fehler beim Loeschen: ' + (e.message || e), 'error');
+        }
+    }
+
+    async addEmbeddingToPerson(personId, embedding, thumb = null) {
+        try {
+            const person = (this._people || []).find(p => String(p.id) === String(personId));
+            const payload = {
+                type: 'rtsp_recorder/add_person_embedding',
+                person_id: String(personId),
+                embedding,
+                source: 'analysis',
+                thumb
+            };
+            if (person) {
+                payload.name = person.name || null;
+                payload.created_utc = person.created_utc || null;
+            }
+            await this._hass.callWS(payload);
+            if (this._analysisFaceSamples) {
+                const sample = this._analysisFaceSamples.find(s => s.embedding === embedding && s.thumb === thumb);
+                if (sample) {
+                    const key = `${sample.time_s}|${sample.thumb || ''}`;
+                    if (!this._enrolledSampleKeys) this._enrolledSampleKeys = new Set();
+                    this._enrolledSampleKeys.add(key);
+                }
+            }
+            await this.refreshPeople();
+            this.showToast('Embedding hinzugefuegt', 'success');
+            if (this._activeTab === 'people') {
+                this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
+            }
+        } catch (e) {
+            this.showToast('Fehler beim Embedding: ' + (e.message || e), 'error');
+        }
+    }
+
+    async loadFaceSamplesForCurrent() {
+        this._analysisFaceSamples = [];
+        this._enrolledSampleKeys = new Set();
+        if (!this._currentEvent) {
+            this.showToast('Bitte zuerst eine Aufnahme waehlen', 'warning');
+            return;
+        }
+        this._loadingFaceSamples = true;
+        try {
+            const data = await this._hass.callWS({
+                type: 'rtsp_recorder/get_analysis_result',
+                media_id: this._currentEvent.id
+            });
+            const detections = (data && data.detections) ? data.detections : [];
+            const samples = [];
+            detections.forEach(d => {
+                const time_s = d.time_s;
+                const faces = d.faces || [];
+                faces.forEach(f => {
+                    if (f.embedding) {
+                        samples.push({
+                            time_s,
+                            embedding: f.embedding,
+                            match: f.match || null,
+                            thumb: f.thumb || null
+                        });
+                    }
+                });
+            });
+            this._analysisFaceSamples = samples;
+            if (!samples.length) {
+                this.showToast('Keine Face-Samples gefunden', 'warning');
+            } else {
+                this.showToast(`Face-Samples geladen: ${samples.length}`, 'success');
+            }
+        } catch (e) {
+            this._analysisFaceSamples = [];
+            this.showToast('Analyse konnte nicht geladen werden', 'warning');
+        } finally {
+            this._loadingFaceSamples = false;
+        }
+    }
+
     async analyzeCurrentVideo() {
         if (!this._currentEvent) {
             this.showToast('Bitte zuerst eine Aufnahme auswaehlen', 'warning');
@@ -1455,21 +1777,38 @@ class RtspRecorderCard extends HTMLElement {
         const t = video.currentTime;
         const key = Math.round(t / this._analysisInterval) * this._analysisInterval;
         const frame = this._analysisDetections.find(d => d.time_s === key);
-        if (!frame || !frame.objects) return;
+        if (!frame || (!frame.objects && !frame.faces)) return;
 
         ctx.strokeStyle = '#00e5ff';
         ctx.lineWidth = 2;
         ctx.font = '12px sans-serif';
         ctx.fillStyle = '#00e5ff';
 
-        frame.objects.forEach(obj => {
+        (frame.objects || []).forEach(obj => {
             const box = obj.box;
             const x = offsetX + box.x * scaleX;
             const y = offsetY + box.y * scaleY;
             const w = box.w * scaleX;
             const h = box.h * scaleY;
+            ctx.strokeStyle = '#00e5ff';
+            ctx.fillStyle = '#00e5ff';
             ctx.strokeRect(x, y, w, h);
             const label = `${obj.label} ${Math.round(obj.score * 100)}%`;
+            ctx.fillText(label, x + 2, y - 4);
+        });
+
+        (frame.faces || []).forEach(face => {
+            const box = face.box;
+            const x = offsetX + box.x * scaleX;
+            const y = offsetY + box.y * scaleY;
+            const w = box.w * scaleX;
+            const h = box.h * scaleY;
+            ctx.strokeStyle = '#ff9800';
+            ctx.fillStyle = '#ff9800';
+            ctx.strokeRect(x, y, w, h);
+            const matchName = face.match && face.match.name ? face.match.name : 'Unbekannt';
+            const score = face.score != null ? Math.round(face.score * 100) + '%' : '';
+            const label = score ? `${matchName} ${score}` : matchName;
             ctx.fillText(label, x + 2, y - 4);
         });
     }
@@ -1583,7 +1922,22 @@ class RtspRecorderCard extends HTMLElement {
             this._events = events.sort((a, b) => b.date - a.date);
             this.updateView();
         } catch (e) {
-            this.shadowRoot.querySelector('#list').innerHTML = `<div style="padding:20px;color:red;">Fehler beim Laden: ${e.message} (base_path: ${this._basePath})</div>`;
+            // MED-010 Fix: Detailed error messages with troubleshooting hints
+            let errorDetail = e.message || 'Unbekannter Fehler';
+            let hint = '';
+            
+            if (errorDetail.includes('not found') || errorDetail.includes('404')) {
+                hint = '<br><small>💡 Prüfe ob der Pfad existiert und die Integration korrekt konfiguriert ist.</small>';
+            } else if (errorDetail.includes('permission') || errorDetail.includes('403')) {
+                hint = '<br><small>💡 Berechtigungsfehler - prüfe die Dateiberechtigungen.</small>';
+            } else if (errorDetail.includes('timeout') || errorDetail.includes('network')) {
+                hint = '<br><small>💡 Netzwerkfehler - prüfe die Verbindung zu Home Assistant.</small>';
+            } else if (errorDetail.includes('media_source')) {
+                hint = '<br><small>💡 Media Source nicht verfügbar - stelle sicher dass die Integration geladen ist.</small>';
+            }
+            
+            rtspError('loadData failed:', e);
+            this.shadowRoot.querySelector('#list').innerHTML = `<div style="padding:20px;color:red;">Fehler beim Laden: ${errorDetail}${hint}<br><small style="color:#666;">Pfad: ${this._basePath}</small></div>`;
         }
     }
 
