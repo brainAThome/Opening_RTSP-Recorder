@@ -649,6 +649,8 @@ def _extract_faces_from_bodypix(segmentation_mask, person_mask, frame_width, fra
     - 0: left_face
     - 1: right_face
     
+    Uses clustering to find actual face regions, not just scattered pixels.
+    
     Returns list of face detections with bounding boxes.
     """
     faces = []
@@ -663,36 +665,71 @@ def _extract_faces_from_bodypix(segmentation_mask, person_mask, frame_width, fra
     if not face_mask.any():
         return faces
     
-    # Find connected regions of face pixels
-    # Simple approach: find bounding box of all face pixels
-    face_coords = np.where(face_mask)
-    if len(face_coords[0]) < min_face_pixels:
+    # Get all face pixel coordinates
+    y_coords, x_coords = np.where(face_mask)
+    total_pixels = len(y_coords)
+    
+    if total_pixels < min_face_pixels:
         return faces
     
-    y_coords, x_coords = face_coords
+    # Simple clustering: find the densest region of face pixels
+    # Calculate centroid of all face pixels
+    center_y = np.mean(y_coords)
+    center_x = np.mean(x_coords)
     
-    # Calculate bounding box
-    y_min, y_max = y_coords.min(), y_coords.max()
-    x_min, x_max = x_coords.min(), x_coords.max()
+    # Calculate distances from centroid
+    distances = np.sqrt((y_coords - center_y)**2 + (x_coords - center_x)**2)
+    
+    # Keep only pixels within 2 standard deviations (removes outliers)
+    std_dist = np.std(distances) if len(distances) > 1 else 1
+    mean_dist = np.mean(distances)
+    threshold = mean_dist + 2 * std_dist
+    
+    # Filter to core pixels
+    core_mask = distances <= threshold
+    core_y = y_coords[core_mask]
+    core_x = x_coords[core_mask]
+    
+    if len(core_y) < min_face_pixels:
+        return faces
+    
+    # Calculate bounding box from core pixels
+    y_min, y_max = core_y.min(), core_y.max()
+    x_min, x_max = core_x.min(), core_x.max()
+    
+    # Validate box dimensions in model space
+    model_box_w = x_max - x_min + 1
+    model_box_h = y_max - y_min + 1
+    
+    # Reject boxes that are too wide (> 40% of model width) - probably noise
+    if model_box_w > model_width * 0.4:
+        return faces
+    
+    # Reject boxes with very low pixel density
+    box_area = model_box_w * model_box_h
+    pixel_count = len(core_y)
+    pixel_density = pixel_count / max(box_area, 1)
+    
+    if pixel_density < 0.15:  # Less than 15% filled = not a face
+        return faces
     
     # Scale to original image coordinates
     box_x = int(x_min * scale_x)
     box_y = int(y_min * scale_y)
-    box_w = int((x_max - x_min + 1) * scale_x)
-    box_h = int((y_max - y_min + 1) * scale_y)
+    box_w = int(model_box_w * scale_x)
+    box_h = int(model_box_h * scale_y)
     
-    # Calculate "confidence" based on face pixel density
-    face_area = (y_max - y_min + 1) * (x_max - x_min + 1)
-    face_pixel_count = len(y_coords)
-    pixel_density = face_pixel_count / max(face_area, 1)
+    # Sanity check: face shouldn't be larger than 35% of frame
+    if box_w > frame_width * 0.35 or box_h > frame_height * 0.35:
+        return faces
     
     # Score based on pixel count and density
-    score = min(0.99, pixel_density * (face_pixel_count / 100))
+    score = min(0.99, pixel_density * (pixel_count / 50))
     
     faces.append({
         "score": round(score, 3),
         "box": {"x": box_x, "y": box_y, "w": box_w, "h": box_h},
-        "face_pixels": int(face_pixel_count),
+        "face_pixels": int(pixel_count),
         "method": "bodypix"
     })
     
