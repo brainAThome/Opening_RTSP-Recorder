@@ -668,11 +668,36 @@ async def analyze_recording(
                                                     head_w = int(pw * 0.4)  # Head narrower than shoulders
                                                     head_x = px + int(pw * 0.3)  # Center horizontally
                                                     head_y = py
-                                                    faces.append({
+                                                    
+                                                    head_face = {
                                                         "score": 0.1,  # Low confidence - estimated
                                                         "box": {"x": head_x, "y": head_y, "w": head_w, "h": head_h},
                                                         "method": "head_estimate",
-                                                    })
+                                                    }
+                                                    
+                                                    # Generate embedding for the estimated head region
+                                                    if frame_img is not None and embed_flag == "1":
+                                                        try:
+                                                            hx2 = min(head_x + head_w, frame_img.width)
+                                                            hy2 = min(head_y + head_h, frame_img.height)
+                                                            head_crop = frame_img.crop((head_x, head_y, hx2, hy2))
+                                                            head_buf = io.BytesIO()
+                                                            head_crop.save(head_buf, format="JPEG", quality=85)
+                                                            head_bytes = head_buf.getvalue()
+                                                            
+                                                            embed_form = aiohttp.FormData()
+                                                            embed_form.add_field("file", head_bytes, filename="head.jpg", content_type="image/jpeg")
+                                                            embed_form.add_field("device", device)
+                                                            async with session.post(f"{face_url.rstrip('/')}/embed_face", data=embed_form, timeout=30) as embed_resp:
+                                                                if embed_resp.status == 200:
+                                                                    embed_data = await embed_resp.json()
+                                                                    if embed_data.get("embedding"):
+                                                                        head_face["embedding"] = embed_data["embedding"]
+                                                                        head_face["embedding_source"] = embed_data.get("embedding_source", "fallback")
+                                                        except Exception as embed_err:
+                                                            _LOGGER.debug("Head embedding failed: %s", embed_err)
+                                                    
+                                                    faces.append(head_face)
                                                     _LOGGER.debug("Using head estimate from person box")
                             except Exception as bodypix_err:
                                 _LOGGER.debug("BodyPix fallback failed: %s", bodypix_err)

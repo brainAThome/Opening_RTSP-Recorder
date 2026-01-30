@@ -1238,6 +1238,49 @@ async def faces(
     return result
 
 
+@app.post("/embed_face")
+async def embed_face(
+    file: UploadFile = File(...),
+    device: str = Form("auto"),
+):
+    """Generate embedding for a face/head image crop.
+    
+    This endpoint takes an already-cropped face/head image and generates
+    an embedding vector for it. Used for head_estimate fallback faces.
+    
+    Args:
+        file: Cropped face/head image
+        device: 'auto', 'cpu', or 'coral_usb'
+    
+    Returns:
+        embedding: List of floats
+        embedding_source: 'model' or 'fallback'
+    """
+    content = await file.read()
+    devices = _detect_devices()
+
+    if device == "auto":
+        device = "coral_usb" if "coral_usb" in devices else "cpu"
+    if device not in devices:
+        device = "cpu"
+
+    try:
+        img = Image.open(io.BytesIO(content)).convert("RGB")
+        emb, emb_ms, emb_source = _run_face_embedding(img, device)
+        return {
+            "embedding": emb,
+            "embedding_source": emb_source,
+            "embedding_ms": round(emb_ms, 1),
+            "device": device,
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "embedding": [],
+            "embedding_source": "error",
+        }
+
+
 @app.post("/faces_from_person")
 async def faces_from_person(
     file: UploadFile = File(...),
