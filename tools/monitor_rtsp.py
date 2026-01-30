@@ -37,11 +37,20 @@ stats = {
     "tpu_inferences": 0,
     "cpu_fallbacks": 0,
     "errors": [],
+    "errors_by_type": defaultdict(list),  # NEW: Grouped errors
     "retries": 0,
     "analysis_files_created": 0,
     "inference_times": [],
     "recordings_saved": 0,
     "metrics_snapshots": [],
+    # NEW: Face Embedding Stats
+    "face_embed_success": 0,
+    "face_embed_failed": 0,
+    "face_embed_errors": [],
+    # NEW: Endpoint Stats
+    "endpoint_stats": defaultdict(lambda: {"success": 0, "failed": 0, "times": []}),
+    # NEW: Model Downloads
+    "model_downloads": [],
 }
 
 log_lock = threading.Lock()
@@ -135,6 +144,40 @@ def monitor_detector_logs():
                 
                 # Parse detection events
                 line_lower = line.lower()
+                
+                # NEW: Parse HTTP endpoints and status codes
+                import re
+                http_match = re.search(r'"(POST|GET) /(\w+).*" (\d+)', line)
+                if http_match:
+                    method, endpoint, status = http_match.groups()
+                    status = int(status)
+                    if status == 200:
+                        stats["endpoint_stats"][endpoint]["success"] += 1
+                    else:
+                        stats["endpoint_stats"][endpoint]["failed"] += 1
+                    
+                    # Track face embedding specifically
+                    if endpoint == "embed_face":
+                        if status == 200:
+                            stats["face_embed_success"] += 1
+                        else:
+                            stats["face_embed_failed"] += 1
+                            stats["face_embed_errors"].append(f"HTTP {status}: {line[:100]}")
+                
+                # NEW: Parse timing from log lines like "[detect] OK device=coral_usb time=45.2ms"
+                time_match = re.search(r'\[(\w+)\] OK.*time=(\d+\.?\d*)ms', line)
+                if time_match:
+                    endpoint, time_ms = time_match.groups()
+                    stats["endpoint_stats"][endpoint]["times"].append(float(time_ms))
+                
+                # NEW: Track model downloads
+                if "downloading" in line_lower or "download" in line_lower:
+                    stats["model_downloads"].append({
+                        "time": datetime.now().isoformat(),
+                        "message": line[:200]
+                    })
+                    log(f"MODEL DOWNLOAD: {line[:150]}", "DOWNLOAD")
+                
                 if "person" in line_lower and ("detect" in line_lower or "found" in line_lower):
                     stats["persons_detected"] += 1
                 if "face" in line_lower and ("detect" in line_lower or "found" in line_lower):
@@ -145,13 +188,27 @@ def monitor_detector_logs():
                     stats["retries"] += 1
                 if "tpu" in line_lower and "fallback" in line_lower:
                     stats["cpu_fallbacks"] += 1
+                    
+                # NEW: Categorize errors
                 if "error" in line_lower or "exception" in line_lower:
                     stats["errors"].append(line[:200])
+                    # Categorize
+                    if "404" in line:
+                        stats["errors_by_type"]["HTTP 404"].append(line[:150])
+                    elif "timeout" in line_lower:
+                        stats["errors_by_type"]["Timeout"].append(line[:150])
+                    elif "connection" in line_lower:
+                        stats["errors_by_type"]["Connection"].append(line[:150])
+                    elif "tpu" in line_lower or "coral" in line_lower:
+                        stats["errors_by_type"]["TPU/Coral"].append(line[:150])
+                    elif "face" in line_lower or "embed" in line_lower:
+                        stats["errors_by_type"]["Face Embedding"].append(line[:150])
+                    else:
+                        stats["errors_by_type"]["Other"].append(line[:150])
                     
-                # Extract inference time
+                # Extract inference time (legacy)
                 if "ms" in line and ("inference" in line_lower or "detect" in line_lower):
                     try:
-                        import re
                         match = re.search(r'(\d+\.?\d*)\s*ms', line)
                         if match:
                             stats["inference_times"].append(float(match.group(1)))
@@ -249,10 +306,19 @@ def generate_report():
     """Generate final monitoring report."""
     duration_min = (stats["end_time"] - stats["start_time"]).total_seconds() / 60
     
-    # Calculate averages
-    avg_inference = 0
-    if stats["inference_times"]:
-        avg_inference = sum(stats["inference_times"]) / len(stats["inference_times"])
+    # Calculate inference time statistics
+    def calc_percentile(data, p):
+        if not data:
+            return 0
+        sorted_data = sorted(data)
+        idx = int(len(sorted_data) * p / 100)
+        return sorted_data[min(idx, len(sorted_data)-1)]
+    
+    avg_inference = sum(stats["inference_times"]) / len(stats["inference_times"]) if stats["inference_times"] else 0
+    min_inference = min(stats["inference_times"]) if stats["inference_times"] else 0
+    max_inference = max(stats["inference_times"]) if stats["inference_times"] else 0
+    p95_inference = calc_percentile(stats["inference_times"], 95)
+    p99_inference = calc_percentile(stats["inference_times"], 99)
     
     total_persons = sum(c["persons"] for c in stats["detections_by_camera"].values())
     total_faces = sum(c["faces"] for c in stats["detections_by_camera"].values())
@@ -260,6 +326,10 @@ def generate_report():
     
     face_rate = (total_faces / total_persons * 100) if total_persons > 0 else 0
     movenet_rate = (total_movenet / total_persons * 100) if total_persons > 0 else 0
+    
+    # Face embedding rate
+    total_embed = stats["face_embed_success"] + stats["face_embed_failed"]
+    embed_success_rate = (stats["face_embed_success"] / total_embed * 100) if total_embed > 0 else 100
     
     # Get last TPU health
     tpu_healthy = "unknown"
@@ -287,6 +357,48 @@ PERSONEN-ERKENNUNG:
   MoveNet Fallback:              {total_movenet} ({movenet_rate:.1f}%)
   Keine Kopferkennung:           {max(0, total_persons - total_faces - total_movenet)}
 
+================================================================================
+                          FACE EMBEDDING
+================================================================================
+
+  Erfolgreiche Embeddings:       {stats["face_embed_success"]}
+  Fehlgeschlagene Embeddings:    {stats["face_embed_failed"]}
+  Erfolgsrate:                   {embed_success_rate:.1f}%
+"""
+    
+    if stats["face_embed_errors"]:
+        report += "\n  Letzte Fehler:\n"
+        for err in stats["face_embed_errors"][-5:]:
+            report += f"    - {err}\n"
+    
+    report += f"""
+================================================================================
+                         ENDPOINT STATISTIKEN
+================================================================================
+"""
+    
+    for endpoint, ep_stats in sorted(stats["endpoint_stats"].items()):
+        total_req = ep_stats["success"] + ep_stats["failed"]
+        success_rate = (ep_stats["success"] / total_req * 100) if total_req > 0 else 100
+        
+        # Calculate timing stats for this endpoint
+        times = ep_stats["times"]
+        if times:
+            ep_avg = sum(times) / len(times)
+            ep_min = min(times)
+            ep_max = max(times)
+            ep_p95 = calc_percentile(times, 95)
+            timing_str = f"Avg={ep_avg:.1f}ms Min={ep_min:.1f}ms Max={ep_max:.1f}ms P95={ep_p95:.1f}ms"
+        else:
+            timing_str = "N/A"
+        
+        report += f"""
+  /{endpoint}:
+    Requests:     {total_req} (✓{ep_stats["success"]} ✗{ep_stats["failed"]}) = {success_rate:.1f}%
+    Timing:       {timing_str}
+"""
+    
+    report += f"""
 OBJEKTE NACH TYP:
 """
     
@@ -319,29 +431,45 @@ TPU / CORAL:
   CPU Fallbacks:                 {stats["cpu_fallbacks"]}
   Retries:                       {stats["retries"]}
 
-TIMING:
-  Durchschnittliche Inferenz:    {avg_inference:.1f}ms
-  Inference Samples:             {len(stats["inference_times"])}
+INFERENCE TIMING (alle Endpoints):
+  Samples:                       {len(stats["inference_times"])}
+  Minimum:                       {min_inference:.1f}ms
+  Maximum:                       {max_inference:.1f}ms
+  Durchschnitt:                  {avg_inference:.1f}ms
+  P95:                           {p95_inference:.1f}ms
+  P99:                           {p99_inference:.1f}ms
 
 AUFNAHMEN:
   Recordings gespeichert:        {stats["recordings_saved"]}
   Analyse-Dateien erstellt:      {stats["analysis_files_created"]}
-
-================================================================================
-                             FEHLER
-================================================================================
-
-Anzahl Fehler: {len(stats["errors"])}
 """
     
-    for i, err in enumerate(stats["errors"][:10]):
-        report += f"\n  {i+1}. {err}"
-    
-    if len(stats["errors"]) > 10:
-        report += f"\n  ... und {len(stats["errors"]) - 10} weitere"
+    # Model Downloads
+    if stats["model_downloads"]:
+        report += f"""
+================================================================================
+                         MODEL DOWNLOADS
+================================================================================
+"""
+        for dl in stats["model_downloads"]:
+            report += f"  [{dl['time']}] {dl['message'][:80]}\n"
     
     report += f"""
+================================================================================
+                        FEHLER (GRUPPIERT)
+================================================================================
 
+Gesamtanzahl Fehler: {len(stats["errors"])}
+"""
+    
+    for error_type, errors in sorted(stats["errors_by_type"].items()):
+        report += f"\n  {error_type}: {len(errors)} Fehler\n"
+        for err in errors[:3]:  # Show max 3 per type
+            report += f"    - {err[:100]}\n"
+        if len(errors) > 3:
+            report += f"    ... und {len(errors) - 3} weitere\n"
+    
+    report += f"""
 ================================================================================
                           LOG DATEIEN
 ================================================================================
@@ -390,8 +518,14 @@ def main():
         end_time = time.time() + (DURATION_MINUTES * 60)
         while time.time() < end_time:
             remaining = int((end_time - time.time()) / 60)
-            log(f"--- Status: {remaining} Minuten verbleibend | "
+            total_embed = stats["face_embed_success"] + stats["face_embed_failed"]
+            embed_rate = (stats["face_embed_success"] / total_embed * 100) if total_embed > 0 else 100
+            error_count = len(stats["errors"])
+            
+            log(f"--- Status: {remaining}min | "
                 f"Personen: {sum(c['persons'] for c in stats['detections_by_camera'].values())} | "
+                f"FaceEmbed: {stats['face_embed_success']}/{total_embed} ({embed_rate:.0f}%) | "
+                f"Errors: {error_count} | "
                 f"Analysen: {stats['analysis_files_created']} ---", "STATUS")
             time.sleep(60)
             
