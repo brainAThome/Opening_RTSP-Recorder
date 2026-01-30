@@ -157,7 +157,7 @@ class RtspRecorderCard extends HTMLElement {
                 .fm-popup-item.active { color: var(--primary-color); font-weight: bold; }
                 .fm-menu-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 3000; display: none; align-items: center; justify-content: center; }
                 .fm-menu-overlay.open { display: flex; }
-                .fm-menu-card { background: #1a1a1a; border: 1px solid #333; width: 600px; max-width: 90%; max-height: 85vh; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; }
+                .fm-menu-card { background: #1a1a1a; border: 1px solid #333; width: 600px; max-width: 90%; max-height: 90vh; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; }
                 .fm-menu-header { padding: 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; background: #222; }
                 .fm-menu-title { font-size: 1.25em; font-weight: 500; color: #fff; }
                 .fm-menu-close { cursor: pointer; color: #888; }
@@ -1216,7 +1216,7 @@ class RtspRecorderCard extends HTMLElement {
         const unknownFacesHtml = unknownFaces.length 
             ? `<div style="margin-bottom:15px;">
                 <div style="font-weight:500; margin-bottom:8px; color:#e74c3c;">👤 Unbekannte Gesichter (${unknownFaces.length})</div>
-                <div style="display:flex; flex-wrap:wrap; gap:8px; padding:10px; background:#1a1a1a; border-radius:10px; max-height:200px; overflow-y:auto;">
+                <div style="display:flex; flex-wrap:wrap; gap:8px; padding:10px; background:#1a1a1a; border-radius:10px; max-height:400px; overflow-y:auto;">
                     ${renderFaceGrid(unknownFaces, true)}
                 </div>
                </div>`
@@ -1225,7 +1225,7 @@ class RtspRecorderCard extends HTMLElement {
         const knownFacesHtml = knownFaces.length
             ? `<div>
                 <div style="font-weight:500; margin-bottom:8px; color:#27ae60;">✓ Erkannte Gesichter (${knownFaces.length})</div>
-                <div style="display:flex; flex-wrap:wrap; gap:8px; padding:10px; background:#1a1a1a; border-radius:10px; max-height:150px; overflow-y:auto;">
+                <div style="display:flex; flex-wrap:wrap; gap:8px; padding:10px; background:#1a1a1a; border-radius:10px; max-height:400px; overflow-y:auto;">
                     ${renderFaceGrid(knownFaces, false)}
                 </div>
                </div>`
