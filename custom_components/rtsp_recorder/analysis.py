@@ -631,6 +631,27 @@ async def analyze_recording(
                                     extra_faces.extend(faces_crop)
                             if extra_faces:
                                 faces = extra_faces
+
+                        # BodyPix fallback: Use body part segmentation if no faces found
+                        if not faces:
+                            try:
+                                bodypix_form = aiohttp.FormData()
+                                bodypix_form.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
+                                bodypix_form.add_field("device", device)
+                                bodypix_form.add_field("embed", embed_flag)
+                                async with session.post(f"{face_url.rstrip('/')}/faces_bodypix", data=bodypix_form, timeout=60) as resp:
+                                    if resp.status == 200:
+                                        bodypix_data = await resp.json()
+                                        bodypix_faces = bodypix_data.get("faces") or []
+                                        for bf in bodypix_faces:
+                                            bf["method"] = "bodypix"
+                                            bf["score"] = bf.get("score", 0.0)
+                                        if bodypix_faces:
+                                            faces = bodypix_faces
+                                            _LOGGER.debug("BodyPix fallback found %d face(s)", len(faces))
+                            except Exception as bodypix_err:
+                                _LOGGER.debug("BodyPix fallback failed: %s", bodypix_err)
+
                         if frame_w and frame_h:
                             result["frame_width"] = frame_w
                             result["frame_height"] = frame_h
