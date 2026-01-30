@@ -665,6 +665,13 @@ def _extract_faces_from_bodypix(segmentation_mask, person_mask, frame_width, fra
     if not face_mask.any():
         return faces
     
+    # Find torso pixels (12 = torso_front, 13 = torso_back) for lower boundary
+    torso_mask = np.isin(segmentation_mask, [12, 13])
+    torso_top_y = None
+    if torso_mask.any():
+        torso_y_coords, torso_x_coords = np.where(torso_mask)
+        torso_top_y = torso_y_coords.min()  # Topmost torso pixel
+    
     # Get all face pixel coordinates
     y_coords, x_coords = np.where(face_mask)
     total_pixels = len(y_coords)
@@ -693,9 +700,16 @@ def _extract_faces_from_bodypix(segmentation_mask, person_mask, frame_width, fra
     if len(core_y) < min_face_pixels:
         return faces
     
-    # Calculate bounding box from core pixels
-    y_min, y_max = core_y.min(), core_y.max()
+    # Calculate bounding box from core face pixels
+    face_y_min, face_y_max = core_y.min(), core_y.max()
     x_min, x_max = core_x.min(), core_x.max()
+    
+    # Use torso top as lower boundary if available (extends face box down to neck/chin)
+    if torso_top_y is not None and torso_top_y > face_y_max:
+        y_max = torso_top_y
+    else:
+        y_max = face_y_max
+    y_min = face_y_min
     
     # Validate box dimensions in model space
     model_box_w = x_max - x_min + 1
@@ -705,10 +719,10 @@ def _extract_faces_from_bodypix(segmentation_mask, person_mask, frame_width, fra
     if model_box_w > model_width * 0.4:
         return faces
     
-    # Reject boxes with very low pixel density
-    box_area = model_box_w * model_box_h
+    # Reject boxes with very low pixel density (use original face area for density calc)
+    face_box_area = (x_max - x_min + 1) * (face_y_max - face_y_min + 1)
     pixel_count = len(core_y)
-    pixel_density = pixel_count / max(box_area, 1)
+    pixel_density = pixel_count / max(face_box_area, 1)
     
     if pixel_density < 0.15:  # Less than 15% filled = not a face
         return faces
@@ -719,16 +733,14 @@ def _extract_faces_from_bodypix(segmentation_mask, person_mask, frame_width, fra
     box_w = int(model_box_w * scale_x)
     box_h = int(model_box_h * scale_y)
     
-    # Expand box to include full head (BodyPix often only detects part of face)
-    # Face pixels are usually center of face, expand to include forehead, chin, ears
-    expand_factor = 0.5  # Expand by 50% in each direction
-    expand_w = int(box_w * expand_factor)
-    expand_h = int(box_h * expand_factor)
+    # Expand box slightly to include forehead and sides (less expansion since torso gives us bottom)
+    expand_w = int(box_w * 0.3)  # 30% horizontal expansion for ears
+    expand_h_top = int(box_h * 0.2)  # 20% top expansion for forehead
     
     box_x = max(0, box_x - expand_w)
-    box_y = max(0, box_y - expand_h)
+    box_y = max(0, box_y - expand_h_top)
     box_w = min(frame_width - box_x, box_w + 2 * expand_w)
-    box_h = min(frame_height - box_y, box_h + 2 * expand_h)
+    box_h = min(frame_height - box_y, box_h + expand_h_top)  # Only expand top, torso is bottom
     
     # Make box more square (heads are roughly square)
     if box_w > box_h * 1.3:
