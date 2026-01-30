@@ -21,7 +21,6 @@ from homeassistant.helpers.event import async_track_state_change_event
 from .retention import cleanup_recordings
 from .recorder import async_record_stream, async_take_snapshot
 from .analysis import analyze_recording, detect_available_devices
-from .config_flow import sanitize_camera_key
 
 # ===== Inference Stats Tracker =====
 import time as _time
@@ -627,7 +626,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
     analysis_detector_url = config_data.get("analysis_detector_url", "")
     analysis_detector_confidence = float(config_data.get("analysis_detector_confidence", 0.4))
     analysis_face_enabled = bool(config_data.get("analysis_face_enabled", False))
-    analysis_face_confidence = float(config_data.get("analysis_face_confidence", 0.6))
+    analysis_face_confidence = float(config_data.get("analysis_face_confidence", 0.2))
     analysis_face_match_threshold = float(config_data.get("analysis_face_match_threshold", 0.35))
     analysis_face_store_embeddings = bool(config_data.get("analysis_face_store_embeddings", True))
     people_db_path = config_data.get("people_db_path", PEOPLE_DB_DEFAULT_PATH)
@@ -847,14 +846,6 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                             cam_specific_objects = config_data.get(cam_objects_key, [])
                             objects_to_use = cam_specific_objects if cam_specific_objects else analysis_objects
 
-                            # v1.0.7: Use camera-specific thresholds if configured (0 = use global)
-                            cam_detection_key = f"detection_confidence_{cam_name}"
-                            cam_face_key = f"face_confidence_{cam_name}"
-                            cam_detection_conf = float(config_data.get(cam_detection_key, 0))
-                            cam_face_conf = float(config_data.get(cam_face_key, 0))
-                            detection_to_use = cam_detection_conf if cam_detection_conf > 0 else analysis_detector_confidence
-                            face_match_to_use = cam_face_conf if cam_face_conf > 0 else analysis_face_match_threshold
-
                             people_data = await _load_people_db(people_db_path)
                             people = people_data.get("people", [])
                             auto_device = await _resolve_auto_device()
@@ -866,10 +857,10 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                                 interval_s=analysis_frame_interval,
                                 perf_snapshot=perf_snapshot,
                                 detector_url=analysis_detector_url,
-                                detector_confidence=detection_to_use,
+                                detector_confidence=analysis_detector_confidence,
                                 face_enabled=analysis_face_enabled,
                                 face_confidence=analysis_face_confidence,
-                                face_match_threshold=face_match_to_use,
+                                face_match_threshold=analysis_face_match_threshold,
                                 face_store_embeddings=analysis_face_store_embeddings,
                                 people_db=people,
                                 face_detector_url=analysis_detector_url,
@@ -973,34 +964,6 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 async with semaphore:  # Limit concurrent analyses
                     try:
                         perf_snapshot = _sensor_snapshot()
-                        
-                        # v1.0.7: Extract camera name from path for camera-specific thresholds
-                        # Path format: /storage_path/camera_name/date/filename.mp4
-                        path_parts = path.replace("\\", "/").split("/")
-                        cam_name_from_path = None
-                        if len(path_parts) >= 3:
-                            # Find storage_path index and get next folder as camera name
-                            storage_parts = storage_path.replace("\\", "/").rstrip("/").split("/")
-                            for i, part in enumerate(path_parts):
-                                if i < len(path_parts) - 1 and part == storage_parts[-1] if storage_parts else False:
-                                    cam_name_from_path = path_parts[i + 1]
-                                    break
-                            if not cam_name_from_path and len(path_parts) > 2:
-                                # Fallback: assume camera name is parent's parent folder
-                                cam_name_from_path = path_parts[-3] if path_parts[-3] not in ["", "."] else None
-                        
-                        # Get camera-specific thresholds (0 = use global)
-                        detection_to_use = analysis_detector_confidence
-                        face_match_to_use = analysis_face_match_threshold
-                        if cam_name_from_path:
-                            cam_safe = sanitize_camera_key(cam_name_from_path)
-                            cam_detection_conf = float(config_data.get(f"detection_confidence_{cam_safe}", 0))
-                            cam_face_conf = float(config_data.get(f"face_confidence_{cam_safe}", 0))
-                            if cam_detection_conf > 0:
-                                detection_to_use = cam_detection_conf
-                            if cam_face_conf > 0:
-                                face_match_to_use = cam_face_conf
-                        
                         result = await analyze_recording(
                             video_path=path,
                             output_root=analysis_output_path,
@@ -1009,10 +972,10 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                             interval_s=analysis_frame_interval,
                             perf_snapshot=perf_snapshot,
                             detector_url=analysis_detector_url,
-                            detector_confidence=detection_to_use,
+                            detector_confidence=analysis_detector_confidence,
                             face_enabled=analysis_face_enabled,
                             face_confidence=analysis_face_confidence,
-                            face_match_threshold=face_match_to_use,
+                            face_match_threshold=analysis_face_match_threshold,
                             face_store_embeddings=analysis_face_store_embeddings,
                             people_db=people,
                             face_detector_url=analysis_detector_url,
@@ -1058,30 +1021,6 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                         perf_snapshot = _sensor_snapshot()
                         people_data = await _load_people_db(people_db_path)
                         people = people_data.get("people", [])
-                        
-                        # v1.0.7: Extract camera name from path for camera-specific thresholds
-                        path_parts = video_path.replace("\\", "/").split("/")
-                        cam_name_from_path = None
-                        if len(path_parts) >= 3:
-                            storage_parts = storage_path.replace("\\", "/").rstrip("/").split("/")
-                            for i, part in enumerate(path_parts):
-                                if i < len(path_parts) - 1 and part == storage_parts[-1] if storage_parts else False:
-                                    cam_name_from_path = path_parts[i + 1]
-                                    break
-                            if not cam_name_from_path and len(path_parts) > 2:
-                                cam_name_from_path = path_parts[-3] if path_parts[-3] not in ["", "."] else None
-                        
-                        detection_to_use = analysis_detector_confidence
-                        face_match_to_use = analysis_face_match_threshold
-                        if cam_name_from_path:
-                            cam_safe = sanitize_camera_key(cam_name_from_path)
-                            cam_detection_conf = float(config_data.get(f"detection_confidence_{cam_safe}", 0))
-                            cam_face_conf = float(config_data.get(f"face_confidence_{cam_safe}", 0))
-                            if cam_detection_conf > 0:
-                                detection_to_use = cam_detection_conf
-                            if cam_face_conf > 0:
-                                face_match_to_use = cam_face_conf
-                        
                         result = await analyze_recording(
                             video_path=video_path,
                             output_root=output_dir,
@@ -1090,10 +1029,10 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                             interval_s=analysis_frame_interval,
                             perf_snapshot=perf_snapshot,
                             detector_url=analysis_detector_url,
-                            detector_confidence=detection_to_use,
+                            detector_confidence=analysis_detector_confidence,
                             face_enabled=analysis_face_enabled,
                             face_confidence=analysis_face_confidence,
-                            face_match_threshold=face_match_to_use,
+                            face_match_threshold=analysis_face_match_threshold,
                             face_store_embeddings=analysis_face_store_embeddings,
                             people_db=people,
                             face_detector_url=analysis_detector_url,
@@ -1446,28 +1385,28 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
 
         # ===== Detector Stats endpoint =====
         async def _fetch_detector_stats(url: str) -> dict[str, Any]:
-            """Fetch stats from detector service via /metrics endpoint."""
+            """Fetch stats from detector service."""
             if not url:
                 return {"error": "no_detector_url"}
             try:
                 async with aiohttp.ClientSession() as session:
-                    # Use /metrics endpoint (always available)
-                    async with session.get(f"{url.rstrip('/')}/metrics", timeout=5) as resp:
+                    async with session.get(f"{url.rstrip('/')}/stats", timeout=5) as resp:
+                        if resp.status == 404:
+                            # Stats endpoint not available, return basic info
+                            async with session.get(f"{url.rstrip('/')}/info", timeout=5) as info_resp:
+                                if info_resp.status == 200:
+                                    info = await info_resp.json()
+                                    return {
+                                        "available": True,
+                                        "devices": info.get("devices", []),
+                                        "stats_supported": False,
+                                    }
+                            return {"available": False, "error": "stats_not_supported"}
                         if resp.status != 200:
                             return {"available": False, "error": f"http_{resp.status}"}
                         data = await resp.json()
                         data["available"] = True
-                        
-                        # Also fetch /info for device list
-                        try:
-                            async with session.get(f"{url.rstrip('/')}/info", timeout=5) as info_resp:
-                                if info_resp.status == 200:
-                                    info = await info_resp.json()
-                                    data["devices"] = info.get("devices", [])
-                                    data["face_embedding"] = info.get("face_embedding", {})
-                        except Exception:
-                            pass  # /info is optional
-                        
+                        data["stats_supported"] = True
                         return data
             except asyncio.TimeoutError:
                 return {"available": False, "error": "timeout"}

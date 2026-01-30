@@ -54,7 +54,8 @@
                     "analysis_detector_url": "🔗 Detector URL",
                     "analysis_detector_confidence": "📊 Erkennungs-Schwelle",
                     "analysis_face_enabled": "👤 Gesichtserkennung aktiv",
-                    "analysis_face_match_threshold": "🎚️ Gesichts-Schwelle",
+                    "analysis_face_confidence": "👁️ Gesichts-Erkennungsschwelle",
+                    "analysis_face_match_threshold": "🎚️ Gesichts-Matching-Schwelle",
                     "person_entities_enabled": "🏠 Personen-Entitäten erstellen",
                     "analysis_auto_enabled": "🔄 Automatik aktiv",
                     "analysis_auto_mode": "📋 Modus",
@@ -76,8 +77,9 @@
                     "analysis_frame_interval": "Alle X Sekunden ein Frame extrahieren",
                     "analysis_detector_url": "URL des Detector-Add-ons (z.B. http://a0d7b954-rtsp_recorder_detector:5000)",
                     "analysis_detector_confidence": "Mindest-Konfidenz für Objekterkennung (0.1-0.9)",
-                    "analysis_face_enabled": "Aktiviert Gesichtserkennung und Embedding-Extraktion",
-                    "analysis_face_match_threshold": "Schwellwert für Gesichts-Matching (niedriger = mehr Matches)",
+                    "analysis_face_enabled": "Aktiviert Gesichtserkennung und Embedding-Extraktion bei der Analyse",
+                    "analysis_face_confidence": "Mindest-Konfidenz für Gesichtserkennung (niedriger = mehr Gesichter, empfohlen: 0.2)",
+                    "analysis_face_match_threshold": "Schwellwert für Gesichts-Matching (niedriger = mehr Matches, empfohlen: 0.35)",
                     "person_entities_enabled": "Erstellt Binary Sensors für erkannte Personen (für Automationen)",
                     "analysis_auto_enabled": "Analysiert Aufnahmen automatisch nach Zeitplan",
                     "analysis_auto_new": "Analysiert neue Aufnahmen direkt nach dem Speichern",
@@ -101,8 +103,6 @@
                     "snapshot_delay": "📸 Snapshot-Verzögerung",
                     "camera_retention": "🗑️ Eigene Aufbewahrung (Stunden)",
                     "camera_objects": "🎯 Objekte für diese Kamera",
-                    "camera_detection_confidence": "📊 Erkennungs-Schwelle",
-                    "camera_face_confidence": "🎚️ Gesichts-Schwelle",
                     "configure_another": "🔄 Weitere Kamera konfigurieren"
                 },
                 "data_description": {
@@ -111,8 +111,6 @@
                     "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung für bessere Bilder",
                     "camera_retention": "0 = Globale Einstellung nutzen. Sonst: Stunden für diese Kamera",
                     "camera_objects": "Leer = Globale Objekte. Sonst: Nur diese Objekte analysieren",
-                    "camera_detection_confidence": "0 = Globale Einstellung. Sonst: Mindest-Konfidenz für Objekterkennung (z.B. 0.3 für dunkle Kameras)",
-                    "camera_face_confidence": "0 = Globale Einstellung. Sonst: Mindest-Konfidenz für Gesichtserkennung",
                     "configure_another": "Aktivieren um danach eine weitere Kamera einzurichten"
                 }
             }
