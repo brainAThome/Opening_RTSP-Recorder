@@ -1,11 +1,14 @@
 import asyncio
 import json
+import logging
 import os
 import time
 import urllib.request
 import aiohttp
 import base64
 import io
+
+_LOGGER = logging.getLogger(__name__)
 
 # ===== Memory Management Constants (HIGH-005 Fix) =====
 # Limit the number of faces with embedded thumbnails to prevent memory exhaustion
