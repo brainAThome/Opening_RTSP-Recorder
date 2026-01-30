@@ -152,7 +152,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
 ## Audit Report
 
-See [AUDIT_REPORT_v1.0.6.md](AUDIT_REPORT_v1.0.6.md) for the last audit report.
+See [AUDIT_REPORT_v1.0.7_COMPLETE.md](AUDIT_REPORT_v1.0.7_COMPLETE.md) for the latest audit report (v1.0.7 - 87.2% quality score).
 
 ## License
 
