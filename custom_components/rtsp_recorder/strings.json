@@ -101,6 +101,8 @@
                     "snapshot_delay": "📸 Snapshot-Verzögerung",
                     "camera_retention": "🗑️ Eigene Aufbewahrung (Stunden)",
                     "camera_objects": "🎯 Objekte für diese Kamera",
+                    "camera_detection_confidence": "📊 Erkennungs-Schwelle",
+                    "camera_face_confidence": "🎚️ Gesichts-Schwelle",
                     "configure_another": "🔄 Weitere Kamera konfigurieren"
                 },
                 "data_description": {
@@ -109,6 +111,8 @@
                     "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung für bessere Bilder",
                     "camera_retention": "0 = Globale Einstellung nutzen. Sonst: Stunden für diese Kamera",
                     "camera_objects": "Leer = Globale Objekte. Sonst: Nur diese Objekte analysieren",
+                    "camera_detection_confidence": "0 = Globale Einstellung. Sonst: Mindest-Konfidenz für Objekterkennung (z.B. 0.3 für dunkle Kameras)",
+                    "camera_face_confidence": "0 = Globale Einstellung. Sonst: Mindest-Konfidenz für Gesichtserkennung",
                     "configure_another": "Aktivieren um danach eine weitere Kamera einzurichten"
                 }
             }

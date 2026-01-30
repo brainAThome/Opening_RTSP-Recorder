@@ -295,6 +295,9 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         key_retention = f"retention_hours_{safe_name}"
         key_rtsp = f"rtsp_url_{safe_name}"
         key_objects = f"analysis_objects_{safe_name}"  # v1.0.6: Pro-Kamera Objekt-Filter
+        # v1.0.7: Kamera-spezifische Erkennungs-Schwellwerte
+        key_detection_conf = f"detection_confidence_{safe_name}"
+        key_face_conf = f"face_confidence_{safe_name}"
         
         if user_input is not None:
             # Save sensor (if selected)
@@ -331,6 +334,19 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             elif key_objects in self.config_cache:
                 del self.config_cache[key_objects]  # Use global default
             
+            # v1.0.7: Save camera-specific detection thresholds (0 = use global)
+            detection_conf = float(user_input.get("camera_detection_confidence", 0))
+            if detection_conf > 0:
+                self.config_cache[key_detection_conf] = detection_conf
+            elif key_detection_conf in self.config_cache:
+                del self.config_cache[key_detection_conf]  # Use global default
+            
+            face_conf = float(user_input.get("camera_face_confidence", 0))
+            if face_conf > 0:
+                self.config_cache[key_face_conf] = face_conf
+            elif key_face_conf in self.config_cache:
+                del self.config_cache[key_face_conf]  # Use global default
+            
             # Check if user wants to configure another camera
             if user_input.get("configure_another", False):
                 return await self.async_step_init()
@@ -348,6 +364,10 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         # v1.0.6: Camera-specific object filter (falls back to global)
         global_objects = self.config_cache.get("analysis_objects", ["person"])
         cur_objects = self.config_cache.get(key_objects, [])  # Empty = use global
+        
+        # v1.0.7: Camera-specific detection thresholds (0 = use global)
+        cur_detection_conf = float(self.config_cache.get(key_detection_conf, 0))
+        cur_face_conf = float(self.config_cache.get(key_face_conf, 0))
         
         # Objektliste fuer Kamera-Auswahl
         cam_object_options = [
@@ -412,6 +432,19 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             # v1.0.6: Camera-specific analysis objects
             vol.Optional("camera_objects", default=cur_objects): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=cam_object_options, multiple=True, mode=selector.SelectSelectorMode.DROPDOWN)
+            ),
+            # v1.0.7: Camera-specific detection thresholds (0 = use global)
+            vol.Optional("camera_detection_confidence", default=cur_detection_conf): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0, max=0.95, step=0.05,
+                    mode=selector.NumberSelectorMode.SLIDER,
+                )
+            ),
+            vol.Optional("camera_face_confidence", default=cur_face_conf): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0, max=0.95, step=0.05,
+                    mode=selector.NumberSelectorMode.SLIDER,
+                )
             ),
             vol.Optional("configure_another", default=False): selector.BooleanSelector(),
         })
