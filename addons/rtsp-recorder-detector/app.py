@@ -21,9 +21,12 @@ LABELS_URL = "https://github.com/google-coral/test_data/raw/master/coco_labels.t
 FACE_DET_CPU_URL = "https://github.com/google-coral/test_data/raw/release-frogfish/ssd_mobilenet_v2_face_quant_postprocess.tflite"
 FACE_DET_CORAL_URL = "https://github.com/google-coral/test_data/raw/release-frogfish/ssd_mobilenet_v2_face_quant_postprocess_edgetpu.tflite"
 
-# Face Embedding (EdgeTPU kompatibel, Beispielmodell)
-FACE_EMBED_CPU_URL = "https://github.com/google-coral/test_data/raw/release-frogfish/mobilefacenet.tflite"
-FACE_EMBED_CORAL_URL = "https://github.com/google-coral/test_data/raw/release-frogfish/mobilefacenet_edgetpu.tflite"
+# Face Embedding (EdgeTPU kompatibel)
+# Note: Original mobilefacenet URLs are broken (404). Using EfficientNet-EdgeTPU-S embedding extractor instead.
+# This model generates 1280-dim embeddings, works well for face/person re-identification.
+# Alternative: Download face-reidentification-retail-0095 from PINTO Model Zoo for better accuracy.
+FACE_EMBED_CPU_URL = "https://raw.githubusercontent.com/google-coral/test_data/master/efficientnet-edgetpu-S_quant_embedding_extractor.tflite"
+FACE_EMBED_CORAL_URL = "https://raw.githubusercontent.com/google-coral/test_data/master/efficientnet-edgetpu-S_quant_embedding_extractor_edgetpu.tflite"
 
 # MoveNet - Pose Estimation with keypoints (NOSE, EYES, EARS for precise head detection)
 MOVENET_URL = "https://github.com/google-coral/test_data/raw/master/movenet_single_pose_lightning_ptq_edgetpu.tflite"
@@ -553,11 +556,17 @@ def _get_face_det_model(device: str) -> str:
 
 
 def _get_face_embed_model(device: str) -> str:
+    """Get face embedding model path.
+    
+    Uses EfficientNet-EdgeTPU-S embedding extractor (1280-dim output).
+    Input: 224x224 RGB image
+    Output: 1280-dim normalized embedding vector
+    """
     if device == "coral_usb":
-        path = os.path.join(MODEL_DIR, "mobilefacenet_edgetpu.tflite")
+        path = os.path.join(MODEL_DIR, "efficientnet_edgetpu_s_embed_edgetpu.tflite")
         _download_file(FACE_EMBED_CORAL_URL, path)
         return path
-    path = os.path.join(MODEL_DIR, "mobilefacenet.tflite")
+    path = os.path.join(MODEL_DIR, "efficientnet_edgetpu_s_embed.tflite")
     _download_file(FACE_EMBED_CPU_URL, path)
     return path
 
