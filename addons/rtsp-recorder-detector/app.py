@@ -719,8 +719,29 @@ def _extract_faces_from_bodypix(segmentation_mask, person_mask, frame_width, fra
     box_w = int(model_box_w * scale_x)
     box_h = int(model_box_h * scale_y)
     
-    # Sanity check: face shouldn't be larger than 35% of frame
-    if box_w > frame_width * 0.35 or box_h > frame_height * 0.35:
+    # Expand box to include full head (BodyPix often only detects part of face)
+    # Face pixels are usually center of face, expand to include forehead, chin, ears
+    expand_factor = 0.5  # Expand by 50% in each direction
+    expand_w = int(box_w * expand_factor)
+    expand_h = int(box_h * expand_factor)
+    
+    box_x = max(0, box_x - expand_w)
+    box_y = max(0, box_y - expand_h)
+    box_w = min(frame_width - box_x, box_w + 2 * expand_w)
+    box_h = min(frame_height - box_y, box_h + 2 * expand_h)
+    
+    # Make box more square (heads are roughly square)
+    if box_w > box_h * 1.3:
+        diff = box_w - int(box_h * 1.1)
+        box_x += diff // 2
+        box_w -= diff
+    elif box_h > box_w * 1.3:
+        diff = box_h - int(box_w * 1.1)
+        box_y += diff // 2
+        box_h -= diff
+    
+    # Sanity check: face shouldn't be larger than 45% of frame (increased for expanded box)
+    if box_w > frame_width * 0.45 or box_h > frame_height * 0.45:
         return faces
     
     # Score based on pixel count and density
