@@ -1,266 +1,100 @@
 # RTSP Recorder for Home Assistant
 
-Eine vollständige Videoüberwachungslösung mit KI-gestützter Objekt- und Gesichtserkennung für Home Assistant.
+A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
 ![Version](https://img.shields.io/badge/version-1.0.7%20BETA-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Coral](https://img.shields.io/badge/Coral%20USB-Supported-brightgreen)
-![Quality](https://img.shields.io/badge/Audit%20Score-83%25-yellowgreen)
 
----
+## Features
 
-## 🌟 Features
+- 🎥 **Motion-triggered recording** from RTSP cameras
+- 🔍 **AI object detection** with Coral USB EdgeTPU support
+- 🙂 **Face detection & embeddings** with person database
+- 👤 **Person management** (train, rename, delete, assign samples)
+- 🚦 **Person entities** for automations (optional)
+- 📊 **Live performance monitoring** (CPU, RAM, Coral stats)
+- ⏰ **Automated analysis scheduling** (daily or interval-based)
+- 🎛️ **Beautiful dashboard card** with video playback
+- 📁 **Automatic retention management** for recordings
+- 🔴 **Real-time overlay** showing detected objects
 
-### Kernfunktionen
-- 🎥 **Motion-triggered Recording** - Automatische Aufnahme bei Bewegungserkennung
-- 🔍 **KI-Objekterkennung** - Erkennt Personen, Autos, Tiere und mehr
-- 👤 **Gesichtserkennung** - Erkennt und trainiert bekannte Personen
-- 🧠 **Coral USB EdgeTPU** - Hardware-beschleunigte Inferenz (40-70ms)
-- 📊 **Live Performance Monitoring** - CPU, RAM, Coral-Statistiken
+## Components
 
-### Dashboard
-- 🎬 **Video-Playback** mit Timeline und Kalender
-- 📷 **Multi-Kamera Support** mit Filter
-- 👥 **Personen-Management** mit Training-UI
-- ⚙️ **Analyse-Konfiguration** direkt in der UI
-- 🔴 **Overlay** mit erkannten Objekten
+### 1. Custom Integration (`/custom_components/rtsp_recorder/`)
+The main Home Assistant integration that handles:
+- Recording management
+- Motion sensor triggers
+- Analysis job scheduling
+- Face matching and person database
+- Optional person entities for automations
+- WebSocket API for the dashboard
 
-### Automatisierung
-- ⏰ **Geplante Analysen** (täglich oder im Intervall)
-- 🗑️ **Automatische Retention** für alte Aufnahmen
-- 🔄 **Auto-Analyse** für neue Aufnahmen
+### 2. Dashboard Card (`/www/rtsp-recorder-card.js`)
+A feature-rich Lovelace card providing:
+- Video playback with timeline
+- Camera selection and filtering
+- Performance monitoring panel
+- Analysis configuration
+- Recording management (download, delete)
+- Persons tab with training workflow and thumbnails
 
----
+### 3. Detector Add-on (`/addons/rtsp-recorder-detector/`)
+A standalone add-on for object detection:
+- Coral USB EdgeTPU support (Frigate-compatible)
+- CPU fallback when Coral unavailable
+- Cached interpreters for optimal performance
+- REST API for detection requests
+- Face detection endpoint with embeddings
 
-## 📦 Komponenten
+## Installation
 
-```
-RTSP Recorder/
-├── custom_components/rtsp_recorder/   # Home Assistant Integration
-│   ├── __init__.py                    # Hauptlogik & WebSocket API
-│   ├── analysis.py                    # Videoanalyse-Modul
-│   ├── config_flow.py                 # Konfigurationsassistent
-│   ├── recorder.py                    # FFmpeg Recording
-│   ├── retention.py                   # Aufbewahrungsmanagement
-│   └── ...
-├── www/
-│   └── rtsp-recorder-card.js          # Lovelace Dashboard Card
-└── addons/rtsp-recorder-detector/     # KI-Detector Add-on
-    ├── app.py                         # FastAPI Server
-    ├── Dockerfile                     # Container Build
-    └── config.json                    # Add-on Konfiguration
-```
+### Step 1: Install the Integration
+Copy the `custom_components/rtsp_recorder` folder to your Home Assistant config directory.
 
----
+### Step 2: Install the Dashboard Card
+Copy `www/rtsp-recorder-card.js` to `/config/www/`.
 
-## 🚀 Installation
-
-### Schritt 1: Integration installieren
-
-Kopiere den `custom_components/rtsp_recorder` Ordner nach `/config/custom_components/`:
-
-```bash
-# Via SSH
-cd /config/custom_components
-git clone https://github.com/brainAThome/RTSP-Recorder.git temp
-mv temp/custom_components/rtsp_recorder .
-rm -rf temp
-```
-
-### Schritt 2: Dashboard Card installieren
-
-Kopiere `www/rtsp-recorder-card.js` nach `/config/www/`.
-
-Füge zu deinen Lovelace-Ressourcen hinzu:
+Add to your Lovelace resources:
 ```yaml
 resources:
   - url: /local/rtsp-recorder-card.js
     type: module
 ```
 
-### Schritt 3: Detector Add-on installieren
+### Step 3: Install the Detector Add-on (Optional)
+For AI object detection with Coral USB:
 
-1. Kopiere `addons/rtsp-recorder-detector` nach `/addons/`
-2. Gehe zu **Einstellungen → Add-ons → Add-on Store → ⋮ → Repositories**
-3. Nach Refresh erscheint das Add-on
-4. Installieren und starten
+1. Copy the `addons/rtsp-recorder-detector` folder to `/addons/`
+2. Go to Settings → Add-ons → Add-on Store → ⋮ → Repositories
+3. The add-on should appear after refresh
+4. Install and start the add-on
 
-### Schritt 4: Integration konfigurieren
+### Step 4: Configure the Integration
+1. Go to Settings → Devices & Services
+2. Click "+ Add Integration"
+3. Search for "RTSP Recorder"
+4. Follow the configuration wizard
 
-1. **Einstellungen → Geräte & Dienste**
-2. Klicke **"+ Integration hinzufügen"**
-3. Suche **"RTSP Recorder"**
-4. Folge dem Konfigurationsassistenten
+## Coral USB EdgeTPU Support
 
----
+This integration supports Google Coral USB EdgeTPU for hardware-accelerated object detection.
 
-## 👤 Gesichtserkennung (NEU in v1.0.7)
-
-### Wie es funktioniert
-
-1. **Gesichter erkennen** - Bei jeder Analyse werden automatisch Gesichter erkannt
-2. **Embeddings extrahieren** - 128-dimensionale Vektoren für jedes Gesicht
-3. **Personen trainieren** - Klicke "Zu Person" um ein Gesicht einer Person zuzuweisen
-4. **Automatisches Matching** - Neue Gesichter werden gegen bekannte Personen gematched
-
-### Training-Workflow
-
-```
-1. Öffne Tab "Personen" in der Dashboard Card
-2. Erstelle neue Person mit "+" Button
-3. Wähle Aufnahme mit Gesicht der Person
-4. Klicke auf das Gesicht → "Zu Person" Button
-5. Wähle Person aus Liste
-6. ✅ Training abgeschlossen!
-```
-
-### Threshold-Einstellung
-
-Der **Face Match Threshold** (Standard: 0.6) bestimmt, wie strikt das Matching ist:
-- **Niedriger (0.4)** = Mehr Matches, aber mehr False Positives
-- **Höher (0.8)** = Weniger Matches, aber genauer
-
----
-
-## 🏠 Entitäten für Automationen
-
-RTSP Recorder erstellt automatisch **Binary Sensors** für erkannte Personen, die du in Home Assistant Automationen verwenden kannst!
-
-### Automatisch erstellte Entitäten
-
-| Entität | Typ | Beschreibung |
-|---------|-----|--------------|
-| `binary_sensor.rtsp_recorder_person_<name>` | Binary Sensor | Wird `on` wenn Person erkannt wird |
-
-### Entitäts-Attribute
-
-Jede Person-Entität hat folgende Attribute:
-
-| Attribut | Beschreibung |
-|----------|--------------|
-| `person_name` | Name der Person |
-| `similarity` | Matching-Score (0.0 - 1.0) |
-| `camera` | Kamera, die die Person erkannt hat |
-| `video_path` | Pfad zur Aufnahme |
-| `last_seen` | Zeitstempel der letzten Erkennung |
-
-### Beispiel: Automation bei Personenerkennung
-
-```yaml
-automation:
-  - alias: "Benachrichtigung wenn Thorin erkannt wird"
-    trigger:
-      - platform: state
-        entity_id: binary_sensor.rtsp_recorder_person_thorin
-        to: "on"
-    condition: []
-    action:
-      - service: notify.mobile_app
-        data:
-          title: "Person erkannt!"
-          message: >
-            {{ state_attr('binary_sensor.rtsp_recorder_person_thorin', 'person_name') }} 
-            wurde an Kamera {{ state_attr('binary_sensor.rtsp_recorder_person_thorin', 'camera') }} 
-            erkannt (Similarity: {{ state_attr('binary_sensor.rtsp_recorder_person_thorin', 'similarity') | round(2) }})
-```
-
-### Beispiel: Willkommensnachricht
-
-```yaml
-automation:
-  - alias: "Willkommen zuhause"
-    trigger:
-      - platform: state
-        entity_id: binary_sensor.rtsp_recorder_person_sven
-        to: "on"
-    condition:
-      - condition: state
-        entity_id: person.sven
-        state: "not_home"
-    action:
-      - service: tts.google_translate_say
-        data:
-          entity_id: media_player.wohnzimmer
-          message: "Willkommen zuhause, Sven!"
-```
-
-### Beispiel: Unbekannte Person-Alarm
-
-```yaml
-automation:
-  - alias: "Alarm bei unbekannter Person"
-    trigger:
-      - platform: state
-        entity_id: binary_sensor.rtsp_recorder_person_unknown
-        to: "on"
-    action:
-      - service: notify.mobile_app
-        data:
-          title: "⚠️ Unbekannte Person!"
-          message: "Eine unbekannte Person wurde erkannt"
-          data:
-            image: "/local/thumbnails/latest_face.jpg"
-```
-
-> **Hinweis:** Die Binary Sensors werden für 30 Sekunden auf `on` gesetzt und dann automatisch auf `off` zurückgesetzt. Dies ermöglicht präzise Automationen.
-
----
-
-## 🔧 Coral USB EdgeTPU
-
-### Voraussetzungen
+### Requirements
 - Google Coral USB Accelerator
-- USB Passthrough konfiguriert
+- USB passthrough configured in your Home Assistant setup
 
-### Performance-Vergleich
+### Performance
+With Coral USB:
+- ~40-70ms inference time
+- Hardware-accelerated detection
+- No CPU overhead
 
-| Gerät | Inferenzzeit | CPU-Last |
-|-------|--------------|----------|
-| **Coral USB** | ~40-70ms | Minimal |
-| CPU (Fallback) | ~500-800ms | Hoch |
+Without Coral (CPU fallback):
+- ~500-800ms inference time
+- Higher CPU usage
 
-### Troubleshooting
-
-```bash
-# Prüfe ob Coral erkannt wird
-lsusb | grep "Global Unichip"
-
-# Erwartete Ausgabe:
-# Bus 001 Device 002: ID 1a6e:089a Global Unichip Corp.
-```
-
----
-
-## 📡 API Referenz
-
-### WebSocket Commands
-
-| Command | Beschreibung |
-|---------|--------------|
-| `rtsp_recorder/get_events` | Aufnahmen abrufen |
-| `rtsp_recorder/get_analysis_result` | Analyse-Ergebnisse |
-| `rtsp_recorder/get_people` | Personen-Datenbank |
-| `rtsp_recorder/create_person` | Person erstellen |
-| `rtsp_recorder/rename_person` | Person umbenennen |
-| `rtsp_recorder/delete_person` | Person löschen |
-| `rtsp_recorder/add_person_embedding` | Face Training |
-| `rtsp_recorder/get_inference_stats` | Performance Stats |
-| `rtsp_recorder/get_system_stats` | System Monitoring |
-
-### Detector Add-on API
-
-| Endpoint | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/health` | GET | Health Check |
-| `/devices` | GET | Verfügbare Geräte |
-| `/detect` | POST | Objekterkennung |
-| `/faces` | POST | Gesichtserkennung |
-| `/stats` | GET | Performance-Statistiken |
-
----
-
-## 🎛️ Dashboard Card Konfiguration
+## Dashboard Card Configuration
 
 ```yaml
 type: custom:rtsp-recorder-card
@@ -268,93 +102,66 @@ base_path: /media/rtsp_recordings
 thumb_path: /local/thumbnails
 ```
 
-### Debug-Modus aktivieren
+## API Endpoints
 
-```javascript
-// In Browser-Konsole:
-localStorage.setItem('rtsp_recorder_debug', 'true');
+### Detector Add-on
 
-// Deaktivieren:
-localStorage.removeItem('rtsp_recorder_debug');
-```
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/info` | GET | Device info (Coral status, versions) |
+| `/detect` | POST | Run object detection on image |
+| `/faces` | POST | Run face detection + embeddings |
 
----
+### WebSocket Commands
 
-## 📋 Changelog
+| Command | Description |
+|---------|-------------|
+| `rtsp_recorder/get_analysis_overview` | Get analysis history and stats |
+| `rtsp_recorder/get_analysis_result` | Get detection results for video |
+| `rtsp_recorder/get_detector_stats` | Get live detector performance |
+| `rtsp_recorder/get_analysis_config` | Get schedule configuration |
+| `rtsp_recorder/set_analysis_config` | Update schedule configuration |
+| `rtsp_recorder/test_inference` | Run test detection |
+| `rtsp_recorder/get_people` | Get person database |
+| `rtsp_recorder/add_person` | Create new person |
+| `rtsp_recorder/rename_person` | Rename person |
+| `rtsp_recorder/delete_person` | Delete person |
+| `rtsp_recorder/add_person_embedding` | Add embedding to person |
 
-### v1.0.7 BETA (29.01.2026)
+## Troubleshooting
 
-**Neue Features:**
-- ✅ Vollständige Gesichtserkennung mit Embeddings
-- ✅ Person Training über UI ("Zu Person" Button)
-- ✅ Automatisches Face Re-Matching nach Training
-- ✅ Background Tasks für responsive UI
+### Coral USB not detected
+1. Check USB connection and passthrough
+2. Verify with `lsusb` - should show "Global Unichip Corp."
+3. Ensure add-on has USB device access
 
-**Bugfixes:**
-- 🐛 Fixed: Reserved field "id" in WebSocket
-- 🐛 Fixed: log_to_file() Signatur-Fehler
-- 🐛 Fixed: NameError config_entry/output_dir
-- 🐛 Fixed: Blockierendes Re-Matching
+### High inference times
+1. Ensure Coral USB is detected (`/info` endpoint)
+2. Check interpreter caching is working
+3. Verify libedgetpu-max is installed
 
-**Performance:**
-- ⚡ Face Training Response: <100ms (vorher 2-5s)
-- ⚡ Background Re-Matching
+### Recording not starting
+1. Check motion sensor entity ID
+2. Verify camera entity or RTSP URL
+3. Check storage path permissions
 
-[Vollständiger Changelog →](CHANGELOG.md)
+## Version History
 
----
+See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
-## 🔍 Audit Report
+## Audit Report
 
-RTSP Recorder v1.0.7 wurde umfassend auditiert:
+See [AUDIT_REPORT_v1.0.6.md](AUDIT_REPORT_v1.0.6.md) for the last audit report.
 
-| Kriterium | Bewertung |
-|-----------|-----------|
-| **Gesamtqualität** | 83% |
-| Funktionalität | 94% |
-| Code-Qualität | 87% |
-| Sicherheit | 85% |
-| Performance | 92% |
+## License
 
-[Vollständiger Audit Report →](AUDIT_REPORT_v1.0.7_FINAL.md)
+MIT License - See LICENSE file for details.
 
----
+## Credits
 
-## ❓ Troubleshooting
-
-### Coral USB nicht erkannt
-1. USB-Verbindung und Passthrough prüfen
-2. Mit `lsusb` verifizieren
-3. Add-on USB-Zugriff prüfen
-
-### Aufnahme startet nicht
-1. Motion Sensor Entity ID prüfen
-2. Kamera Entity oder RTSP URL verifizieren
-3. Speicherpfad-Berechtigungen prüfen
-
-### Face Training fehlgeschlagen
-1. Prüfe ob Gesichter in der Aufnahme erkannt wurden
-2. Stelle sicher dass Person existiert
-3. Debug-Modus aktivieren für Details
-
----
-
-## 📄 Lizenz
-
-MIT License - Siehe [LICENSE](LICENSE) für Details.
-
----
-
-## 🙏 Credits
-
-- Built for [Home Assistant](https://home-assistant.io)
-- Coral USB Support inspiriert von [Frigate NVR](https://frigate.video)
-- Uses [TensorFlow Lite Runtime](https://www.tensorflow.org/lite)
-- Models from Google Coral
-
----
-
-**Entwickelt mit ❤️ für die Home Assistant Community**
-
-*[@brainAThome](https://github.com/brainAThome)*
+- Built for Home Assistant
+- Coral USB support inspired by Frigate NVR
+- Uses TensorFlow Lite Runtime
+- Models from Google Coral test data
 
