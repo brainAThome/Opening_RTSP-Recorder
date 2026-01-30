@@ -710,15 +710,14 @@ def _parse_detection_outputs(output_details, outputs, is_face_model: bool = Fals
     names = [(detail.get("name") or "") for detail in output_details]
     if len(outputs) >= 4 and all("TFLite_Detection_PostProcess" in name for name in names):
         boxes = outputs[0]
-        # Face models: output[1] contains scores, output[2] contains classes (all zeros for single class)
-        # Object detection models: output[1] contains classes, output[2] contains scores
-        if is_face_model:
-            # For face detection, scores are in output[1], classes in output[2]
-            scores = outputs[1]
-            classes = outputs[2]
-        else:
-            classes = outputs[1]
-            scores = outputs[2]
+        # FIXED: Both face detection and object detection models use the SAME output format:
+        # Output 0: boxes [1, N, 4]
+        # Output 1: classes [1, N] (all zeros for face detection - single class)
+        # Output 2: scores [1, N] (confidence scores)
+        # Output 3: count [1]
+        # The is_face_model flag is kept for compatibility but no longer affects parsing
+        classes = outputs[1]
+        scores = outputs[2]
         try:
             count = int(outputs[3].reshape(-1)[0])
         except Exception:
