@@ -664,11 +664,11 @@ async def analyze_recording(
                                                 ph = int(pbox.get("h", 0))
                                                 if pw > 50 and ph > 50:
                                                     # Estimate head/face region from person box
-                                                    # Face typically starts slightly below top of head
-                                                    head_h = int(ph * 0.35)  # 35% of person height for full face
-                                                    head_w = int(pw * 0.5)   # 50% width for face
+                                                    # Face is taller than wide, offset down to include chin
+                                                    head_h = int(ph * 0.40)  # 40% of person height
+                                                    head_w = int(pw * 0.40)  # 40% width (narrower for side profiles)
                                                     head_x = px + int((pw - head_w) / 2)  # Center horizontally
-                                                    head_y = py + int(ph * 0.02)  # Start slightly below top
+                                                    head_y = py + int(ph * 0.05)  # Start 5% below top to center face
                                                     
                                                     head_face = {
                                                         "score": 0.1,  # Low confidence - estimated
