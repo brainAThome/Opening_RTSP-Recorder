@@ -88,11 +88,171 @@ _available_devices: Optional[List[str]] = None
 _cached_face_det: Dict[str, Any] = {}
 _cached_face_embed: Dict[str, Any] = {}
 _cached_movenet: Dict[str, Any] = {}  # MoveNet pose model cache
+
 # ===== Face Embedding Failure Tracking (with retry mechanism) =====
 _face_embed_failure_count = 0  # Track consecutive failures
 _face_embed_max_failures = 5   # Allow this many failures before temporary fallback
 _face_embed_fallback_until = 0.0  # Unix timestamp when to retry the model again
 _face_embed_fallback_duration = 60.0  # Seconds to wait before retrying after max failures
+
+# ===== TPU Health & Fallback Tracking =====
+_tpu_healthy = True  # Track if TPU is working
+_tpu_failure_count = 0  # Consecutive TPU failures
+_tpu_max_failures = 3  # Max failures before CPU fallback
+_tpu_fallback_until = 0.0  # Unix timestamp when to retry TPU
+_tpu_fallback_duration = 120.0  # Seconds to wait before retrying TPU
+_tpu_last_check = 0.0  # Last time we checked TPU health
+
+# ===== Inference Metrics =====
+_metrics_lock = threading.Lock()
+_inference_metrics = {
+    "total_inferences": 0,
+    "successful_inferences": 0,
+    "failed_inferences": 0,
+    "retried_inferences": 0,
+    "tpu_inferences": 0,
+    "cpu_inferences": 0,
+    "cpu_fallback_count": 0,
+    "avg_inference_ms": 0.0,
+    "last_inference_ms": 0.0,
+    "last_device": "unknown",
+    "tpu_status": "unknown",
+}
+
+# ===== Retry Configuration =====
+MAX_INFERENCE_RETRIES = 2
+RETRY_DELAY_MS = 50  # Wait between retries
+
+
+# ===== Metrics & Logging Functions =====
+def _update_metrics(success: bool, inference_ms: float, device: str, retried: bool = False):
+    """Update inference metrics thread-safely."""
+    global _inference_metrics
+    with _metrics_lock:
+        _inference_metrics["total_inferences"] += 1
+        if success:
+            _inference_metrics["successful_inferences"] += 1
+        else:
+            _inference_metrics["failed_inferences"] += 1
+        if retried:
+            _inference_metrics["retried_inferences"] += 1
+        if device == "coral_usb":
+            _inference_metrics["tpu_inferences"] += 1
+        else:
+            _inference_metrics["cpu_inferences"] += 1
+        _inference_metrics["last_inference_ms"] = round(inference_ms, 2)
+        _inference_metrics["last_device"] = device
+        # Running average
+        total = _inference_metrics["total_inferences"]
+        if total > 0:
+            old_avg = _inference_metrics["avg_inference_ms"]
+            _inference_metrics["avg_inference_ms"] = round(
+                ((old_avg * (total - 1)) + inference_ms) / total, 2
+            )
+
+
+def _log_inference(endpoint: str, device: str, inference_ms: float, success: bool, 
+                   details: str = "", retries: int = 0):
+    """Structured logging for inference operations."""
+    status = "OK" if success else "FAIL"
+    retry_str = f" [retry:{retries}]" if retries > 0 else ""
+    detail_str = f" - {details}" if details else ""
+    print(f"[{endpoint}] {status} device={device} time={inference_ms:.1f}ms{retry_str}{detail_str}")
+
+
+def _check_tpu_health() -> bool:
+    """Check if TPU is healthy and should be used.
+    
+    Returns True if TPU should be used, False if CPU fallback is needed.
+    """
+    global _tpu_healthy, _tpu_failure_count, _tpu_fallback_until, _tpu_last_check
+    
+    current_time = time.time()
+    
+    # If in fallback mode, check if we should retry TPU
+    if not _tpu_healthy:
+        if current_time >= _tpu_fallback_until:
+            print("[TPU] Fallback period ended, attempting TPU reconnect...")
+            _tpu_healthy = True
+            _tpu_failure_count = 0
+            _inference_metrics["tpu_status"] = "reconnecting"
+        else:
+            remaining = int(_tpu_fallback_until - current_time)
+            if current_time - _tpu_last_check > 30:  # Log every 30s
+                print(f"[TPU] In CPU fallback mode, TPU retry in {remaining}s")
+                _tpu_last_check = current_time
+            return False
+    
+    return _tpu_healthy
+
+
+def _record_tpu_failure(error: Exception):
+    """Record a TPU failure and switch to CPU if needed."""
+    global _tpu_healthy, _tpu_failure_count, _tpu_fallback_until
+    
+    _tpu_failure_count += 1
+    print(f"[TPU] Failure #{_tpu_failure_count}: {error}")
+    
+    if _tpu_failure_count >= _tpu_max_failures:
+        _tpu_healthy = False
+        _tpu_fallback_until = time.time() + _tpu_fallback_duration
+        _inference_metrics["tpu_status"] = "failed"
+        _inference_metrics["cpu_fallback_count"] += 1
+        print(f"[TPU] Max failures reached! Switching to CPU for {_tpu_fallback_duration}s")
+        print(f"[TPU] Will retry at {time.strftime('%H:%M:%S', time.localtime(_tpu_fallback_until))}")
+
+
+def _record_tpu_success():
+    """Record successful TPU inference."""
+    global _tpu_failure_count, _tpu_healthy
+    
+    if _tpu_failure_count > 0:
+        print(f"[TPU] Recovered after {_tpu_failure_count} failures")
+    _tpu_failure_count = 0
+    _tpu_healthy = True
+    _inference_metrics["tpu_status"] = "healthy"
+
+
+def _get_best_device() -> str:
+    """Get the best available device, considering TPU health."""
+    devices = _detect_devices()
+    
+    if "coral_usb" in devices and _check_tpu_health():
+        return "coral_usb"
+    return "cpu"
+
+
+def _run_with_retry(inference_func, *args, max_retries: int = MAX_INFERENCE_RETRIES, **kwargs):
+    """Run inference with retry logic.
+    
+    Args:
+        inference_func: The inference function to call
+        max_retries: Maximum number of retries (default: 2)
+        *args, **kwargs: Arguments to pass to inference_func
+    
+    Returns:
+        Result from inference_func
+        
+    Raises:
+        Last exception if all retries fail
+    """
+    last_exception = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            result = inference_func(*args, **kwargs)
+            if attempt > 0:
+                print(f"[RETRY] Succeeded on attempt {attempt + 1}")
+            return result
+        except Exception as e:
+            last_exception = e
+            if attempt < max_retries:
+                print(f"[RETRY] Attempt {attempt + 1} failed: {e}, retrying...")
+                time.sleep(RETRY_DELAY_MS / 1000.0)
+            else:
+                print(f"[RETRY] All {max_retries + 1} attempts failed")
+    
+    raise last_exception
 
 
 # ===== Image Validation (MED-006 Fix) =====
@@ -1042,7 +1202,80 @@ def _run_face_embedding(face_img: Image.Image, device: str):
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    """Health check endpoint with TPU status."""
+    return {
+        "ok": True,
+        "tpu_healthy": _tpu_healthy,
+        "tpu_status": _inference_metrics.get("tpu_status", "unknown"),
+        "devices": _detect_devices()
+    }
+
+
+@app.get("/metrics")
+def metrics():
+    """Get detailed inference metrics.
+    
+    Returns:
+        - Total/successful/failed inference counts
+        - TPU vs CPU inference counts
+        - Average and last inference times
+        - TPU health status
+        - CPU fallback count
+    """
+    with _metrics_lock:
+        return {
+            **_inference_metrics,
+            "tpu_healthy": _tpu_healthy,
+            "tpu_failure_count": _tpu_failure_count,
+            "tpu_fallback_remaining_sec": max(0, round(_tpu_fallback_until - time.time(), 1)) if not _tpu_healthy else 0,
+            "success_rate": round(
+                _inference_metrics["successful_inferences"] / _inference_metrics["total_inferences"] * 100, 1
+            ) if _inference_metrics["total_inferences"] > 0 else 100.0
+        }
+
+
+@app.post("/tpu_reset")
+def tpu_reset():
+    """Reset TPU failure counter and exit CPU fallback mode.
+    
+    Call this endpoint after:
+    - Reconnecting Coral USB
+    - Restarting the system
+    - Manual intervention
+    """
+    global _tpu_healthy, _tpu_failure_count, _tpu_fallback_until, _cached_interpreters
+    global _cached_face_det, _cached_face_embed, _cached_movenet
+    
+    old_healthy = _tpu_healthy
+    old_failures = _tpu_failure_count
+    
+    # Reset tracking
+    _tpu_healthy = True
+    _tpu_failure_count = 0
+    _tpu_fallback_until = 0.0
+    _inference_metrics["tpu_status"] = "reset"
+    
+    # Clear interpreter caches to force recreation
+    with _interpreter_lock:
+        _cached_interpreters.clear()
+        _cached_face_det.clear()
+        _cached_face_embed.clear()
+        _cached_movenet.clear()
+    
+    # Re-detect devices
+    global _available_devices
+    _available_devices = None
+    devices = _detect_devices()
+    
+    print(f"[TPU] Reset: was_healthy={old_healthy}, failures={old_failures}, detected_devices={devices}")
+    
+    return {
+        "reset": True,
+        "previous_status": "healthy" if old_healthy else "fallback",
+        "previous_failures": old_failures,
+        "detected_devices": devices,
+        "tpu_available": "coral_usb" in devices
+    }
 
 
 @app.get("/face_status")
@@ -1137,19 +1370,46 @@ async def detect(
     labels = _get_labels()
     devices = _detect_devices()
 
+    # Use best device considering TPU health
     if device == "auto":
-        device = "coral_usb" if "coral_usb" in devices else "cpu"
+        device = _get_best_device()
     if device not in devices:
         device = "cpu"
 
     inference_ms = 0
+    retries = 0
+    original_device = device
+    
     try:
-        detections, fw, fh, inference_ms = _run_detection(content, labels, device, confidence)
-    except RuntimeError as e:
-        if device == "coral_usb" and "EdgeTpu" in str(e):
-            device = "cpu"
-            detections, fw, fh, inference_ms = _run_detection(content, labels, device, confidence)
+        # Retry wrapper for resilience
+        def do_detection():
+            return _run_detection(content, labels, device, confidence)
+        
+        detections, fw, fh, inference_ms = _run_with_retry(do_detection, max_retries=MAX_INFERENCE_RETRIES)
+        
+        # Record success
+        if device == "coral_usb":
+            _record_tpu_success()
+        _update_metrics(True, inference_ms, device)
+        _log_inference("detect", device, inference_ms, True, f"{len(detections)} objects")
+        
+    except Exception as e:
+        # Record failure and try CPU fallback
+        if device == "coral_usb":
+            _record_tpu_failure(e)
+            # Try CPU fallback
+            try:
+                device = "cpu"
+                detections, fw, fh, inference_ms = _run_detection(content, labels, device, confidence)
+                _update_metrics(True, inference_ms, device, retried=True)
+                _log_inference("detect", device, inference_ms, True, f"CPU fallback after TPU fail")
+            except Exception as cpu_err:
+                _update_metrics(False, 0, device)
+                _log_inference("detect", device, 0, False, str(cpu_err))
+                raise
         else:
+            _update_metrics(False, 0, device)
+            _log_inference("detect", device, 0, False, str(e))
             raise
 
     try:
@@ -1164,7 +1424,8 @@ async def detect(
         "frame_width": fw, 
         "frame_height": fh, 
         "device": device,
-        "inference_ms": round(inference_ms, 1)
+        "inference_ms": round(inference_ms, 1),
+        "tpu_healthy": _tpu_healthy
     }
 
 
@@ -1192,8 +1453,9 @@ async def faces(
     content = await file.read()
     devices = _detect_devices()
 
+    # Use best device considering TPU health
     if device == "auto":
-        device = "coral_usb" if "coral_usb" in devices else "cpu"
+        device = _get_best_device()
     if device not in devices:
         device = "cpu"
 
@@ -1201,16 +1463,38 @@ async def faces(
     multi_scale_enabled = str(multi_scale).lower() in ("1", "true", "yes", "on")
 
     try:
-        faces_list, fw, fh, inference_ms, max_score, scores_dtype, output_info, input_info, input_details_raw, input_details_error = _run_face_detection(
-            content, device, confidence, enhance=enhance_enabled, multi_scale=multi_scale_enabled
-        )
-    except RuntimeError as e:
-        if device == "coral_usb" and "EdgeTpu" in str(e):
-            device = "cpu"
-            faces_list, fw, fh, inference_ms, max_score, scores_dtype, output_info, input_info, input_details_raw, input_details_error = _run_face_detection(
+        def do_face_detection():
+            return _run_face_detection(
                 content, device, confidence, enhance=enhance_enabled, multi_scale=multi_scale_enabled
             )
+        
+        faces_list, fw, fh, inference_ms, max_score, scores_dtype, output_info, input_info, input_details_raw, input_details_error = _run_with_retry(
+            do_face_detection, max_retries=MAX_INFERENCE_RETRIES
+        )
+        
+        if device == "coral_usb":
+            _record_tpu_success()
+        _update_metrics(True, inference_ms, device)
+        _log_inference("faces", device, inference_ms, True, f"{len(faces_list)} faces")
+        
+    except Exception as e:
+        if device == "coral_usb":
+            _record_tpu_failure(e)
+            # Try CPU fallback
+            try:
+                device = "cpu"
+                faces_list, fw, fh, inference_ms, max_score, scores_dtype, output_info, input_info, input_details_raw, input_details_error = _run_face_detection(
+                    content, device, confidence, enhance=enhance_enabled, multi_scale=multi_scale_enabled
+                )
+                _update_metrics(True, inference_ms, device, retried=True)
+                _log_inference("faces", device, inference_ms, True, "CPU fallback")
+            except Exception as cpu_err:
+                _update_metrics(False, 0, device)
+                _log_inference("faces", device, 0, False, str(cpu_err))
+                raise
         else:
+            _update_metrics(False, 0, device)
+            _log_inference("faces", device, 0, False, str(e))
             raise
 
     embed_enabled = str(embed).lower() in ("1", "true", "yes", "on")
@@ -1669,20 +1953,37 @@ async def head_movenet(
     """
     content = await file.read()
     
+    # MoveNet requires TPU - check if available and healthy
     devices = _detect_devices()
-    if "coral_usb" not in devices:
+    tpu_available = "coral_usb" in devices and _check_tpu_health()
+    
+    if not tpu_available:
+        error_msg = "MoveNet requires Coral Edge TPU"
+        if "coral_usb" not in devices:
+            error_msg += " (no device found)"
+        elif not _tpu_healthy:
+            error_msg += " (TPU in fallback mode, retry later)"
         return {
-            "error": "MoveNet requires Coral Edge TPU, but no device found",
+            "error": error_msg,
             "head_box": None,
             "keypoints": {},
+            "tpu_healthy": _tpu_healthy
         }
     
     try:
-        keypoints, head_box, fw, fh, inference_ms = _run_movenet_pose(content)
+        def do_movenet():
+            return _run_movenet_pose(content)
+        
+        keypoints, head_box, fw, fh, inference_ms = _run_with_retry(do_movenet, max_retries=MAX_INFERENCE_RETRIES)
         
         # Filter keypoints by confidence if requested
         if min_confidence > 0:
             head_box = _calculate_head_box_from_keypoints(keypoints, fw, fh, min_confidence)
+        
+        _record_tpu_success()
+        _update_metrics(True, inference_ms, "coral_usb")
+        _log_inference("head_movenet", "coral_usb", inference_ms, True, 
+                       f"head={'yes' if head_box else 'no'}")
         
         return {
             "head_box": head_box,
@@ -1691,13 +1992,19 @@ async def head_movenet(
             "frame_height": fh,
             "inference_ms": round(inference_ms, 1),
             "device": "coral_usb",
+            "tpu_healthy": True
         }
     except Exception as e:
+        _record_tpu_failure(e)
+        _update_metrics(False, 0, "coral_usb")
+        _log_inference("head_movenet", "coral_usb", 0, False, str(e))
+        
         import traceback
         traceback.print_exc()
         return {
             "error": f"MoveNet pose estimation failed: {str(e)}",
             "head_box": None,
             "keypoints": {},
+            "tpu_healthy": _tpu_healthy
         }
 
