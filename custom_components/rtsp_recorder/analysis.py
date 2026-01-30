@@ -519,11 +519,23 @@ async def analyze_recording(
 
                 faces_detected = 0
                 faces_matched = 0
+                consecutive_face_errors = 0
+                max_consecutive_errors = 3  # Stop if 3 frames in a row fail
 
                 async with aiohttp.ClientSession() as session:
                     for idx, frame_path in enumerate(frames):
-                        with open(frame_path, "rb") as f:
-                            frame_bytes = f.read()
+                        # Skip remaining frames if too many consecutive errors
+                        if consecutive_face_errors >= max_consecutive_errors:
+                            _LOGGER.warning("Face detection: Skipping remaining frames after %d consecutive errors", max_consecutive_errors)
+                            break
+
+                        try:
+                            with open(frame_path, "rb") as f:
+                                frame_bytes = f.read()
+                        except Exception as read_err:
+                            _LOGGER.debug("Failed to read frame %d: %s", idx, read_err)
+                            consecutive_face_errors += 1
+                            continue
 
                         frame_img = None
                         if Image is not None:
@@ -539,27 +551,41 @@ async def analyze_recording(
                         form.add_field("confidence", str(face_confidence))
                         form.add_field("embed", embed_flag)
 
-                        _detect_start = time.perf_counter()
-                        async with session.post(f"{face_url.rstrip('/')}/faces", data=form, timeout=60) as resp:
-                            if resp.status != 200:
-                                raise RuntimeError(f"Face detector error {resp.status}")
-                            data = await resp.json()
-                        # Retry once with lower confidence if no faces found
-                        if not (data.get("faces") or []) and float(face_confidence) > 0.25:
-                            retry_conf = max(0.2, float(face_confidence) * 0.6)
-                            form_retry = aiohttp.FormData()
-                            form_retry.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
-                            form_retry.add_field("device", device)
-                            form_retry.add_field("confidence", str(retry_conf))
-                            form_retry.add_field("embed", embed_flag)
-                            async with session.post(f"{face_url.rstrip('/')}/faces", data=form_retry, timeout=60) as resp:
-                                if resp.status == 200:
-                                    data = await resp.json()
-                        _detect_ms = (time.perf_counter() - _detect_start) * 1000
-                        _used_device = data.get("device", device)
-                        _stats = _get_inference_stats()
-                        if _stats:
-                            _stats.record(_used_device, _detect_ms, 1)
+                        try:
+                            _detect_start = time.perf_counter()
+                            async with session.post(f"{face_url.rstrip('/')}/faces", data=form, timeout=60) as resp:
+                                if resp.status != 200:
+                                    raise RuntimeError(f"Face detector error {resp.status}")
+                                data = await resp.json()
+                            # Retry once with lower confidence if no faces found
+                            if not (data.get("faces") or []) and float(face_confidence) > 0.25:
+                                retry_conf = max(0.2, float(face_confidence) * 0.6)
+                                form_retry = aiohttp.FormData()
+                                form_retry.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
+                                form_retry.add_field("device", device)
+                                form_retry.add_field("confidence", str(retry_conf))
+                                form_retry.add_field("embed", embed_flag)
+                                async with session.post(f"{face_url.rstrip('/')}/faces", data=form_retry, timeout=60) as resp:
+                                    if resp.status == 200:
+                                        data = await resp.json()
+                            _detect_ms = (time.perf_counter() - _detect_start) * 1000
+                            _used_device = data.get("device", device)
+                            _stats = _get_inference_stats()
+                            if _stats:
+                                _stats.record(_used_device, _detect_ms, 1)
+
+                            # Reset error counter on success
+                            consecutive_face_errors = 0
+                        except Exception as face_req_err:
+                            _LOGGER.debug("Face detection request failed for frame %d: %s", idx, face_req_err)
+                            consecutive_face_errors += 1
+                            # Add empty face data for this frame
+                            time_s = idx * interval_s
+                            if idx < len(detections):
+                                detections[idx]["faces"] = []
+                            else:
+                                detections.append({"time_s": time_s, "faces": []})
+                            continue
 
                         faces = data.get("faces", []) or []
                         frame_w = data.get("frame_width")

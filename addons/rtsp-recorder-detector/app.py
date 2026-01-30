@@ -88,7 +88,11 @@ _available_devices: Optional[List[str]] = None
 _cached_face_det: Dict[str, Any] = {}
 _cached_face_embed: Dict[str, Any] = {}
 _cached_movenet: Dict[str, Any] = {}  # MoveNet pose model cache
-_face_embed_failed = False
+# ===== Face Embedding Failure Tracking (with retry mechanism) =====
+_face_embed_failure_count = 0  # Track consecutive failures
+_face_embed_max_failures = 5   # Allow this many failures before temporary fallback
+_face_embed_fallback_until = 0.0  # Unix timestamp when to retry the model again
+_face_embed_fallback_duration = 60.0  # Seconds to wait before retrying after max failures
 
 
 # ===== Image Validation (MED-006 Fix) =====
@@ -954,7 +958,17 @@ def _run_face_detection(img_bytes: bytes, device: str, confidence: float, enhanc
 
 
 def _run_face_embedding(face_img: Image.Image, device: str):
-    global _face_embed_failed
+    """Run face embedding with retry mechanism.
+    
+    Uses a smart failure tracking system that:
+    1. Allows individual failures without permanent fallback
+    2. After N consecutive failures, temporarily uses fallback
+    3. Automatically retries the model after a timeout period
+    
+    This fixes the issue where a single error would permanently disable
+    the face embedding model for the entire session.
+    """
+    global _face_embed_failure_count, _face_embed_fallback_until
 
     def _fallback_embedding(img: Image.Image) -> list[float]:
         grey = img.convert("L").resize((16, 8))
@@ -969,8 +983,17 @@ def _run_face_embedding(face_img: Image.Image, device: str):
             arr = arr / norm
         return arr.astype(np.float32).tolist()
 
-    if _face_embed_failed:
-        return _fallback_embedding(face_img), 0.0, "fallback"
+    # Check if we're in temporary fallback mode
+    current_time = time.time()
+    if _face_embed_failure_count >= _face_embed_max_failures:
+        if current_time < _face_embed_fallback_until:
+            # Still in fallback period
+            return _fallback_embedding(face_img), 0.0, "fallback_temp"
+        else:
+            # Fallback period expired, reset and try model again
+            print(f"Face embedding: Retry period expired, attempting to use model again")
+            _face_embed_failure_count = 0
+            _face_embed_fallback_until = 0.0
 
     try:
         interpreter = _get_cached_face_embed_interpreter(device)
@@ -999,9 +1022,22 @@ def _run_face_embedding(face_img: Image.Image, device: str):
         norm = np.linalg.norm(emb)
         if norm > 0:
             emb = emb / norm
+        
+        # Success! Reset failure counter
+        if _face_embed_failure_count > 0:
+            print(f"Face embedding: Model working again after {_face_embed_failure_count} failures")
+            _face_embed_failure_count = 0
+        
         return emb.tolist(), inference_ms, "model"
-    except Exception:
-        _face_embed_failed = True
+    except Exception as e:
+        _face_embed_failure_count += 1
+        print(f"Face embedding error ({_face_embed_failure_count}/{_face_embed_max_failures}): {e}")
+        
+        if _face_embed_failure_count >= _face_embed_max_failures:
+            # Enter temporary fallback mode
+            _face_embed_fallback_until = current_time + _face_embed_fallback_duration
+            print(f"Face embedding: Too many failures, using fallback for {_face_embed_fallback_duration}s")
+        
         return _fallback_embedding(face_img), 0.0, "fallback"
 
 
@@ -1010,8 +1046,62 @@ def health():
     return {"ok": True}
 
 
+@app.get("/face_status")
+def face_status():
+    """Get current face embedding system status.
+    
+    Returns information about:
+    - Whether the model is working or in fallback mode
+    - Number of consecutive failures
+    - When fallback mode will end (if active)
+    
+    This endpoint is useful for debugging face detection issues.
+    """
+    import time
+    current_time = time.time()
+    
+    in_fallback = _face_embed_failure_count >= _face_embed_max_failures
+    fallback_remaining = max(0, _face_embed_fallback_until - current_time) if in_fallback else 0
+    
+    return {
+        "status": "fallback" if in_fallback else "active",
+        "failure_count": _face_embed_failure_count,
+        "max_failures_before_fallback": _face_embed_max_failures,
+        "fallback_duration_sec": _face_embed_fallback_duration,
+        "fallback_remaining_sec": round(fallback_remaining, 1),
+        "message": f"Face embedding is in fallback mode for {round(fallback_remaining)}s" if in_fallback else "Face embedding model is active",
+    }
+
+
+@app.post("/face_reset")
+def face_reset():
+    """Reset the face embedding failure counter.
+    
+    Call this endpoint to immediately exit fallback mode and retry
+    the face embedding model. Useful after:
+    - Reconnecting Coral USB
+    - Restarting the system
+    - Manual intervention
+    """
+    global _face_embed_failure_count, _face_embed_fallback_until
+    
+    old_count = _face_embed_failure_count
+    _face_embed_failure_count = 0
+    _face_embed_fallback_until = 0.0
+    
+    return {
+        "status": "reset",
+        "previous_failure_count": old_count,
+        "message": "Face embedding system reset. Model will be used for next request.",
+    }
+
+
 @app.get("/info")
 def info():
+    current_time = time.time()
+    in_fallback = _face_embed_failure_count >= _face_embed_max_failures
+    fallback_remaining = max(0, _face_embed_fallback_until - current_time) if in_fallback else 0
+    
     return {
         "devices": _detect_devices(),
         "numpy": getattr(np, "__version__", None),
@@ -1024,6 +1114,9 @@ def info():
         "face_embedding": {
             "cpu_model": os.path.basename(FACE_EMBED_CPU_URL),
             "coral_model": os.path.basename(FACE_EMBED_CORAL_URL),
+            "status": "fallback" if in_fallback else "active",
+            "failure_count": _face_embed_failure_count,
+            "fallback_remaining_sec": round(fallback_remaining, 1) if in_fallback else 0,
         },
     }
 
