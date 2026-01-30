@@ -250,6 +250,69 @@ def _validate_person_name(name: str) -> tuple[bool, str]:
 # ===== End Input Validation =====
 
 
+def _compute_centroid(embeddings: list) -> list[float] | None:
+    """Compute the centroid (average) of multiple embeddings.
+    
+    This creates a single representative vector for a person,
+    making face matching faster and more robust.
+    """
+    if not embeddings:
+        return None
+    
+    vectors = []
+    for emb in embeddings:
+        if isinstance(emb, dict):
+            emb = emb.get("vector", [])
+        if isinstance(emb, list) and len(emb) > 0:
+            try:
+                vec = [float(x) for x in emb]
+                vectors.append(vec)
+            except (TypeError, ValueError):
+                continue
+    
+    if not vectors:
+        return None
+    
+    # All vectors should have the same dimension
+    dim = len(vectors[0])
+    centroid = [0.0] * dim
+    
+    for vec in vectors:
+        if len(vec) != dim:
+            continue
+        for i in range(dim):
+            centroid[i] += vec[i]
+    
+    n = len(vectors)
+    if n == 0:
+        return None
+    centroid = [c / n for c in centroid]
+    
+    # Normalize the centroid for cosine similarity
+    norm = sum(c * c for c in centroid) ** 0.5
+    if norm > 0:
+        centroid = [c / norm for c in centroid]
+    
+    return centroid
+
+
+def _update_person_centroid(person: dict) -> dict:
+    """Update the centroid for a single person based on their embeddings."""
+    embeddings = person.get("embeddings", [])
+    if embeddings:
+        centroid = _compute_centroid(embeddings)
+        if centroid:
+            person["centroid"] = centroid
+    return person
+
+
+def _update_all_centroids(data: dict) -> dict:
+    """Update centroids for all people in the database."""
+    for person in data.get("people", []):
+        _update_person_centroid(person)
+    return data
+
+
 def _default_people_db() -> dict[str, Any]:
     # MED-005 Fix: Use timezone-aware datetime instead of deprecated utcnow()
     now_utc = datetime.datetime.now(datetime.timezone.utc)
@@ -279,6 +342,22 @@ async def _load_people_db(path: str) -> dict[str, Any]:
                 return _default_people_db()
             if "people" not in data:
                 data["people"] = []
+            
+            # Ensure centroids are computed for all people
+            needs_save = False
+            for person in data.get("people", []):
+                if "centroid" not in person and person.get("embeddings"):
+                    _update_person_centroid(person)
+                    needs_save = True
+            
+            # Save updated centroids if any were computed
+            if needs_save:
+                data["updated_utc"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+                def _write_updated():
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+                await asyncio.to_thread(_write_updated)
+            
             return data
         except Exception:
             return _default_people_db()
@@ -1118,6 +1197,111 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
 
         hass.services.async_register(DOMAIN, "delete_recording", handle_delete_recording)
         
+        # Delete All Recordings Service (Bulk Delete)
+        async def handle_delete_all_recordings(call: ServiceCall):
+            """Delete all recordings, optionally filtered by camera and/or age."""
+            camera = call.data.get("camera")  # Optional: specific camera folder
+            older_than_days = call.data.get("older_than_days", 0)  # 0 = delete all
+            include_analysis = call.data.get("include_analysis", False)  # Also delete analysis results
+            confirm = call.data.get("confirm", False)  # Safety confirmation
+            
+            if not confirm:
+                log_to_file("Delete all recordings: Missing confirmation flag")
+                raise HomeAssistantError("Sicherheitsabfrage: Setze 'confirm: true' um zu bestätigen")
+            
+            log_to_file(f"Delete all recordings: camera={camera}, older_than_days={older_than_days}, include_analysis={include_analysis}")
+            
+            deleted_videos = 0
+            deleted_thumbs = 0
+            deleted_analysis = 0
+            errors = []
+            
+            try:
+                import glob
+                from datetime import datetime, timedelta
+                
+                cutoff_date = None
+                if older_than_days > 0:
+                    cutoff_date = datetime.now() - timedelta(days=older_than_days)
+                
+                # Find video files
+                if camera:
+                    # Specific camera folder
+                    safe_camera = camera.replace("..", "").replace("/", "_")
+                    video_pattern = os.path.join(storage_path, safe_camera, "*.mp4")
+                else:
+                    # All cameras
+                    video_pattern = os.path.join(storage_path, "*", "*.mp4")
+                
+                video_files = glob.glob(video_pattern)
+                
+                for video_path in video_files:
+                    try:
+                        # Skip if not matching age filter
+                        if cutoff_date:
+                            # Parse date from filename (e.g., Camera_20260130_121500.mp4)
+                            filename = os.path.basename(video_path)
+                            match = re.search(r'(\d{8})_(\d{6})', filename)
+                            if match:
+                                date_str = match.group(1)
+                                file_date = datetime.strptime(date_str, "%Y%m%d")
+                                if file_date >= cutoff_date:
+                                    continue  # Skip newer files
+                        
+                        # Delete video
+                        os.remove(video_path)
+                        deleted_videos += 1
+                        
+                        # Delete corresponding thumbnail
+                        filename = os.path.basename(video_path).replace('.mp4', '.jpg')
+                        cam_folder = os.path.basename(os.path.dirname(video_path))
+                        thumb_path = os.path.join(snapshot_path_base, cam_folder, filename)
+                        if os.path.exists(thumb_path):
+                            os.remove(thumb_path)
+                            deleted_thumbs += 1
+                            
+                    except Exception as e:
+                        errors.append(f"{video_path}: {str(e)}")
+                
+                # Delete analysis folders if requested
+                if include_analysis:
+                    analysis_base = os.path.join(storage_path, "_analysis")
+                    if os.path.exists(analysis_base):
+                        analysis_dirs = glob.glob(os.path.join(analysis_base, "analysis_*"))
+                        for analysis_dir in analysis_dirs:
+                            try:
+                                # Check age filter for analysis folders
+                                if cutoff_date:
+                                    dir_name = os.path.basename(analysis_dir)
+                                    match = re.search(r'analysis_(\d{8})', dir_name)
+                                    if match:
+                                        date_str = match.group(1)
+                                        dir_date = datetime.strptime(date_str, "%Y%m%d")
+                                        if dir_date >= cutoff_date:
+                                            continue  # Skip newer analysis
+                                
+                                import shutil
+                                shutil.rmtree(analysis_dir)
+                                deleted_analysis += 1
+                            except Exception as e:
+                                errors.append(f"{analysis_dir}: {str(e)}")
+                
+                log_to_file(f"Deleted: {deleted_videos} videos, {deleted_thumbs} thumbs, {deleted_analysis} analysis folders. Errors: {len(errors)}")
+                
+            except Exception as e:
+                log_to_file(f"Error in delete_all_recordings: {e}")
+                _LOGGER.error(f"Error in delete_all_recordings: {e}")
+                raise
+            
+            return {
+                "deleted_videos": deleted_videos,
+                "deleted_thumbnails": deleted_thumbs,
+                "deleted_analysis": deleted_analysis,
+                "errors": errors[:10]  # Limit error list
+            }
+
+        hass.services.async_register(DOMAIN, "delete_all_recordings", handle_delete_all_recordings)
+        
         # 3. Register Motion Listeners (Auto-Record)
         
         # Helper to create proper closure
@@ -1726,16 +1910,19 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 for p in people:
                     if str(p.get("id")) == person_id:
                         _append_embedding(p)
+                        _update_person_centroid(p)  # Update centroid after adding embedding
                         updated = p
                         break
                 if not updated and (name or created_utc):
                     for p in people:
                         if created_utc and p.get("created_utc") == created_utc:
                             _append_embedding(p)
+                            _update_person_centroid(p)  # Update centroid after adding embedding
                             updated = p
                             break
                         if name and p.get("name") == name:
                             _append_embedding(p)
+                            _update_person_centroid(p)  # Update centroid after adding embedding
                             updated = p
                             break
                 if not updated:

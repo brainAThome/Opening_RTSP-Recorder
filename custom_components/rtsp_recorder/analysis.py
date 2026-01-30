@@ -105,14 +105,70 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
+def _compute_centroid(embeddings: list) -> list[float] | None:
+    """Compute the centroid (average) of multiple embeddings."""
+    if not embeddings:
+        return None
+    
+    vectors = []
+    for emb in embeddings:
+        if isinstance(emb, dict):
+            emb = emb.get("vector", [])
+        emb_list = _safe_float_list(emb)
+        if emb_list:
+            vectors.append(emb_list)
+    
+    if not vectors:
+        return None
+    
+    # All vectors should have the same dimension
+    dim = len(vectors[0])
+    centroid = [0.0] * dim
+    
+    for vec in vectors:
+        if len(vec) != dim:
+            continue
+        for i in range(dim):
+            centroid[i] += vec[i]
+    
+    n = len(vectors)
+    centroid = [c / n for c in centroid]
+    
+    # Normalize the centroid
+    norm = sum(c * c for c in centroid) ** 0.5
+    if norm > 0:
+        centroid = [c / norm for c in centroid]
+    
+    return centroid
+
+
 def _match_face(embedding: list[float], people: list[dict[str, Any]], threshold: float) -> dict[str, Any] | None:
+    """Match a face embedding against people database using centroids.
+    
+    Uses pre-computed centroids for faster matching. Falls back to
+    comparing against all embeddings if no centroid is available.
+    """
     if not embedding or not people:
         return None
     best = None
     best_score = -1.0
+    
     for person in people:
         p_id = person.get("id")
         p_name = person.get("name")
+        
+        # Try centroid first (faster, more robust)
+        centroid = person.get("centroid")
+        if centroid:
+            centroid_list = _safe_float_list(centroid)
+            if centroid_list:
+                score = _cosine_similarity(embedding, centroid_list)
+                if score > best_score:
+                    best_score = score
+                    best = {"person_id": p_id, "name": p_name, "similarity": round(float(score), 4)}
+                continue  # Skip individual embeddings if centroid exists
+        
+        # Fallback: compare against all embeddings (old method)
         for emb in person.get("embeddings", []) or []:
             if isinstance(emb, dict):
                 emb = emb.get("vector", [])
@@ -123,6 +179,7 @@ def _match_face(embedding: list[float], people: list[dict[str, Any]], threshold:
             if score > best_score:
                 best_score = score
                 best = {"person_id": p_id, "name": p_name, "similarity": round(float(score), 4)}
+    
     if best and best_score >= float(threshold):
         return best
     return None
