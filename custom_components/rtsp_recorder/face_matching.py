@@ -129,20 +129,65 @@ def _update_all_centroids(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _check_negative_samples(
+    embedding: list[float], 
+    person: dict[str, Any], 
+    neg_threshold: float = 0.75
+) -> bool:
+    """Check if embedding matches any negative samples for this person.
+    
+    Negative samples are faces that were incorrectly matched to this person.
+    If the new embedding is similar to a negative sample, it should be rejected.
+    
+    Args:
+        embedding: Face embedding vector to check
+        person: Person dict with optional "negative_embeddings" list
+        neg_threshold: Similarity threshold to consider a negative match
+        
+    Returns:
+        True if the embedding matches a negative sample (should be rejected)
+    """
+    negative_samples = person.get("negative_embeddings", [])
+    if not negative_samples:
+        return False
+    
+    for neg in negative_samples:
+        # Handle both dict and list formats
+        if isinstance(neg, dict):
+            neg = neg.get("vector", [])
+        if not neg or not isinstance(neg, list):
+            continue
+        try:
+            neg_list = [float(v) for v in neg]
+        except (TypeError, ValueError):
+            continue
+        
+        sim = _cosine_similarity_simple(embedding, neg_list)
+        if sim >= neg_threshold:
+            return True  # This face is similar to a "NOT this person" sample
+    
+    return False
+
+
 def _match_face_simple(
     embedding: list[float], 
     people: list[dict[str, Any]], 
-    threshold: float = 0.6
+    threshold: float = 0.6,
+    check_negatives: bool = True,
+    neg_threshold: float = 0.75
 ) -> dict[str, Any] | None:
     """Match a face embedding against the people database.
     
     Uses centroid-based matching for faster and more robust results.
     Falls back to comparing against all embeddings if no centroid exists.
+    Also checks negative samples to prevent false matches.
     
     Args:
         embedding: Face embedding vector to match
         people: List of person dicts from people database
         threshold: Minimum similarity score for a match
+        check_negatives: Whether to check negative samples (default True)
+        neg_threshold: Threshold for negative sample matching
         
     Returns:
         Match result dict with person_id, name, similarity or None
@@ -150,12 +195,17 @@ def _match_face_simple(
     if not embedding or not people:
         return None
     
-    best = None
-    best_score = -1.0
+    candidates = []
     
     for person in people:
         p_id = person.get("id")
         p_name = person.get("name")
+        
+        # Check negative samples first - skip this person if face matches a negative
+        if check_negatives and _check_negative_samples(embedding, person, neg_threshold):
+            continue  # Skip this person due to negative sample match
+        
+        best_score = -1.0
         
         # Try centroid first (faster, more robust)
         centroid = person.get("centroid")
@@ -163,9 +213,12 @@ def _match_face_simple(
             try:
                 centroid_list = [float(v) for v in centroid]
                 score = _cosine_similarity_simple(embedding, centroid_list)
-                if score > best_score:
-                    best_score = score
-                    best = {"person_id": p_id, "name": p_name, "similarity": round(float(score), 4)}
+                if score >= threshold:
+                    candidates.append({
+                        "person_id": p_id, 
+                        "name": p_name, 
+                        "similarity": round(float(score), 4)
+                    })
                 continue  # Skip individual embeddings if centroid exists
             except (TypeError, ValueError):
                 pass  # Fall through to individual embeddings
@@ -185,8 +238,16 @@ def _match_face_simple(
             score = _cosine_similarity_simple(embedding, emb_list)
             if score > best_score:
                 best_score = score
-                best = {"person_id": p_id, "name": p_name, "similarity": round(float(score), 4)}
+        
+        if best_score >= threshold:
+            candidates.append({
+                "person_id": p_id,
+                "name": p_name,
+                "similarity": round(float(best_score), 4)
+            })
     
-    if best and best_score >= float(threshold):
-        return best
+    # Return the best candidate (highest similarity)
+    if candidates:
+        candidates.sort(key=lambda x: x["similarity"], reverse=True)
+        return candidates[0]
     return None

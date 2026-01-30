@@ -64,6 +64,37 @@ analyze_recording:
       selector:
         text:
 
+delete_all_recordings:
+  name: Alle Aufnahmen löschen
+  description: Löscht alle Aufnahmen, optional gefiltert nach Kamera und/oder Alter
+  fields:
+    camera:
+      name: Kamera
+      description: Nur Aufnahmen dieser Kamera löschen (Ordnername)
+      required: false
+      selector:
+        text:
+    older_than_days:
+      name: Älter als (Tage)
+      description: Nur Aufnahmen löschen die älter als X Tage sind (0 = alle)
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 365
+          unit_of_measurement: Tage
+    include_analysis:
+      name: Analysen einschließen
+      description: Auch zugehörige Analyse-Ergebnisse löschen
+      default: false
+      selector:
+        boolean:
+    confirm:
+      name: Bestätigung
+      description: Sicherheitsabfrage - muss auf true gesetzt werden
+      required: true
+      selector:
+        boolean:
 analyze_all_recordings:
   name: Alle Aufnahmen analysieren
   description: Analysiert alle Aufnahmen im Speicherordner (optional filterbar)

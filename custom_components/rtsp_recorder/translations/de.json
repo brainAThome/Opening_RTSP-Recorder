@@ -32,7 +32,7 @@
     "step": {
       "init": {
         "title": "⚙️ RTSP Recorder Einstellungen",
-        "description": "Globale Einstellungen und Kamera-Konfiguration.\n\n✅ = Kamera bereits konfiguriert",
+        "description": "**{allowlist_status}**\n\nGlobale Einstellungen und Kamera-Konfiguration.\n\n✅ = Kamera bereits konfiguriert",
         "data": {
           "storage_path": "📁 Speicherpfad für Aufnahmen",
           "snapshot_path": "🖼️ Thumbnail-Pfad",

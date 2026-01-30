@@ -30,7 +30,7 @@
         "step": {
             "init": {
                 "title": "⚙️ RTSP Recorder Einstellungen",
-                "description": "Globale Aufbewahrungszeit und Kamera-Konfiguration.\n\n✅ = Kamera bereits konfiguriert",
+                "description": "**{allowlist_status}**\n\nGlobale Aufbewahrungszeit und Kamera-Konfiguration.\n\n✅ = Kamera bereits konfiguriert",
                 "data": {
                     "retention_days": "🎬 Video-Aufbewahrung",
                     "snapshot_retention_days": "📸 Thumbnail-Aufbewahrung",
