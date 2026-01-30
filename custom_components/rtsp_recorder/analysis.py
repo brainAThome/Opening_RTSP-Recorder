@@ -635,75 +635,105 @@ async def analyze_recording(
                             if extra_faces:
                                 faces = extra_faces
 
-                        # BodyPix fallback: Use body part segmentation if no faces found
-                        if not faces:
-                            try:
-                                bodypix_form = aiohttp.FormData()
-                                bodypix_form.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
-                                bodypix_form.add_field("device", device)
-                                bodypix_form.add_field("embed", embed_flag)
-                                async with session.post(f"{face_url.rstrip('/')}/faces_bodypix", data=bodypix_form, timeout=60) as resp:
-                                    if resp.status == 200:
-                                        bodypix_data = await resp.json()
-                                        bodypix_faces = bodypix_data.get("faces") or []
-                                        for bf in bodypix_faces:
-                                            bf["method"] = "bodypix"
-                                            bf["score"] = bf.get("score", 0.0)
-                                        if bodypix_faces:
-                                            faces = bodypix_faces
-                                            _LOGGER.debug("BodyPix fallback found %d face(s)", len(faces))
-                                        
-                                        # If no faces but person detected, estimate head region from person box
-                                        if not faces and bodypix_data.get("person_detected") and idx < len(detections):
-                                            person_boxes = [o for o in (detections[idx].get("objects") or []) if o.get("label") == "person"]
-                                            for pobj in person_boxes[:1]:  # Only first person
-                                                pbox = pobj.get("box") or {}
-                                                px = int(pbox.get("x", 0))
-                                                py = int(pbox.get("y", 0))
-                                                pw = int(pbox.get("w", 0))
-                                                ph = int(pbox.get("h", 0))
-                                                if pw > 50 and ph > 50:
-                                                    # Estimate head/face region from person box
-                                                    # Human head is ~15-18% of total body height
-                                                    # Use smaller percentage for full-body, larger for upper-body only
-                                                    head_ratio = 0.18 if ph > pw else 0.30  # Full body vs upper body
-                                                    head_h = int(ph * head_ratio)
-                                                    head_w = head_h  # Square box for head
-                                                    head_x = px + int((pw - head_w) / 2)  # Center horizontally
-                                                    head_y = py  # Start at top of person box
+                        # MoveNet fallback: Use pose estimation for precise head detection if no faces found
+                        if not faces and idx < len(detections):
+                            person_boxes = [o for o in (detections[idx].get("objects") or []) if o.get("label") == "person"]
+                            if person_boxes:
+                                try:
+                                    # Try MoveNet pose estimation for precise head keypoints
+                                    movenet_form = aiohttp.FormData()
+                                    movenet_form.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
+                                    movenet_form.add_field("min_confidence", "0.15")  # Lower threshold for Ring cameras
+                                    async with session.post(f"{face_url.rstrip('/')}/head_movenet", data=movenet_form, timeout=30) as movenet_resp:
+                                        if movenet_resp.status == 200:
+                                            movenet_data = await movenet_resp.json()
+                                            head_box_data = movenet_data.get("head_box")
+                                            if head_box_data and head_box_data.get("box"):
+                                                hbox = head_box_data["box"]
+                                                head_face = {
+                                                    "score": head_box_data.get("confidence", 0.5),
+                                                    "box": hbox,
+                                                    "method": "movenet",
+                                                    "keypoints_used": head_box_data.get("keypoints_used", 0),
+                                                }
+                                                
+                                                # Generate embedding for the MoveNet head region
+                                                if frame_img is not None and embed_flag == "1":
+                                                    try:
+                                                        hx, hy = int(hbox.get("x", 0)), int(hbox.get("y", 0))
+                                                        hw, hh = int(hbox.get("w", 0)), int(hbox.get("h", 0))
+                                                        hx2 = min(hx + hw, frame_img.width)
+                                                        hy2 = min(hy + hh, frame_img.height)
+                                                        head_crop = frame_img.crop((hx, hy, hx2, hy2))
+                                                        head_buf = io.BytesIO()
+                                                        head_crop.save(head_buf, format="JPEG", quality=85)
+                                                        head_bytes = head_buf.getvalue()
+                                                        
+                                                        embed_form = aiohttp.FormData()
+                                                        embed_form.add_field("file", head_bytes, filename="head.jpg", content_type="image/jpeg")
+                                                        embed_form.add_field("device", device)
+                                                        async with session.post(f"{face_url.rstrip('/')}/embed_face", data=embed_form, timeout=30) as embed_resp:
+                                                            if embed_resp.status == 200:
+                                                                embed_data = await embed_resp.json()
+                                                                if embed_data.get("embedding"):
+                                                                    head_face["embedding"] = embed_data["embedding"]
+                                                                    head_face["embedding_source"] = embed_data.get("embedding_source", "movenet")
+                                                    except Exception as embed_err:
+                                                        _LOGGER.debug("MoveNet head embedding failed: %s", embed_err)
+                                                
+                                                faces.append(head_face)
+                                                _LOGGER.debug("MoveNet detected head with %d keypoints", head_box_data.get("keypoints_used", 0))
+                                except Exception as movenet_err:
+                                    _LOGGER.debug("MoveNet fallback failed: %s", movenet_err)
+                                
+                                # Final fallback: estimate head region from person box if MoveNet failed
+                                if not faces:
+                                    for pobj in person_boxes[:1]:  # Only first person
+                                        pbox = pobj.get("box") or {}
+                                        px = int(pbox.get("x", 0))
+                                        py = int(pbox.get("y", 0))
+                                        pw = int(pbox.get("w", 0))
+                                        ph = int(pbox.get("h", 0))
+                                        if pw > 50 and ph > 50:
+                                            # Estimate head/face region from person box
+                                            # Human head is ~15-18% of total body height
+                                            # Use smaller percentage for full-body, larger for upper-body only
+                                            head_ratio = 0.18 if ph > pw else 0.30  # Full body vs upper body
+                                            head_h = int(ph * head_ratio)
+                                            head_w = head_h  # Square box for head
+                                            head_x = px + int((pw - head_w) / 2)  # Center horizontally
+                                            head_y = py  # Start at top of person box
+                                            
+                                            head_face = {
+                                                "score": 0.1,  # Low confidence - estimated
+                                                "box": {"x": head_x, "y": head_y, "w": head_w, "h": head_h},
+                                                "method": "head_estimate",
+                                            }
+                                            
+                                            # Generate embedding for the estimated head region
+                                            if frame_img is not None and embed_flag == "1":
+                                                try:
+                                                    hx2 = min(head_x + head_w, frame_img.width)
+                                                    hy2 = min(head_y + head_h, frame_img.height)
+                                                    head_crop = frame_img.crop((head_x, head_y, hx2, hy2))
+                                                    head_buf = io.BytesIO()
+                                                    head_crop.save(head_buf, format="JPEG", quality=85)
+                                                    head_bytes = head_buf.getvalue()
                                                     
-                                                    head_face = {
-                                                        "score": 0.1,  # Low confidence - estimated
-                                                        "box": {"x": head_x, "y": head_y, "w": head_w, "h": head_h},
-                                                        "method": "head_estimate",
-                                                    }
-                                                    
-                                                    # Generate embedding for the estimated head region
-                                                    if frame_img is not None and embed_flag == "1":
-                                                        try:
-                                                            hx2 = min(head_x + head_w, frame_img.width)
-                                                            hy2 = min(head_y + head_h, frame_img.height)
-                                                            head_crop = frame_img.crop((head_x, head_y, hx2, hy2))
-                                                            head_buf = io.BytesIO()
-                                                            head_crop.save(head_buf, format="JPEG", quality=85)
-                                                            head_bytes = head_buf.getvalue()
-                                                            
-                                                            embed_form = aiohttp.FormData()
-                                                            embed_form.add_field("file", head_bytes, filename="head.jpg", content_type="image/jpeg")
-                                                            embed_form.add_field("device", device)
-                                                            async with session.post(f"{face_url.rstrip('/')}/embed_face", data=embed_form, timeout=30) as embed_resp:
-                                                                if embed_resp.status == 200:
-                                                                    embed_data = await embed_resp.json()
-                                                                    if embed_data.get("embedding"):
-                                                                        head_face["embedding"] = embed_data["embedding"]
-                                                                        head_face["embedding_source"] = embed_data.get("embedding_source", "fallback")
-                                                        except Exception as embed_err:
-                                                            _LOGGER.debug("Head embedding failed: %s", embed_err)
-                                                    
-                                                    faces.append(head_face)
-                                                    _LOGGER.debug("Using head estimate from person box")
-                            except Exception as bodypix_err:
-                                _LOGGER.debug("BodyPix fallback failed: %s", bodypix_err)
+                                                    embed_form = aiohttp.FormData()
+                                                    embed_form.add_field("file", head_bytes, filename="head.jpg", content_type="image/jpeg")
+                                                    embed_form.add_field("device", device)
+                                                    async with session.post(f"{face_url.rstrip('/')}/embed_face", data=embed_form, timeout=30) as embed_resp:
+                                                        if embed_resp.status == 200:
+                                                            embed_data = await embed_resp.json()
+                                                            if embed_data.get("embedding"):
+                                                                head_face["embedding"] = embed_data["embedding"]
+                                                                head_face["embedding_source"] = embed_data.get("embedding_source", "fallback")
+                                                except Exception as embed_err:
+                                                    _LOGGER.debug("Head embedding failed: %s", embed_err)
+                                            
+                                            faces.append(head_face)
+                                            _LOGGER.debug("Using head estimate from person box (last resort)")
 
                         if frame_w and frame_h:
                             result["frame_width"] = frame_w

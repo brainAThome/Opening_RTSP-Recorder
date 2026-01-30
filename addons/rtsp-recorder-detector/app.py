@@ -25,27 +25,20 @@ FACE_DET_CORAL_URL = "https://github.com/google-coral/test_data/raw/release-frog
 FACE_EMBED_CPU_URL = "https://github.com/google-coral/test_data/raw/release-frogfish/mobilefacenet.tflite"
 FACE_EMBED_CORAL_URL = "https://github.com/google-coral/test_data/raw/release-frogfish/mobilefacenet_edgetpu.tflite"
 
-# BodyPix - Body Part Segmentation (includes face detection via segmentation)
-# Using models WITHOUT decoder (no custom op required)
-BODYPIX_CPU_URL = "https://github.com/google-coral/project-bodypix/raw/master/models/bodypix_mobilenet_v1_075_720_1280_16_quant.tflite"
-BODYPIX_CORAL_URL = "https://github.com/google-coral/project-bodypix/raw/master/models/bodypix_mobilenet_v1_075_720_1280_16_quant_edgetpu.tflite"
-
-# BodyPix body part labels (indices 0 and 1 are face parts)
-BODYPIX_PARTS = {
-    0: "left_face", 1: "right_face",
-    2: "left_upper_arm_front", 3: "left_upper_arm_back",
-    4: "right_upper_arm_front", 5: "right_upper_arm_back",
-    6: "left_lower_arm_front", 7: "left_lower_arm_back",
-    8: "right_lower_arm_front", 9: "right_lower_arm_back",
-    10: "left_hand", 11: "right_hand",
-    12: "torso_front", 13: "torso_back",
-    14: "left_upper_leg_front", 15: "left_upper_leg_back",
-    16: "right_upper_leg_front", 17: "right_upper_leg_back",
-    18: "left_lower_leg_front", 19: "left_lower_leg_back",
-    20: "right_lower_leg_front", 21: "right_lower_leg_back",
-    22: "left_foot", 23: "right_foot"
+# MoveNet - Pose Estimation with keypoints (NOSE, EYES, EARS for precise head detection)
+MOVENET_URL = "https://github.com/google-coral/test_data/raw/master/movenet_single_pose_lightning_ptq_edgetpu.tflite"
+# MoveNet keypoint indices
+MOVENET_KEYPOINTS = {
+    0: "nose", 1: "left_eye", 2: "right_eye", 
+    3: "left_ear", 4: "right_ear",
+    5: "left_shoulder", 6: "right_shoulder",
+    7: "left_elbow", 8: "right_elbow",
+    9: "left_wrist", 10: "right_wrist",
+    11: "left_hip", 12: "right_hip",
+    13: "left_knee", 14: "right_knee",
+    15: "left_ankle", 16: "right_ankle"
 }
-BODYPIX_FACE_PARTS = {0, 1}  # left_face and right_face
+MOVENET_HEAD_KEYPOINTS = {0, 1, 2, 3, 4}  # nose, eyes, ears
 
 MODEL_DIR = "/data/models"
 
@@ -94,7 +87,7 @@ _labels_cache: Optional[Dict[int, str]] = None
 _available_devices: Optional[List[str]] = None
 _cached_face_det: Dict[str, Any] = {}
 _cached_face_embed: Dict[str, Any] = {}
-_cached_bodypix: Dict[str, Any] = {}
+_cached_movenet: Dict[str, Any] = {}  # MoveNet pose model cache
 _face_embed_failed = False
 
 
@@ -525,80 +518,71 @@ def _get_cached_face_embed_interpreter(device: str):
             raise
 
 
-def _get_bodypix_model(device: str) -> str:
-    """Download or return cached BodyPix model path."""
-    if device == "coral_usb":
-        url = BODYPIX_CORAL_URL
-        filename = "bodypix_no_decoder_edgetpu.tflite"
-    else:
-        url = BODYPIX_CPU_URL
-        filename = "bodypix_no_decoder.tflite"
-    
+# ===== MoveNet Pose Estimation (for precise head detection) =====
+
+def _get_movenet_model() -> str:
+    """Download or return cached MoveNet model path."""
+    filename = "movenet_single_pose_lightning_ptq_edgetpu.tflite"
     model_path = os.path.join(MODEL_DIR, filename)
     if not os.path.exists(model_path):
-        print(f"Downloading BodyPix model: {filename}")
+        print(f"Downloading MoveNet model: {filename}")
         os.makedirs(MODEL_DIR, exist_ok=True)
-        urllib.request.urlretrieve(url, model_path)
+        urllib.request.urlretrieve(MOVENET_URL, model_path)
     return model_path
 
 
-def _get_cached_bodypix_interpreter(device: str):
-    """Get or create cached BodyPix interpreter."""
-    global _cached_bodypix
+def _get_cached_movenet_interpreter():
+    """Get or create cached MoveNet interpreter (Edge TPU only)."""
+    global _cached_movenet
+    device = "coral_usb"
     with _interpreter_lock:
-        if device in _cached_bodypix:
+        if device in _cached_movenet:
             try:
-                _cached_bodypix[device].get_input_details()
-                return _cached_bodypix[device]
+                _cached_movenet[device].get_input_details()
+                return _cached_movenet[device]
             except Exception as e:
-                print(f"Cached BodyPix interpreter for {device} invalid, recreating: {e}")
-                del _cached_bodypix[device]
+                print(f"Cached MoveNet interpreter invalid, recreating: {e}")
+                del _cached_movenet[device]
         
         try:
-            model_path = _get_bodypix_model(device)
+            model_path = _get_movenet_model()
             interpreter = _build_interpreter(model_path, device)
             interpreter.allocate_tensors()
-            _cached_bodypix[device] = interpreter
-            print(f"Created and cached BodyPix for device: {device}")
+            _cached_movenet[device] = interpreter
+            print(f"Created and cached MoveNet for Edge TPU")
             return interpreter
         except Exception as e:
-            print(f"ERROR creating BodyPix interpreter for {device}: {e}")
-            if device in _cached_bodypix:
-                del _cached_bodypix[device]
+            print(f"ERROR creating MoveNet interpreter: {e}")
+            if device in _cached_movenet:
+                del _cached_movenet[device]
             raise
 
 
-def _run_bodypix_segmentation(img_bytes: bytes, device: str):
-    """Run BodyPix segmentation on image.
+def _run_movenet_pose(img_bytes: bytes):
+    """Run MoveNet pose estimation on image.
     
-    BodyPix model without decoder outputs:
-    - float_heatmaps [1, H, W, 17] - Pose keypoint heatmaps
-    - float_short_offsets [1, H, W, 34]
-    - float_mid_offsets [1, H, W, 64]
-    - float_segments [1, H, W, 1] - Person segmentation mask
-    - float_part_heatmaps [1, H, W, 24] - Body part heatmaps (24 parts)
-    - float_long_offsets [1, H, W, 34]
+    MoveNet outputs 17 keypoints with [y, x, confidence]:
+    0: nose, 1: left_eye, 2: right_eye, 3: left_ear, 4: right_ear
+    5: left_shoulder, 6: right_shoulder, ...
     
     Returns:
-        - part_segmentation: numpy array with body part indices (argmax of part_heatmaps)
-        - person_mask: boolean array where True = person pixel
-        - frame_width, frame_height: original image dimensions
-        - model_width, model_height: model output dimensions
-        - inference_ms: inference time in milliseconds
+        - keypoints: dict of keypoint name -> {x, y, confidence}
+        - head_box: calculated bounding box around head keypoints (or None if not detected)
+        - inference_ms: inference time
     """
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     frame_width, frame_height = img.size
     
-    interpreter = _get_cached_bodypix_interpreter(device)
+    interpreter = _get_cached_movenet_interpreter()
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
     
-    # Model expects 1280x720 input (or similar based on model variant)
+    # MoveNet expects 192x192 input
     input_shape = input_details[0]["shape"]
     target_h, target_w = int(input_shape[1]), int(input_shape[2])
     img_resized = img.resize((target_w, target_h))
     
-    # Prepare input tensor
+    # Prepare input tensor (uint8)
     input_data = np.expand_dims(np.array(img_resized, dtype=np.uint8), axis=0)
     
     interpreter.set_tensor(input_details[0]["index"], input_data)
@@ -607,204 +591,113 @@ def _run_bodypix_segmentation(img_bytes: bytes, device: str):
     interpreter.invoke()
     inference_ms = (time.perf_counter() - start) * 1000
     
-    # Get outputs by name
-    outputs = {}
-    for d in output_details:
-        name = d.get("name", "")
-        tensor = interpreter.get_tensor(d["index"])
-        outputs[name] = tensor
+    # Output shape: [1, 1, 17, 3] - 17 keypoints with [y, x, confidence]
+    output = interpreter.get_tensor(output_details[0]["index"])
+    keypoints_raw = output[0][0]  # [17, 3]
     
-    # Get person segmentation (float_segments)
-    segments = outputs.get("float_segments")
-    # Get body part heatmaps (float_part_heatmaps)
-    part_heatmaps = outputs.get("float_part_heatmaps")
+    # Parse keypoints
+    keypoints = {}
+    for idx, name in MOVENET_KEYPOINTS.items():
+        kp = keypoints_raw[idx]
+        y, x, conf = float(kp[0]), float(kp[1]), float(kp[2])
+        # Scale to original image coordinates
+        keypoints[name] = {
+            "x": int(x * frame_width),
+            "y": int(y * frame_height),
+            "confidence": round(conf, 3)
+        }
     
-    if segments is None or part_heatmaps is None:
-        return None, None, frame_width, frame_height, 0, 0, inference_ms
+    # Calculate head bounding box from head keypoints
+    head_box = _calculate_head_box_from_keypoints(keypoints, frame_width, frame_height)
     
-    # Remove batch dimension
-    segments = segments[0]  # [H, W, 1]
-    part_heatmaps = part_heatmaps[0]  # [H, W, 24]
-    
-    model_height, model_width = segments.shape[:2]
-    
-    # Person mask: segments > threshold (values are uint8 0-255, so ~128 is threshold)
-    person_mask = segments[:, :, 0] > 128
-    
-    # Body part segmentation: argmax over 24 body parts
-    # Only where person is detected
-    part_segmentation = np.argmax(part_heatmaps, axis=-1)  # [H, W]
-    
-    # Mask out non-person areas
-    part_segmentation = np.where(person_mask, part_segmentation, -1)
-    
-    return part_segmentation, person_mask, frame_width, frame_height, model_width, model_height, inference_ms
+    return keypoints, head_box, frame_width, frame_height, inference_ms
 
 
-def _extract_faces_from_bodypix(segmentation_mask, person_mask, frame_width, frame_height, 
-                                  model_width, model_height, min_face_pixels=20):
-    """Extract face bounding boxes from BodyPix segmentation mask.
+def _calculate_head_box_from_keypoints(keypoints: dict, frame_width: int, frame_height: int, 
+                                        min_confidence: float = 0.3):
+    """Calculate head bounding box from MoveNet keypoints.
     
-    Face parts in BodyPix:
-    - 0: left_face
-    - 1: right_face
-    
-    Uses clustering to find actual face regions, not just scattered pixels.
-    
-    Returns list of face detections with bounding boxes.
+    Uses nose as center, eyes and ears to determine width, adds padding for forehead/chin.
     """
-    faces = []
+    head_kps = ["nose", "left_eye", "right_eye", "left_ear", "right_ear"]
+    valid_points = []
     
-    # Scale factors from model space to original image space
-    scale_x = frame_width / model_width
-    scale_y = frame_height / model_height
+    for kp_name in head_kps:
+        kp = keypoints.get(kp_name)
+        if kp and kp["confidence"] >= min_confidence:
+            valid_points.append(kp)
     
-    # Find face pixels (parts 0 and 1)
-    face_mask = np.isin(segmentation_mask, list(BODYPIX_FACE_PARTS))
+    # Need at least nose and one other point
+    nose = keypoints.get("nose", {})
+    if nose.get("confidence", 0) < min_confidence or len(valid_points) < 2:
+        return None
     
-    if not face_mask.any():
-        return faces
+    # Calculate bounding box from valid keypoints
+    xs = [p["x"] for p in valid_points]
+    ys = [p["y"] for p in valid_points]
     
-    # Find torso pixels (12 = torso_front, 13 = torso_back) for lower boundary
-    torso_mask = np.isin(segmentation_mask, [12, 13])
-    torso_top_y = None
-    if torso_mask.any():
-        torso_y_coords, torso_x_coords = np.where(torso_mask)
-        torso_top_y = torso_y_coords.min()  # Topmost torso pixel
+    x_min, x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)
     
-    # Get all face pixel coordinates
-    y_coords, x_coords = np.where(face_mask)
-    total_pixels = len(y_coords)
+    # Calculate head dimensions
+    head_width = x_max - x_min
+    head_height = y_max - y_min
     
-    if total_pixels < min_face_pixels:
-        return faces
+    # Ears give us the actual head width - use that as reference
+    left_ear = keypoints.get("left_ear", {})
+    right_ear = keypoints.get("right_ear", {})
+    if left_ear.get("confidence", 0) >= min_confidence and right_ear.get("confidence", 0) >= min_confidence:
+        ear_width = abs(left_ear["x"] - right_ear["x"])
+        # Head is roughly as tall as wide (face is oval, but with hair it's ~square)
+        head_width = max(head_width, ear_width)
+        head_height = max(head_height, ear_width)
     
-    # Simple clustering: find the densest region of face pixels
-    # Calculate centroid of all face pixels
-    center_y = np.mean(y_coords)
-    center_x = np.mean(x_coords)
+    # Eyes to nose distance can estimate forehead height
+    eyes_y = []
+    for eye_name in ["left_eye", "right_eye"]:
+        eye = keypoints.get(eye_name, {})
+        if eye.get("confidence", 0) >= min_confidence:
+            eyes_y.append(eye["y"])
     
-    # Calculate distances from centroid
-    distances = np.sqrt((y_coords - center_y)**2 + (x_coords - center_x)**2)
-    
-    # Keep only pixels within 2 standard deviations (removes outliers)
-    std_dist = np.std(distances) if len(distances) > 1 else 1
-    mean_dist = np.mean(distances)
-    threshold = mean_dist + 2 * std_dist
-    
-    # Filter to core pixels
-    core_mask = distances <= threshold
-    core_y = y_coords[core_mask]
-    core_x = x_coords[core_mask]
-    
-    if len(core_y) < min_face_pixels:
-        return faces
-    
-    # Calculate bounding box from core face pixels
-    face_y_min, face_y_max = core_y.min(), core_y.max()
-    x_min, x_max = core_x.min(), core_x.max()
-    
-    # Use torso top as lower boundary if available (extends face box down to neck/chin)
-    if torso_top_y is not None and torso_top_y > face_y_max:
-        y_max = torso_top_y
+    if eyes_y:
+        avg_eye_y = sum(eyes_y) / len(eyes_y)
+        eye_nose_dist = abs(nose["y"] - avg_eye_y)
+        # Forehead extends ~3x eye-nose distance above eyes (includes hair)
+        forehead_height = eye_nose_dist * 3.5
+        # Chin extends ~3x eye-nose distance below nose
+        chin_height = eye_nose_dist * 3.2
     else:
-        y_max = face_y_max
-    y_min = face_y_min
+        # Fallback: use head_width as estimate
+        forehead_height = head_width * 0.8
+        chin_height = head_width * 0.75
     
-    # Validate box dimensions in model space
-    model_box_w = x_max - x_min + 1
-    model_box_h = y_max - y_min + 1
+    # Calculate final box with padding
+    center_x = nose["x"]
+    center_y = nose["y"]
     
-    # Reject boxes that are too wide (> 40% of model width) - probably noise
-    if model_box_w > model_width * 0.4:
-        return faces
+    # Half widths for box calculation
+    half_width = max(head_width / 2, 30) * 1.4  # 40% padding on sides
+    top_extent = forehead_height + 25  # Extra for hair
+    bottom_extent = chin_height + 20  # Extra for chin/neck
     
-    # Reject boxes with very low pixel density (use original face area for density calc)
-    face_box_area = (x_max - x_min + 1) * (face_y_max - face_y_min + 1)
-    pixel_count = len(core_y)
-    pixel_density = pixel_count / max(face_box_area, 1)
+    box_x = int(max(0, center_x - half_width))
+    box_y = int(max(0, center_y - top_extent))
+    box_w = int(min(frame_width - box_x, half_width * 2))
+    box_h = int(min(frame_height - box_y, top_extent + bottom_extent))
     
-    if pixel_density < 0.15:  # Less than 15% filled = not a face
-        return faces
+    # Ensure minimum size
+    if box_w < 40 or box_h < 40:
+        return None
     
-    # Scale to original image coordinates
-    box_x = int(x_min * scale_x)
-    box_y = int(y_min * scale_y)
-    box_w = int(model_box_w * scale_x)
-    box_h = int(model_box_h * scale_y)
+    # Score based on how many keypoints were detected with good confidence
+    avg_confidence = sum(p["confidence"] for p in valid_points) / len(valid_points)
     
-    # Expand box slightly to include forehead and sides (less expansion since torso gives us bottom)
-    expand_w = int(box_w * 0.3)  # 30% horizontal expansion for ears
-    expand_h_top = int(box_h * 0.2)  # 20% top expansion for forehead
-    
-    box_x = max(0, box_x - expand_w)
-    box_y = max(0, box_y - expand_h_top)
-    box_w = min(frame_width - box_x, box_w + 2 * expand_w)
-    box_h = min(frame_height - box_y, box_h + expand_h_top)  # Only expand top, torso is bottom
-    
-    # Make box more square (heads are roughly square)
-    if box_w > box_h * 1.3:
-        diff = box_w - int(box_h * 1.1)
-        box_x += diff // 2
-        box_w -= diff
-    elif box_h > box_w * 1.3:
-        diff = box_h - int(box_w * 1.1)
-        box_y += diff // 2
-        box_h -= diff
-    
-    # Sanity check: face shouldn't be larger than 45% of frame (increased for expanded box)
-    if box_w > frame_width * 0.45 or box_h > frame_height * 0.45:
-        return faces
-    
-    # Score based on pixel count and density
-    score = min(0.99, pixel_density * (pixel_count / 50))
-    
-    faces.append({
-        "score": round(score, 3),
+    return {
         "box": {"x": box_x, "y": box_y, "w": box_w, "h": box_h},
-        "face_pixels": int(pixel_count),
-        "method": "bodypix"
-    })
-    
-    return faces
-
-
-def _extract_body_parts_from_bodypix(segmentation_mask, person_mask, frame_width, frame_height,
-                                      model_width, model_height):
-    """Extract all body part bounding boxes from BodyPix segmentation mask.
-    
-    Returns list of body part detections.
-    """
-    body_parts = []
-    
-    scale_x = frame_width / model_width
-    scale_y = frame_height / model_height
-    
-    for part_id, part_name in BODYPIX_PARTS.items():
-        part_mask = segmentation_mask == part_id
-        if not part_mask.any():
-            continue
-        
-        y_coords, x_coords = np.where(part_mask)
-        if len(y_coords) < 5:  # Minimum pixels
-            continue
-        
-        y_min, y_max = y_coords.min(), y_coords.max()
-        x_min, x_max = x_coords.min(), x_coords.max()
-        
-        box_x = int(x_min * scale_x)
-        box_y = int(y_min * scale_y)
-        box_w = int((x_max - x_min + 1) * scale_x)
-        box_h = int((y_max - y_min + 1) * scale_y)
-        
-        body_parts.append({
-            "part_id": part_id,
-            "part_name": part_name,
-            "box": {"x": box_x, "y": box_y, "w": box_w, "h": box_h},
-            "pixel_count": int(len(y_coords))
-        })
-    
-    return body_parts
+        "confidence": round(avg_confidence, 3),
+        "keypoints_used": len(valid_points),
+        "method": "movenet"
+    }
 
 
 def _parse_detection_outputs(output_details, outputs, is_face_model: bool = False):
@@ -1661,186 +1554,58 @@ async def faces_ring(
     return result
 
 
-@app.post("/faces_bodypix")
-async def faces_bodypix(
+@app.post("/head_movenet")
+async def head_movenet(
     file: UploadFile = File(...),
-    device: str = Form("auto"),
-    min_face_pixels: int = Form(50),
-    embed: str = Form("1"),
-    include_body_parts: str = Form("0"),
+    min_confidence: float = Form(0.3),
 ):
-    """Detect faces using BodyPix body part segmentation.
+    """Detect head/face region using MoveNet pose estimation.
     
-    This is optimized for Ring/doorbell cameras where traditional face detection fails.
-    BodyPix segments the image into 24 body parts, including left_face and right_face.
-    
-    Advantages over standard face detection:
-    - Works with side profiles
-    - Works with small faces in wide-angle cameras
-    - Works with IR/night vision images
-    - Detects faces as part of full body recognition
+    Uses MoveNet's keypoint detection (nose, eyes, ears) to precisely
+    locate the head region. This is more accurate than percentage-based
+    estimation from the person bounding box.
     
     Args:
-        file: Image file to analyze
-        device: 'auto', 'cpu', or 'coral_usb'
-        min_face_pixels: Minimum number of face pixels to count as detection (default 50)
-        embed: Generate face embeddings ('1' or '0')
-        include_body_parts: Include all detected body parts in response ('1' or '0')
+        file: Image file to analyze (should contain a single person)
+        min_confidence: Minimum keypoint confidence threshold (0.0-1.0)
+    
+    Returns:
+        - keypoints: All detected pose keypoints with positions and confidence
+        - head_box: Calculated bounding box around head (or null if not detected)
+        - frame_width, frame_height: Original image dimensions
+        - inference_ms: MoveNet inference time
     """
     content = await file.read()
+    
     devices = _detect_devices()
-    
-    if device == "auto":
-        device = "coral_usb" if "coral_usb" in devices else "cpu"
-    if device not in devices:
-        device = "cpu"
-    
-    embed_enabled = str(embed).lower() in ("1", "true", "yes", "on")
-    include_parts = str(include_body_parts).lower() in ("1", "true", "yes", "on")
-    
-    # Run BodyPix segmentation
-    try:
-        segmentation_mask, person_mask, fw, fh, model_w, model_h, inference_ms = _run_bodypix_segmentation(
-            content, device
-        )
-    except Exception as e:
+    if "coral_usb" not in devices:
         return {
-            "error": f"BodyPix segmentation failed: {str(e)}",
-            "faces": [],
-            "device": device,
+            "error": "MoveNet requires Coral Edge TPU, but no device found",
+            "head_box": None,
+            "keypoints": {},
         }
-    
-    if segmentation_mask is None:
-        return {
-            "faces": [],
-            "frame_width": fw,
-            "frame_height": fh,
-            "device": device,
-            "inference_ms": round(inference_ms, 1),
-            "person_detected": False,
-        }
-    
-    # Check if any person detected
-    person_detected = bool(person_mask is not None and person_mask.any())
-    person_pixel_count = int(person_mask.sum()) if person_detected else 0
-
-    # Extract faces from segmentation
-    faces = _extract_faces_from_bodypix(
-        segmentation_mask, person_mask, fw, fh,
-        model_w, model_h,
-        min_face_pixels=min_face_pixels
-    )
-    
-    # Generate embeddings if requested
-    embed_total_ms = 0.0
-    if embed_enabled and faces:
-        img = Image.open(io.BytesIO(content)).convert("RGB")
-        for face in faces:
-            box = face.get("box", {})
-            x = max(int(box.get("x", 0)), 0)
-            y = max(int(box.get("y", 0)), 0)
-            w = max(int(box.get("w", 0)), 1)
-            h = max(int(box.get("h", 0)), 1)
-            x2 = min(x + w, fw)
-            y2 = min(y + h, fh)
-            
-            if w > 10 and h > 10:
-                try:
-                    crop = img.crop((x, y, x2, y2))
-                    emb, emb_ms, emb_source = _run_face_embedding(crop, device)
-                    embed_total_ms += emb_ms
-                    face["embedding"] = emb
-                    face["embedding_source"] = emb_source
-                except Exception as e:
-                    face["embedding_error"] = str(e)
-    
-    result = {
-        "faces": faces,
-        "frame_width": fw,
-        "frame_height": fh,
-        "device": device,
-        "inference_ms": round(inference_ms, 1),
-        "embedding_ms": round(embed_total_ms, 1),
-        "person_detected": person_detected,
-        "person_pixel_count": person_pixel_count,
-    }
-    
-    # Include body parts if requested
-    if include_parts:
-        body_parts = _extract_body_parts_from_bodypix(
-            segmentation_mask, person_mask, fw, fh,
-            model_w, model_h
-        )
-        result["body_parts"] = body_parts
-    
-    return result
-
-
-@app.post("/bodypix")
-async def bodypix_full(
-    file: UploadFile = File(...),
-    device: str = Form("auto"),
-):
-    """Run full BodyPix body part segmentation.
-    
-    Returns all detected body parts with their bounding boxes.
-    Useful for debugging or advanced applications.
-    
-    Args:
-        file: Image file to analyze
-        device: 'auto', 'cpu', or 'coral_usb'
-    """
-    content = await file.read()
-    devices = _detect_devices()
-    
-    if device == "auto":
-        device = "coral_usb" if "coral_usb" in devices else "cpu"
-    if device not in devices:
-        device = "cpu"
     
     try:
-        segmentation_mask, person_mask, fw, fh, model_w, model_h, inference_ms = _run_bodypix_segmentation(
-            content, device
-        )
-    except Exception as e:
+        keypoints, head_box, fw, fh, inference_ms = _run_movenet_pose(content)
+        
+        # Filter keypoints by confidence if requested
+        if min_confidence > 0:
+            head_box = _calculate_head_box_from_keypoints(keypoints, fw, fh, min_confidence)
+        
         return {
-            "error": f"BodyPix segmentation failed: {str(e)}",
-            "body_parts": [],
-            "device": device,
-        }
-    
-    if segmentation_mask is None:
-        return {
-            "body_parts": [],
+            "head_box": head_box,
+            "keypoints": keypoints,
             "frame_width": fw,
             "frame_height": fh,
-            "device": device,
             "inference_ms": round(inference_ms, 1),
-            "person_detected": False,
+            "device": "coral_usb",
         }
-    
-    person_detected = bool(person_mask is not None and person_mask.any())
-    person_pixel_count = int(person_mask.sum()) if person_detected else 0
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {
+            "error": f"MoveNet pose estimation failed: {str(e)}",
+            "head_box": None,
+            "keypoints": {},
+        }
 
-    # Extract all body parts
-    body_parts = _extract_body_parts_from_bodypix(
-        segmentation_mask, person_mask, fw, fh,
-        model_w, model_h
-    )
-    
-    # Also extract faces separately
-    faces = _extract_faces_from_bodypix(
-        segmentation_mask, person_mask, fw, fh,
-        model_w, model_h
-    )
-    
-    return {
-        "body_parts": body_parts,
-        "faces": faces,
-        "frame_width": fw,
-        "frame_height": fh,
-        "device": device,
-        "inference_ms": round(inference_ms, 1),
-        "person_detected": person_detected,
-        "person_pixel_count": person_pixel_count,
-    }
