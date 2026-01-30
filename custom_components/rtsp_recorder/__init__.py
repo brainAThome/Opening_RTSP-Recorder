@@ -1446,28 +1446,28 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
 
         # ===== Detector Stats endpoint =====
         async def _fetch_detector_stats(url: str) -> dict[str, Any]:
-            """Fetch stats from detector service."""
+            """Fetch stats from detector service via /metrics endpoint."""
             if not url:
                 return {"error": "no_detector_url"}
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(f"{url.rstrip('/')}/stats", timeout=5) as resp:
-                        if resp.status == 404:
-                            # Stats endpoint not available, return basic info
-                            async with session.get(f"{url.rstrip('/')}/info", timeout=5) as info_resp:
-                                if info_resp.status == 200:
-                                    info = await info_resp.json()
-                                    return {
-                                        "available": True,
-                                        "devices": info.get("devices", []),
-                                        "stats_supported": False,
-                                    }
-                            return {"available": False, "error": "stats_not_supported"}
+                    # Use /metrics endpoint (always available)
+                    async with session.get(f"{url.rstrip('/')}/metrics", timeout=5) as resp:
                         if resp.status != 200:
                             return {"available": False, "error": f"http_{resp.status}"}
                         data = await resp.json()
                         data["available"] = True
-                        data["stats_supported"] = True
+                        
+                        # Also fetch /info for device list
+                        try:
+                            async with session.get(f"{url.rstrip('/')}/info", timeout=5) as info_resp:
+                                if info_resp.status == 200:
+                                    info = await info_resp.json()
+                                    data["devices"] = info.get("devices", [])
+                                    data["face_embedding"] = info.get("face_embedding", {})
+                        except Exception:
+                            pass  # /info is optional
+                        
                         return data
             except asyncio.TimeoutError:
                 return {"available": False, "error": "timeout"}
