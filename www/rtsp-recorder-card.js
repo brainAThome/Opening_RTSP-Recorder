@@ -1148,20 +1148,29 @@ class RtspRecorderCard extends HTMLElement {
         }).join('');
 
         const peopleList = people.map(p => {
-            const thumbs = (p.recent_thumbs || []).map(t =>
-                `<img src="${t}" style="width:24px; height:24px; object-fit:cover; border-radius:4px; border:1px solid #333; margin-right:4px;" />`
+            const thumbs = (p.recent_thumbs || []).slice(0, 5).map((t, idx) =>
+                `<img src="${t}" 
+                    style="width:48px; height:48px; object-fit:cover; border-radius:8px; border:2px solid #444; cursor:pointer; transition:transform 0.2s, border-color 0.2s;" 
+                    data-person-id="${p.id}" 
+                    data-thumb-idx="${idx}"
+                    title="Klicken zum Vergrößern"
+                    onmouseover="this.style.transform='scale(1.1)'; this.style.borderColor='var(--primary-color)';"
+                    onmouseout="this.style.transform='scale(1)'; this.style.borderColor='#444';"
+                />`
             ).join('');
             return `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #333;">
-                    <div>
-                        <div style="font-weight:500;">${p.name}</div>
-                        <div style="font-size:0.8em; color:#888;">Embeddings: ${p.embeddings_count}</div>
-                        ${thumbs ? `<div style="margin-top:6px; display:flex; align-items:center;">${thumbs}</div>` : ''}
+                <div class="person-card" style="background:#1a1a1a; border-radius:12px; padding:12px; margin-bottom:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <div style="flex:1;">
+                            <div style="font-weight:600; font-size:1.1em; margin-bottom:4px;">${p.name}</div>
+                            <div style="font-size:0.85em; color:#888;">📸 ${p.embeddings_count} Embeddings</div>
+                        </div>
+                        <div style="display:flex; gap:6px;">
+                            <button class="fm-btn" data-action="rename" data-id="${p.id}" style="padding:6px 12px; font-size:0.85em;">✏️</button>
+                            <button class="fm-btn-danger" data-action="delete" data-id="${p.id}" style="padding:6px 12px; font-size:0.85em;">🗑️</button>
+                        </div>
                     </div>
-                    <div style="display:flex; gap:6px;">
-                        <button class="fm-btn" data-action="rename" data-id="${p.id}" style="padding:6px 10px;">Umbenennen</button>
-                        <button class="fm-btn-danger" data-action="delete" data-id="${p.id}" style="padding:6px 10px;">Loeschen</button>
-                    </div>
+                    ${thumbs ? `<div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap;">${thumbs}</div>` : '<div style="margin-top:10px; color:#666; font-size:0.85em;">Keine Vorschaubilder</div>'}
                 </div>
             `;
         }).join('');
@@ -1170,28 +1179,59 @@ class RtspRecorderCard extends HTMLElement {
         if (!this._enrolledSampleKeys) {
             this._enrolledSampleKeys = new Set();
         }
-        const faceList = faceSamples.length
-            ? faceSamples.slice(0, 30).map((f, idx) => {
-                const match = f.match ? `${f.match.name} (${Math.round(f.match.similarity * 100)}%)` : 'Unbekannt';
+        
+        // Gruppiere Face-Samples: Unbekannt vs. Erkannt
+        const unknownFaces = faceSamples.filter(f => !f.match);
+        const knownFaces = faceSamples.filter(f => f.match);
+        
+        const renderFaceGrid = (faces, showAssignBtn = true) => {
+            if (!faces.length) return '';
+            return faces.slice(0, 20).map((f, idx) => {
+                const realIdx = faceSamples.indexOf(f);
+                const match = f.match ? `${f.match.name}` : '';
+                const similarity = f.match ? `${Math.round(f.match.similarity * 100)}%` : '';
                 const sampleKey = `${f.time_s}|${f.thumb || ''}`;
                 const isEnrolled = this._enrolledSampleKeys.has(sampleKey);
-                const thumb = f.thumb
-                    ? `<img src="${f.thumb}" style="width:48px; height:48px; object-fit:cover; border-radius:6px; border:1px solid #333; margin-right:8px;" />`
-                    : '';
+                const borderColor = isEnrolled ? '#27ae60' : (f.match ? 'var(--primary-color)' : '#555');
+                
                 return `
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #333; gap:8px; ${isEnrolled ? 'opacity:0.7;' : ''}">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            ${thumb}
-                            <div style="font-size:0.85em; color:#bbb;">
-                                t=${f.time_s}s · ${match}
-                                ${isEnrolled ? '<div style="font-size:0.75em; color:#6fdc6f;">Ausgewaehlt</div>' : ''}
-                            </div>
+                    <div class="face-sample" style="display:flex; flex-direction:column; align-items:center; width:85px; ${isEnrolled ? 'opacity:0.6;' : ''}">
+                        <div style="position:relative;">
+                            ${f.thumb 
+                                ? `<img src="${f.thumb}" style="width:70px; height:70px; object-fit:cover; border-radius:10px; border:3px solid ${borderColor}; cursor:pointer;" 
+                                    data-action="enroll" data-idx="${realIdx}" title="${showAssignBtn ? 'Klicken zum Zuweisen' : match}" />`
+                                : `<div style="width:70px; height:70px; background:#333; border-radius:10px; display:flex; align-items:center; justify-content:center;">👤</div>`
+                            }
+                            ${isEnrolled ? '<div style="position:absolute; top:-5px; right:-5px; background:#27ae60; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:12px;">✓</div>' : ''}
                         </div>
-                        <button class="fm-btn" data-action="enroll" data-idx="${idx}" style="padding:6px 10px;" ${isEnrolled ? 'disabled' : ''}>${isEnrolled ? 'Ausgewaehlt' : 'Zu Person'}</button>
+                        <div style="font-size:0.7em; color:#888; margin-top:4px; text-align:center; max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            ${match || `t=${f.time_s}s`}
+                        </div>
+                        ${similarity ? `<div style="font-size:0.65em; color:var(--primary-color);">${similarity}</div>` : ''}
                     </div>
                 `;
-            }).join('')
-            : '<div style="color:#888;">Keine Face-Samples geladen</div>';
+            }).join('');
+        };
+        
+        const unknownFacesHtml = unknownFaces.length 
+            ? `<div style="margin-bottom:15px;">
+                <div style="font-weight:500; margin-bottom:8px; color:#e74c3c;">👤 Unbekannte Gesichter (${unknownFaces.length})</div>
+                <div style="display:flex; flex-wrap:wrap; gap:8px; padding:10px; background:#1a1a1a; border-radius:10px; max-height:200px; overflow-y:auto;">
+                    ${renderFaceGrid(unknownFaces, true)}
+                </div>
+               </div>`
+            : '';
+            
+        const knownFacesHtml = knownFaces.length
+            ? `<div>
+                <div style="font-weight:500; margin-bottom:8px; color:#27ae60;">✓ Erkannte Gesichter (${knownFaces.length})</div>
+                <div style="display:flex; flex-wrap:wrap; gap:8px; padding:10px; background:#1a1a1a; border-radius:10px; max-height:150px; overflow-y:auto;">
+                    ${renderFaceGrid(knownFaces, false)}
+                </div>
+               </div>`
+            : '';
+        
+        const noFacesHtml = !faceSamples.length ? '<div style="color:#888; padding:20px; text-align:center;">Keine Face-Samples geladen.<br><small>Wähle eine Aufnahme und klicke "Analyse laden"</small></div>' : '';
 
         container.innerHTML = `
             <div style="padding:10px;">
@@ -1213,11 +1253,13 @@ class RtspRecorderCard extends HTMLElement {
                         </select>
                         <button class="fm-btn" id="btn-load-faces">Analyse laden</button>
                     </div>
-                    <div style="max-height:220px; overflow:auto; border:1px solid #333; border-radius:8px; padding:8px;">
-                        ${faceList}
-                    </div>
-                    <div style="margin-top:8px; font-size:0.8em; color:#888;">
-                        Hinweis: Embeddings werden nur gespeichert, wenn in der Analyse-Konfiguration aktiviert.
+                    
+                    ${unknownFacesHtml}
+                    ${knownFacesHtml}
+                    ${noFacesHtml}
+                    
+                    <div style="margin-top:12px; font-size:0.8em; color:#666; text-align:center;">
+                        💡 Klicke auf ein unbekanntes Gesicht um es einer Person zuzuweisen
                     </div>
                 </div>
             </div>
@@ -1276,14 +1318,70 @@ class RtspRecorderCard extends HTMLElement {
             };
         }
 
-        container.querySelectorAll('[data-action="enroll"]').forEach(btn => {
-            btn.onclick = async () => {
-                const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        // Event-Handler für Enroll (Button oder Bild-Klick)
+        container.querySelectorAll('[data-action="enroll"]').forEach(el => {
+            el.onclick = async (e) => {
+                e.preventDefault();
+                const idx = parseInt(el.getAttribute('data-idx'), 10);
                 const personId = this._selectedPersonId;
+                
+                // Wenn keine Person ausgewählt, zeige Schnellauswahl-Dialog
                 if (!personId) {
-                    this.showToast('Bitte zuerst eine Person waehlen', 'warning');
+                    const people = this._people || [];
+                    if (people.length === 0) {
+                        this.showToast('Bitte erst eine Person anlegen', 'warning');
+                        return;
+                    }
+                    
+                    // Erstelle Schnellauswahl-Popup
+                    const sample = this._analysisFaceSamples[idx];
+                    if (!sample) return;
+                    
+                    const popup = document.createElement('div');
+                    popup.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; z-index:10000;';
+                    popup.innerHTML = `
+                        <div style="background:#222; border-radius:16px; padding:20px; max-width:350px; width:90%;">
+                            <div style="text-align:center; margin-bottom:15px;">
+                                ${sample.thumb ? `<img src="${sample.thumb}" style="width:100px; height:100px; object-fit:cover; border-radius:12px; border:3px solid var(--primary-color);" />` : ''}
+                                <div style="margin-top:10px; font-weight:500;">Person zuweisen</div>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:8px; max-height:250px; overflow-y:auto;">
+                                ${people.map(p => `
+                                    <button class="quick-assign-btn" data-person-id="${p.id}" style="padding:12px; background:#333; border:none; border-radius:8px; color:#fff; cursor:pointer; text-align:left; display:flex; align-items:center; gap:10px;">
+                                        ${p.recent_thumbs && p.recent_thumbs[0] ? `<img src="${p.recent_thumbs[0]}" style="width:40px; height:40px; object-fit:cover; border-radius:6px;" />` : '<div style="width:40px; height:40px; background:#444; border-radius:6px; display:flex; align-items:center; justify-content:center;">👤</div>'}
+                                        <div>
+                                            <div style="font-weight:500;">${p.name}</div>
+                                            <div style="font-size:0.8em; color:#888;">${p.embeddings_count} Embeddings</div>
+                                        </div>
+                                    </button>
+                                `).join('')}
+                            </div>
+                            <button class="close-popup-btn" style="margin-top:15px; width:100%; padding:10px; background:#555; border:none; border-radius:8px; color:#fff; cursor:pointer;">Abbrechen</button>
+                        </div>
+                    `;
+                    
+                    document.body.appendChild(popup);
+                    
+                    // Event-Handler für Schnellauswahl
+                    popup.querySelectorAll('.quick-assign-btn').forEach(btn => {
+                        btn.onclick = async () => {
+                            const selectedId = btn.getAttribute('data-person-id');
+                            document.body.removeChild(popup);
+                            if (sample.embedding) {
+                                await this.addEmbeddingToPerson(selectedId, sample.embedding, sample.thumb || null);
+                            } else {
+                                this.showToast('Kein Embedding im Sample vorhanden', 'warning');
+                            }
+                        };
+                        btn.onmouseover = () => btn.style.background = '#444';
+                        btn.onmouseout = () => btn.style.background = '#333';
+                    });
+                    
+                    popup.querySelector('.close-popup-btn').onclick = () => document.body.removeChild(popup);
+                    popup.onclick = (e) => { if (e.target === popup) document.body.removeChild(popup); };
                     return;
                 }
+                
                 const sample = this._analysisFaceSamples[idx];
                 if (!sample || !sample.embedding) {
                     this.showToast('Kein Embedding im Sample vorhanden', 'warning');
@@ -1874,12 +1972,138 @@ class RtspRecorderCard extends HTMLElement {
                 <button class="fm-btn-danger" id="btn-refresh-storage" style="margin-top:20px;">
                     Aktualisieren
                 </button>
+                
+                <!-- Lösch-Bereich -->
+                <div style="margin-top:30px;padding-top:20px;border-top:1px solid #444;">
+                    <div style="font-weight:500;margin-bottom:15px;color:#e74c3c;">🗑️ Aufnahmen löschen</div>
+                    
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <label style="min-width:120px;">Kamera:</label>
+                            <select id="delete-camera" style="flex:1;padding:8px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;">
+                                <option value="">Alle Kameras</option>
+                                ${Object.keys(camCounts).map(cam => `<option value="${cam}">${cam.replace(/_/g, ' ')}</option>`).join('')}
+                            </select>
+                        </div>
+                        
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <label style="min-width:120px;">Älter als:</label>
+                            <select id="delete-age" style="flex:1;padding:8px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;">
+                                <option value="0">Alle (kein Filter)</option>
+                                <option value="1">Älter als 1 Tag</option>
+                                <option value="3">Älter als 3 Tage</option>
+                                <option value="7">Älter als 1 Woche</option>
+                                <option value="14">Älter als 2 Wochen</option>
+                                <option value="30">Älter als 1 Monat</option>
+                                <option value="90">Älter als 3 Monate</option>
+                            </select>
+                        </div>
+                        
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <label style="min-width:120px;"></label>
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" id="delete-analysis" style="width:18px;height:18px;">
+                                <span>Auch Analysen löschen</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top:20px;display:flex;gap:10px;">
+                        <button class="fm-btn-danger" id="btn-delete-preview" style="flex:1;background:#555;">
+                            👁️ Vorschau
+                        </button>
+                        <button class="fm-btn-danger" id="btn-delete-all" style="flex:1;background:#c0392b;">
+                            🗑️ Löschen
+                        </button>
+                    </div>
+                    
+                    <div id="delete-result" style="margin-top:15px;padding:10px;border-radius:4px;display:none;"></div>
+                </div>
             </div>
         `;
         
         container.querySelector('#btn-refresh-storage').onclick = () => {
             this.loadData();
             this.renderStorageTab(container);
+        };
+        
+        // Delete Preview Button
+        container.querySelector('#btn-delete-preview').onclick = async () => {
+            const camera = container.querySelector('#delete-camera').value;
+            const age = parseInt(container.querySelector('#delete-age').value);
+            const includeAnalysis = container.querySelector('#delete-analysis').checked;
+            const resultDiv = container.querySelector('#delete-result');
+            
+            // Count affected files
+            let affectedCount = 0;
+            const cutoffDate = age > 0 ? new Date(Date.now() - age * 24 * 60 * 60 * 1000) : null;
+            
+            if (this._events) {
+                this._events.forEach(e => {
+                    if (camera && e.cam !== camera) return;
+                    if (cutoffDate && e.date >= cutoffDate) return;
+                    affectedCount++;
+                });
+            }
+            
+            resultDiv.style.display = 'block';
+            resultDiv.style.background = '#2c3e50';
+            resultDiv.innerHTML = `
+                <div style="font-weight:500;margin-bottom:5px;">📊 Vorschau:</div>
+                <div>• ${affectedCount} Aufnahme(n) würden gelöscht</div>
+                ${includeAnalysis ? '<div>• Zugehörige Analysen würden auch gelöscht</div>' : ''}
+                ${camera ? `<div>• Nur Kamera: ${camera.replace(/_/g, ' ')}</div>` : '<div>• Alle Kameras</div>'}
+                ${age > 0 ? `<div>• Älter als ${age} Tag(e)</div>` : '<div>• Alle Aufnahmen (kein Altersfilter!)</div>'}
+            `;
+        };
+        
+        // Delete Button
+        container.querySelector('#btn-delete-all').onclick = async () => {
+            const camera = container.querySelector('#delete-camera').value;
+            const age = parseInt(container.querySelector('#delete-age').value);
+            const includeAnalysis = container.querySelector('#delete-analysis').checked;
+            const resultDiv = container.querySelector('#delete-result');
+            
+            // Confirmation dialog
+            const msg = camera 
+                ? `Wirklich alle Aufnahmen von "${camera.replace(/_/g, ' ')}" löschen?`
+                : 'Wirklich ALLE Aufnahmen löschen?';
+            
+            if (!confirm(msg + (age === 0 ? '\n\n⚠️ ACHTUNG: Kein Altersfilter gesetzt!' : ''))) {
+                return;
+            }
+            
+            resultDiv.style.display = 'block';
+            resultDiv.style.background = '#2c3e50';
+            resultDiv.innerHTML = '<div style="text-align:center;">🔄 Lösche Aufnahmen...</div>';
+            
+            try {
+                await this._hass.callService('rtsp_recorder', 'delete_all_recordings', {
+                    camera: camera || undefined,
+                    older_than_days: age,
+                    include_analysis: includeAnalysis,
+                    confirm: true
+                });
+                
+                resultDiv.style.background = '#27ae60';
+                resultDiv.innerHTML = `
+                    <div style="font-weight:500;">✅ Erfolgreich gelöscht!</div>
+                    <div style="margin-top:5px;">Aktualisiere Ansicht...</div>
+                `;
+                
+                // Reload data after 1 second
+                setTimeout(() => {
+                    this.loadData();
+                    this.renderStorageTab(container);
+                }, 1000);
+                
+            } catch (e) {
+                resultDiv.style.background = '#c0392b';
+                resultDiv.innerHTML = `
+                    <div style="font-weight:500;">❌ Fehler:</div>
+                    <div>${e.message || 'Unbekannter Fehler'}</div>
+                `;
+            }
         };
     }
 

@@ -266,13 +266,14 @@ def _run_detection(
     return detections, (frame_width, frame_height)
 
 
-def _annotate_frame(frame_path: str, detections: list[dict[str, Any]], out_path: str) -> None:
+def _annotate_frame(frame_path: str, detections: list[dict[str, Any]], out_path: str, faces: list[dict[str, Any]] = None) -> None:
     if Image is None or ImageDraw is None:
         raise RuntimeError("Pillow not available")
 
     img = Image.open(frame_path).convert("RGB")
     draw = ImageDraw.Draw(img)
 
+    # Draw object detections (red boxes)
     for det in detections:
         box = det.get("box") or {}
         x = int(box.get("x", 0))
@@ -294,6 +295,36 @@ def _annotate_frame(frame_path: str, detections: list[dict[str, Any]], out_path:
         draw.rectangle([tx1, ty1, tx2, ty2], fill=(0, 0, 0))
         draw.text((tx1 + 3, ty1 + 2), text, fill=(255, 255, 255))
 
+    # Draw face detections (orange boxes)
+    if faces:
+        for face in faces:
+            box = face.get("box") or {}
+            x = int(box.get("x", 0))
+            y = int(box.get("y", 0))
+            w = int(box.get("w", 0))
+            h = int(box.get("h", 0))
+            score = face.get("score", 0)
+            match = face.get("match")
+            
+            # Create label: person name if matched, otherwise "face"
+            if match and match.get("name"):
+                label = match["name"]
+            else:
+                label = "face"
+            text = f"{label} {score:.2f}" if isinstance(score, (int, float)) else str(label)
+
+            x2 = max(x + w, x + 1)
+            y2 = max(y + h, y + 1)
+            # Orange color for faces: RGB(255, 165, 0)
+            draw.rectangle([x, y, x2, y2], outline=(255, 165, 0), width=3)
+
+            text_w = max(8 * len(text), 20)
+            text_h = 16
+            tx1, ty1 = x, max(0, y - text_h)
+            tx2, ty2 = x + text_w + 6, y
+            draw.rectangle([tx1, ty1, tx2, ty2], fill=(255, 165, 0))
+            draw.text((tx1 + 3, ty1 + 2), text, fill=(0, 0, 0))
+
     img.save(out_path, "JPEG", quality=90)
 
 
@@ -313,8 +344,9 @@ async def _render_annotated_video(
 
     for idx, frame_path in enumerate(frames):
         dets = detections[idx].get("objects", []) if idx < len(detections) else []
+        faces = detections[idx].get("faces", []) if idx < len(detections) else []
         out_path = os.path.join(annotated_dir, f"frame_{idx:04d}.jpg")
-        await asyncio.to_thread(_annotate_frame, frame_path, dets, out_path)
+        await asyncio.to_thread(_annotate_frame, frame_path, dets, out_path, faces)
 
     output_video = os.path.join(output_dir, "annotated.mp4")
     fps = 1 / max(1, int(interval_s))
@@ -807,6 +839,11 @@ async def analyze_recording(
             except Exception as e:
                 result["face_detection_error"] = str(e)
 
+        # Mark analysis as completed successfully
+        result["status"] = "completed"
+        result["completed_utc"] = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        result["processing_time_seconds"] = round(time.monotonic() - start_time, 2)
+        
         return result
     except asyncio.CancelledError:
         result["status"] = "cancelled"
