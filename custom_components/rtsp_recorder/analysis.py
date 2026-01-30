@@ -652,6 +652,28 @@ async def analyze_recording(
                                         if bodypix_faces:
                                             faces = bodypix_faces
                                             _LOGGER.debug("BodyPix fallback found %d face(s)", len(faces))
+                                        
+                                        # If no faces but person detected, estimate head region from person box
+                                        if not faces and bodypix_data.get("person_detected") and idx < len(detections):
+                                            person_boxes = [o for o in (detections[idx].get("objects") or []) if o.get("label") == "person"]
+                                            for pobj in person_boxes[:1]:  # Only first person
+                                                pbox = pobj.get("box") or {}
+                                                px = int(pbox.get("x", 0))
+                                                py = int(pbox.get("y", 0))
+                                                pw = int(pbox.get("w", 0))
+                                                ph = int(pbox.get("h", 0))
+                                                if pw > 50 and ph > 50:
+                                                    # Estimate head as top 25% of person box
+                                                    head_h = int(ph * 0.25)
+                                                    head_w = int(pw * 0.4)  # Head narrower than shoulders
+                                                    head_x = px + int(pw * 0.3)  # Center horizontally
+                                                    head_y = py
+                                                    faces.append({
+                                                        "score": 0.1,  # Low confidence - estimated
+                                                        "box": {"x": head_x, "y": head_y, "w": head_w, "h": head_h},
+                                                        "method": "head_estimate",
+                                                    })
+                                                    _LOGGER.debug("Using head estimate from person box")
                             except Exception as bodypix_err:
                                 _LOGGER.debug("BodyPix fallback failed: %s", bodypix_err)
 
