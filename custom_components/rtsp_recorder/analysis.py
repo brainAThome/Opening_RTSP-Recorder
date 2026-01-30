@@ -635,8 +635,72 @@ async def analyze_recording(
                             if extra_faces:
                                 faces = extra_faces
 
-                        # Note: MoveNet and head_estimate fallbacks removed to reduce false positives
-                        # Only real face detection is used - this prevents ghost faces from shadows/objects
+                        # MoveNet fallback: Use pose estimation for head detection if no faces found
+                        # Only use if keypoints are actually detected AND head is within a person box
+                        if not faces and idx < len(detections):
+                            person_boxes = [o for o in (detections[idx].get("objects") or []) if o.get("label") == "person"]
+                            if person_boxes:
+                                try:
+                                    movenet_form = aiohttp.FormData()
+                                    movenet_form.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
+                                    movenet_form.add_field("min_confidence", "0.3")  # Higher threshold to reduce false positives
+                                    async with session.post(f"{face_url.rstrip('/')}/head_movenet", data=movenet_form, timeout=30) as movenet_resp:
+                                        if movenet_resp.status == 200:
+                                            movenet_data = await movenet_resp.json()
+                                            head_box_data = movenet_data.get("head_box")
+                                            # Only use MoveNet result if at least 3 keypoints were found (nose + eyes or ears)
+                                            keypoints_used = head_box_data.get("keypoints_used", 0) if head_box_data else 0
+                                            if head_box_data and head_box_data.get("box") and keypoints_used >= 3:
+                                                hbox = head_box_data["box"]
+                                                hx, hy = int(hbox.get("x", 0)), int(hbox.get("y", 0))
+                                                hw, hh = int(hbox.get("w", 0)), int(hbox.get("h", 0))
+                                                head_center_x = hx + hw // 2
+                                                head_center_y = hy + hh // 2
+                                                
+                                                # Verify head is within a detected person box
+                                                head_in_person = False
+                                                for pobj in person_boxes:
+                                                    pbox = pobj.get("box") or {}
+                                                    px, py = int(pbox.get("x", 0)), int(pbox.get("y", 0))
+                                                    pw, ph = int(pbox.get("w", 0)), int(pbox.get("h", 0))
+                                                    if px <= head_center_x <= px + pw and py <= head_center_y <= py + ph:
+                                                        head_in_person = True
+                                                        break
+                                                
+                                                if head_in_person:
+                                                    head_face = {
+                                                        "score": head_box_data.get("confidence", 0.5),
+                                                        "box": hbox,
+                                                        "method": "movenet",
+                                                        "keypoints_used": keypoints_used,
+                                                    }
+                                                    
+                                                    # Generate embedding
+                                                    if frame_img is not None and embed_flag == "1":
+                                                        try:
+                                                            hx2 = min(hx + hw, frame_img.width)
+                                                            hy2 = min(hy + hh, frame_img.height)
+                                                            head_crop = frame_img.crop((hx, hy, hx2, hy2))
+                                                            head_buf = io.BytesIO()
+                                                            head_crop.save(head_buf, format="JPEG", quality=85)
+                                                            head_bytes = head_buf.getvalue()
+                                                            
+                                                            embed_form = aiohttp.FormData()
+                                                            embed_form.add_field("file", head_bytes, filename="head.jpg", content_type="image/jpeg")
+                                                            embed_form.add_field("device", device)
+                                                            async with session.post(f"{face_url.rstrip('/')}/embed_face", data=embed_form, timeout=30) as embed_resp:
+                                                                if embed_resp.status == 200:
+                                                                    embed_data = await embed_resp.json()
+                                                                    if embed_data.get("embedding"):
+                                                                        head_face["embedding"] = embed_data["embedding"]
+                                                                        head_face["embedding_source"] = "movenet"
+                                                        except Exception as embed_err:
+                                                            _LOGGER.debug("MoveNet head embedding failed: %s", embed_err)
+                                                    
+                                                    faces.append(head_face)
+                                                    _LOGGER.debug("MoveNet detected head with %d keypoints (validated in person box)", keypoints_used)
+                                except Exception as movenet_err:
+                                    _LOGGER.debug("MoveNet fallback failed: %s", movenet_err)
 
                         if frame_w and frame_h:
                             result["frame_width"] = frame_w
