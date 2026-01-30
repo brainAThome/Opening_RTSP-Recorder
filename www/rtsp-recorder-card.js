@@ -1340,29 +1340,38 @@ class RtspRecorderCard extends HTMLElement {
                     const popup = document.createElement('div');
                     popup.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; z-index:10000;';
                     popup.innerHTML = `
-                        <div style="background:#222; border-radius:16px; padding:20px; max-width:350px; width:90%;">
+                        <div style="background:#222; border-radius:16px; padding:20px; max-width:400px; width:90%;">
                             <div style="text-align:center; margin-bottom:15px;">
                                 ${sample.thumb ? `<img src="${sample.thumb}" style="width:100px; height:100px; object-fit:cover; border-radius:12px; border:3px solid var(--primary-color);" />` : ''}
                                 <div style="margin-top:10px; font-weight:500;">Person zuweisen</div>
                             </div>
-                            <div style="display:flex; flex-direction:column; gap:8px; max-height:250px; overflow-y:auto;">
+                            <div style="display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto;">
                                 ${people.map(p => `
-                                    <button class="quick-assign-btn" data-person-id="${p.id}" style="padding:12px; background:#333; border:none; border-radius:8px; color:#fff; cursor:pointer; text-align:left; display:flex; align-items:center; gap:10px;">
-                                        ${p.recent_thumbs && p.recent_thumbs[0] ? `<img src="${p.recent_thumbs[0]}" style="width:40px; height:40px; object-fit:cover; border-radius:6px;" />` : '<div style="width:40px; height:40px; background:#444; border-radius:6px; display:flex; align-items:center; justify-content:center;">👤</div>'}
-                                        <div>
-                                            <div style="font-weight:500;">${p.name}</div>
-                                            <div style="font-size:0.8em; color:#888;">${p.embeddings_count} Embeddings</div>
-                                        </div>
-                                    </button>
+                                    <div style="display:flex; gap:4px;">
+                                        <button class="quick-assign-btn" data-person-id="${p.id}" style="flex:1; padding:10px; background:#333; border:none; border-radius:8px 0 0 8px; color:#fff; cursor:pointer; text-align:left; display:flex; align-items:center; gap:10px;">
+                                            ${p.recent_thumbs && p.recent_thumbs[0] ? `<img src="${p.recent_thumbs[0]}" style="width:36px; height:36px; object-fit:cover; border-radius:6px;" />` : '<div style="width:36px; height:36px; background:#444; border-radius:6px; display:flex; align-items:center; justify-content:center;">👤</div>'}
+                                            <div>
+                                                <div style="font-weight:500;">${p.name}</div>
+                                                <div style="font-size:0.75em; color:#888;">${p.embeddings_count} Samples</div>
+                                            </div>
+                                        </button>
+                                        <button class="negative-sample-btn" data-person-id="${p.id}" data-person-name="${p.name}" style="padding:10px 12px; background:#663333; border:none; border-radius:0 8px 8px 0; color:#fff; cursor:pointer; font-size:0.9em;" title="Das ist NICHT ${p.name}">
+                                            ❌
+                                        </button>
+                                    </div>
                                 `).join('')}
                             </div>
-                            <button class="close-popup-btn" style="margin-top:15px; width:100%; padding:10px; background:#555; border:none; border-radius:8px; color:#fff; cursor:pointer;">Abbrechen</button>
+                            <div style="margin-top:12px; padding:10px; background:#333; border-radius:8px; font-size:0.8em; color:#aaa;">
+                                💡 <strong>Zuweisen:</strong> Links klicken<br>
+                                ❌ <strong>Ausschließen:</strong> Rechts klicken (Negativ-Sample)
+                            </div>
+                            <button class="close-popup-btn" style="margin-top:12px; width:100%; padding:10px; background:#555; border:none; border-radius:8px; color:#fff; cursor:pointer;">Abbrechen</button>
                         </div>
                     `;
                     
                     document.body.appendChild(popup);
                     
-                    // Event-Handler für Schnellauswahl
+                    // Event-Handler für Schnellauswahl (Positiv)
                     popup.querySelectorAll('.quick-assign-btn').forEach(btn => {
                         btn.onclick = async () => {
                             const selectedId = btn.getAttribute('data-person-id');
@@ -1375,6 +1384,22 @@ class RtspRecorderCard extends HTMLElement {
                         };
                         btn.onmouseover = () => btn.style.background = '#444';
                         btn.onmouseout = () => btn.style.background = '#333';
+                    });
+                    
+                    // Event-Handler für Negativ-Samples
+                    popup.querySelectorAll('.negative-sample-btn').forEach(btn => {
+                        btn.onclick = async () => {
+                            const personId = btn.getAttribute('data-person-id');
+                            const personName = btn.getAttribute('data-person-name');
+                            document.body.removeChild(popup);
+                            if (sample.embedding) {
+                                await this.addNegativeSample(personId, personName, sample.embedding, sample.thumb || null);
+                            } else {
+                                this.showToast('Kein Embedding im Sample vorhanden', 'warning');
+                            }
+                        };
+                        btn.onmouseover = () => btn.style.background = '#884444';
+                        btn.onmouseout = () => btn.style.background = '#663333';
                     });
                     
                     popup.querySelector('.close-popup-btn').onclick = () => document.body.removeChild(popup);
@@ -1486,6 +1511,37 @@ class RtspRecorderCard extends HTMLElement {
             }
         } catch (e) {
             this.showToast('Fehler beim Embedding: ' + (e.message || e), 'error');
+        }
+    }
+
+    async addNegativeSample(personId, personName, embedding, thumb = null) {
+        // Fügt ein Negativ-Sample hinzu: "Das ist NICHT diese Person"
+        try {
+            const payload = {
+                type: 'rtsp_recorder/add_negative_sample',
+                person_id: String(personId),
+                embedding,
+                thumb
+            };
+            await this._hass.callWS(payload);
+            
+            // Markiere das Sample als bearbeitet
+            if (this._analysisFaceSamples) {
+                const sample = this._analysisFaceSamples.find(s => s.embedding === embedding && s.thumb === thumb);
+                if (sample) {
+                    const key = `${sample.time_s}|${sample.thumb || ''}`;
+                    if (!this._enrolledSampleKeys) this._enrolledSampleKeys = new Set();
+                    this._enrolledSampleKeys.add(key);
+                }
+            }
+            
+            await this.refreshPeople();
+            this.showToast(`Negativ-Sample fuer "${personName}" gespeichert`, 'success');
+            if (this._activeTab === 'people') {
+                this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
+            }
+        } catch (e) {
+            this.showToast('Fehler beim Negativ-Sample: ' + (e.message || e), 'error');
         }
     }
 

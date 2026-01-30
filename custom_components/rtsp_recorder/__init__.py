@@ -1953,6 +1953,75 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
 
         websocket_api.async_register_command(hass, ws_add_person_embedding)
 
+        # WebSocket API: Add negative sample (mark face as "NOT this person")
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "rtsp_recorder/add_negative_sample",
+                vol.Required("person_id"): str,
+                vol.Required("embedding"): list,
+                vol.Optional("thumb"): str,
+                vol.Optional("source"): str,
+            }
+        )
+        @websocket_api.async_response
+        async def ws_add_negative_sample(hass, connection, msg):
+            """Add a negative sample to a person (mark as 'NOT this person')."""
+            log_to_file(f"INIT: add_negative_sample called for person_id={msg.get('person_id')}")
+            try:
+                person_id = str(msg.get("person_id"))
+                embedding = msg.get("embedding") or []
+                thumb = msg.get("thumb")
+                source = msg.get("source", "manual")
+                
+                try:
+                    embedding = [float(v) for v in embedding]
+                except Exception:
+                    connection.send_error(msg["id"], "invalid_embedding", "Embedding ungueltig")
+                    return
+                
+                embedding = _normalize_embedding_simple(embedding)
+                if not embedding:
+                    connection.send_error(msg["id"], "invalid_embedding", "Embedding ungueltig")
+                    return
+                
+                data = await _load_people_db(people_db_path)
+                people = data.get("people", [])
+                updated = None
+                
+                for p in people:
+                    if str(p.get("id")) == person_id:
+                        entry = {
+                            "vector": embedding,
+                            "source": source,
+                            "created_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+                        }
+                        if thumb:
+                            entry["thumb"] = thumb
+                        p.setdefault("negative_embeddings", []).append(entry)
+                        updated = p
+                        break
+                
+                if not updated:
+                    connection.send_error(msg["id"], "not_found", "Person nicht gefunden")
+                    return
+                
+                await _save_people_db(people_db_path, data)
+                
+                neg_count = len(updated.get("negative_embeddings", []))
+                log_to_file(f"INIT: Added negative sample to {updated.get('name')} (total: {neg_count})")
+                
+                connection.send_result(msg["id"], {
+                    "success": True,
+                    "person_id": person_id,
+                    "negative_count": neg_count
+                })
+                
+            except Exception as exc:
+                log_to_file(f"INIT: add_negative_sample ERROR: {type(exc).__name__}: {exc}")
+                connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
+
+        websocket_api.async_register_command(hass, ws_add_negative_sample)
+
         # WebSocket API: Set Analysis Config (updates config entry)
         @websocket_api.websocket_command(
             {

@@ -142,20 +142,48 @@ def _compute_centroid(embeddings: list) -> list[float] | None:
     return centroid
 
 
+def _check_negative_samples(embedding: list[float], person: dict[str, Any], neg_threshold: float = 0.75) -> bool:
+    """Check if embedding matches any negative samples for this person.
+    
+    Returns True if the embedding is similar to a negative sample (should be rejected).
+    """
+    negative_samples = person.get("negative_embeddings", [])
+    if not negative_samples:
+        return False
+    
+    for neg in negative_samples:
+        if isinstance(neg, dict):
+            neg = neg.get("vector", [])
+        neg_list = _safe_float_list(neg)
+        if not neg_list:
+            continue
+        sim = _cosine_similarity(embedding, neg_list)
+        if sim >= neg_threshold:
+            return True  # This face is similar to a "NOT this person" sample
+    
+    return False
+
+
 def _match_face(embedding: list[float], people: list[dict[str, Any]], threshold: float) -> dict[str, Any] | None:
     """Match a face embedding against people database using centroids.
     
     Uses pre-computed centroids for faster matching. Falls back to
     comparing against all embeddings if no centroid is available.
+    
+    Also checks negative samples to prevent false matches.
     """
     if not embedding or not people:
         return None
-    best = None
-    best_score = -1.0
+    
+    candidates = []
     
     for person in people:
         p_id = person.get("id")
         p_name = person.get("name")
+        
+        # Check negative samples first - if this face matches a "NOT this person" sample, skip
+        if _check_negative_samples(embedding, person):
+            continue  # Skip this person due to negative sample match
         
         # Try centroid first (faster, more robust)
         centroid = person.get("centroid")
@@ -163,12 +191,16 @@ def _match_face(embedding: list[float], people: list[dict[str, Any]], threshold:
             centroid_list = _safe_float_list(centroid)
             if centroid_list:
                 score = _cosine_similarity(embedding, centroid_list)
-                if score > best_score:
-                    best_score = score
-                    best = {"person_id": p_id, "name": p_name, "similarity": round(float(score), 4)}
+                if score >= threshold:
+                    candidates.append({
+                        "person_id": p_id, 
+                        "name": p_name, 
+                        "similarity": round(float(score), 4)
+                    })
                 continue  # Skip individual embeddings if centroid exists
         
         # Fallback: compare against all embeddings (old method)
+        best_emb_score = -1.0
         for emb in person.get("embeddings", []) or []:
             if isinstance(emb, dict):
                 emb = emb.get("vector", [])
@@ -176,12 +208,20 @@ def _match_face(embedding: list[float], people: list[dict[str, Any]], threshold:
             if not emb_list:
                 continue
             score = _cosine_similarity(embedding, emb_list)
-            if score > best_score:
-                best_score = score
-                best = {"person_id": p_id, "name": p_name, "similarity": round(float(score), 4)}
+            if score > best_emb_score:
+                best_emb_score = score
+        
+        if best_emb_score >= threshold:
+            candidates.append({
+                "person_id": p_id,
+                "name": p_name,
+                "similarity": round(float(best_emb_score), 4)
+            })
     
-    if best and best_score >= float(threshold):
-        return best
+    # Return the best candidate (highest similarity)
+    if candidates:
+        candidates.sort(key=lambda x: x["similarity"], reverse=True)
+        return candidates[0]
     return None
 
 
