@@ -1806,8 +1806,11 @@ class RtspRecorderCard extends HTMLElement {
             ctx.strokeStyle = '#ff9800';
             ctx.fillStyle = '#ff9800';
             ctx.strokeRect(x, y, w, h);
+            // Fix: Use match.similarity for recognized faces, face.score for unknown
             const matchName = face.match && face.match.name ? face.match.name : 'Unbekannt';
-            const score = face.score != null ? Math.round(face.score * 100) + '%' : '';
+            const score = face.match && face.match.similarity != null 
+                ? Math.round(face.match.similarity * 100) + '%' 
+                : (face.score != null ? Math.round(face.score * 100) + '%' : '');
             const label = score ? `${matchName} ${score}` : matchName;
             ctx.fillText(label, x + 2, y - 4);
         });
