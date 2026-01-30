@@ -666,7 +666,7 @@ async def analyze_recording(
                                                     # Estimate head/face region from person box
                                                     # Face is taller than wide, offset down to include chin
                                                     head_h = int(ph * 0.40)  # 40% of person height
-                                                    head_w = int(pw * 0.40)  # 40% width (narrower for side profiles)
+                                                    head_w = int(pw * 0.55)  # 55% width (wider for side profiles)
                                                     head_x = px + int((pw - head_w) / 2)  # Center horizontally
                                                     head_y = py + int(ph * 0.05)  # Start 5% below top to center face
                                                     
