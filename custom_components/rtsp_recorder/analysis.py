@@ -666,7 +666,7 @@ async def analyze_recording(
                                                     # Estimate head as top 25% of person box
                                                     head_h = int(ph * 0.25)
                                                     head_w = int(pw * 0.4)  # Head narrower than shoulders
-                                                    head_x = px + int(pw * 0.3)  # Center horizontally
+                                                    head_x = px + int((pw - head_w) / 2)  # Center horizontally
                                                     head_y = py
                                                     
                                                     head_face = {
