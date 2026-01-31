@@ -205,24 +205,28 @@ flowchart TB
         IMG["Frame from Video<br/>or Camera"]
     end
     
-    subgraph Stage1["Stage 1: Object Detection"]
+    subgraph Stage1["Stage 1: Object Detection (MobileDet)"]
         MD["MobileDet SSD<br/>320x320 input"]
         MD_OUT["Bounding Boxes<br/>+ Labels + Confidence"]
     end
     
-    subgraph Stage2["Stage 2: Face Detection"]
-        CROP["Crop Person<br/>Bounding Box"]
+    subgraph Stage2["Stage 2: Person Detection (MobileDet, label=person)"]
+        PERSON_FILTER["Filter: label=person"]
+        PERSON_BOX["Person Bounding Box"]
+    end
+    
+    subgraph Stage3["Stage 3: Face Detection (MobileNet V2)"]
         FD["MobileNet V2 Face<br/>320x320 input"]
         FD_OUT["Face Boxes<br/>+ Confidence"]
     end
     
-    subgraph Stage3["Stage 3: Face Embedding"]
+    subgraph Stage4["Stage 4: Face Embedding (EfficientNet-EdgeTPU-S)"]
         FCROP["Crop Face<br/>+ Padding"]
         FE["EfficientNet-EdgeTPU-S<br/>224x224 input"]
         FE_OUT["1280-dim Embedding<br/>Vector"]
     end
     
-    subgraph Stage4["Stage 4: Pose (Optional)"]
+    subgraph Stage5["Stage 5: Pose (Optional, MoveNet)"]
         MN["MoveNet Lightning<br/>192x192 input"]
         MN_OUT["17 Keypoints<br/>nose, eyes, ears..."]
     end
@@ -237,8 +241,9 @@ flowchart TB
     
     IMG --> MD
     MD --> MD_OUT
-    MD_OUT -->|"label=person"| CROP
-    CROP --> FD
+    MD_OUT --> PERSON_FILTER
+    PERSON_FILTER --> PERSON_BOX
+    PERSON_BOX --> FD
     FD --> FD_OUT
     FD_OUT --> FCROP
     FCROP --> FE
@@ -254,6 +259,7 @@ flowchart TB
     NEG --> RESULT
     
     style MD fill:#e1f5fe
+    style PERSON_FILTER fill:#b3e5fc
     style FD fill:#e8f5e9
     style FE fill:#fff3e0
     style MN fill:#fce4ec
