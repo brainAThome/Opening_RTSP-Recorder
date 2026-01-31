@@ -338,6 +338,15 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                             cam_specific_objects = config_data.get(cam_objects_key, [])
                             objects_to_use = cam_specific_objects if cam_specific_objects else analysis_objects
 
+                            # v1.0.7: Use camera-specific thresholds if configured (0 = use global)
+                            cam_detector_conf = config_data.get(f"detector_confidence_{cam_name}", 0)
+                            cam_face_conf = config_data.get(f"face_confidence_{cam_name}", 0)
+                            cam_face_threshold = config_data.get(f"face_match_threshold_{cam_name}", 0)
+                            
+                            detector_conf_to_use = cam_detector_conf if cam_detector_conf > 0 else analysis_detector_confidence
+                            face_conf_to_use = cam_face_conf if cam_face_conf > 0 else analysis_face_confidence
+                            face_threshold_to_use = cam_face_threshold if cam_face_threshold > 0 else analysis_face_match_threshold
+
                             people_data = await _load_people_db(people_db_path)
                             people = people_data.get("people", [])
                             auto_device = await _resolve_auto_device()
@@ -349,10 +358,10 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                                 interval_s=analysis_frame_interval,
                                 perf_snapshot=perf_snapshot,
                                 detector_url=analysis_detector_url,
-                                detector_confidence=analysis_detector_confidence,
+                                detector_confidence=detector_conf_to_use,
                                 face_enabled=analysis_face_enabled,
-                                face_confidence=analysis_face_confidence,
-                                face_match_threshold=analysis_face_match_threshold,
+                                face_confidence=face_conf_to_use,
+                                face_match_threshold=face_threshold_to_use,
                                 face_store_embeddings=analysis_face_store_embeddings,
                                 people_db=people,
                                 face_detector_url=analysis_detector_url,

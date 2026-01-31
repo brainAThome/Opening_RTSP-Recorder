@@ -111,6 +111,10 @@
           "snapshot_delay": "📸 Snapshot-Verzögerung (Sekunden)",
           "rtsp_url": "🔗 RTSP-Stream (optional)",
           "camera_retention": "🗑️ Eigene Aufbewahrung (Stunden)",
+          "camera_objects": "🎯 Objekte für diese Kamera",
+          "camera_detector_confidence": "📊 Erkennungs-Schwelle",
+          "camera_face_confidence": "👁️ Gesichts-Erkennungsschwelle",
+          "camera_face_match_threshold": "🎚️ Gesichts-Matching-Schwelle",
           "configure_another": "🔄 Weitere Kamera konfigurieren?"
         },
         "data_description": {
@@ -119,6 +123,10 @@
           "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung - längere Zeit = besseres Bild",
           "rtsp_url": "Falls gesetzt, wird direkt über diesen RTSP-Stream aufgenommen (statt camera.record)",
           "camera_retention": "0 = Globale Tage verwenden, sonst Stunden für diese Kamera",
+          "camera_objects": "Leer = Globale Objekte. Sonst: Nur diese Objekte analysieren",
+          "camera_detector_confidence": "0 = Global. Mindest-Konfidenz für Objekterkennung (0.1-0.9)",
+          "camera_face_confidence": "0 = Global. Mindest-Konfidenz für Gesichtserkennung (empfohlen: 0.2)",
+          "camera_face_match_threshold": "0 = Global. Schwelle für Gesichts-Matching (empfohlen: 0.35)",
           "configure_another": "Aktivieren um danach direkt eine weitere Kamera einzurichten"
         }
       },
