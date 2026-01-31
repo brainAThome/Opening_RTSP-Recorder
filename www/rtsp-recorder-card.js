@@ -1207,7 +1207,7 @@ class RtspRecorderCard extends HTMLElement {
                             ${match || `t=${f.time_s}s`}
                         </div>
                         ${similarity ? `<div style="font-size:0.65em; color:var(--primary-color);">${similarity}</div>` : ''}
-                        ${showAssignBtn ? `<button class="fm-btn-small" data-action="no-face" data-idx="${realIdx}" style="margin-top:12px; background:#e74c3c; color:#fff; border:none; border-radius:8px; padding:7px 14px; font-size:0.95em; font-weight:bold; cursor:pointer; box-shadow:0 2px 8px #0003; letter-spacing:0.5px; transition:background 0.2s;">✖ Kein Gesicht</button>` : ''}
+                        ${showAssignBtn ? `<button class="fm-btn-small" data-action="no-face" data-idx="${realIdx}" title="Kein Gesicht - Sample entfernen" style="margin-top:3px; background:#e74c3c; color:#fff; border:none; border-radius:4px; padding:2px 6px; font-size:0.65em; cursor:pointer;">✖</button>` : ''}
                     </div>
                 `;
             }).join('');
