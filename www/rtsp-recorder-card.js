@@ -1202,12 +1202,12 @@ class RtspRecorderCard extends HTMLElement {
                                 : `<div style="width:70px; height:70px; background:#333; border-radius:10px; display:flex; align-items:center; justify-content:center;">👤</div>`
                             }
                             ${isEnrolled ? '<div style="position:absolute; top:-5px; right:-5px; background:#27ae60; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:12px;">✓</div>' : ''}
+                            ${!isEnrolled ? `<button class="no-face-btn" data-action="no-face" data-idx="${realIdx}" title="Kein Gesicht (Fehlererkennung entfernen)" style="position:absolute; bottom:-4px; right:-4px; background:#e74c3c; color:#fff; border:2px solid #222; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:10px; cursor:pointer; line-height:1; padding:0;">✕</button>` : ''}
                         </div>
                         <div style="font-size:0.7em; color:#888; margin-top:4px; text-align:center; max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                             ${match || `t=${f.time_s}s`}
                         </div>
                         ${similarity ? `<div style="font-size:0.65em; color:var(--primary-color);">${similarity}</div>` : ''}
-                        ${showAssignBtn ? `<button class="fm-btn-small" data-action="no-face" data-idx="${realIdx}" title="Kein Gesicht - Sample entfernen" style="margin-top:3px; background:#e74c3c; color:#fff; border:none; border-radius:4px; padding:2px 6px; font-size:0.65em; cursor:pointer;">✖</button>` : ''}
                     </div>
                 `;
             }).join('');
@@ -1230,6 +1230,12 @@ class RtspRecorderCard extends HTMLElement {
                 </div>
                </div>`
             : '';
+        
+        const helpTextHtml = faceSamples.length ? `
+            <div style="margin-top:10px; padding:8px 12px; background:#1a1a1a; border-radius:8px; font-size:0.75em; color:#888; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                <span>💡 <strong>Bild klicken</strong> = Person zuweisen</span>
+                <span><span style="display:inline-block; width:14px; height:14px; background:#e74c3c; border-radius:50%; vertical-align:middle; text-align:center; line-height:14px; font-size:9px; color:#fff;">✕</span> = Kein Gesicht (Fehlererkennung)</span>
+            </div>` : '';
         
         const noFacesHtml = !faceSamples.length ? '<div style="color:#888; padding:20px; text-align:center;">Keine Face-Samples geladen.<br><small>Wähle eine Aufnahme und klicke "Analyse laden"</small></div>' : '';
 
@@ -1257,10 +1263,7 @@ class RtspRecorderCard extends HTMLElement {
                     ${unknownFacesHtml}
                     ${knownFacesHtml}
                     ${noFacesHtml}
-                    
-                    <div style="margin-top:12px; font-size:0.8em; color:#666; text-align:center;">
-                        💡 Klicke auf ein unbekanntes Gesicht um es einer Person zuzuweisen
-                    </div>
+                    ${helpTextHtml}
                 </div>
             </div>
         `;
