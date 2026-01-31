@@ -164,16 +164,52 @@ def _check_negative_samples(embedding: list[float], person: dict[str, Any], neg_
     return False
 
 
-def _match_face(embedding: list[float], people: list[dict[str, Any]], threshold: float) -> dict[str, Any] | None:
+def _is_no_face(embedding: list[float], no_face_embeddings: list[dict[str, Any]], threshold: float = 0.75) -> bool:
+    """Check if embedding matches any 'no face' (false positive) embedding.
+    
+    Args:
+        embedding: Face embedding to check
+        no_face_embeddings: List of known false positive embeddings
+        threshold: Similarity threshold (default 0.75)
+    
+    Returns:
+        True if this is likely a false positive (not a real face)
+    """
+    if not embedding or not no_face_embeddings:
+        return False
+    
+    for no_face in no_face_embeddings:
+        if isinstance(no_face, dict):
+            no_face_vec = no_face.get("vector", [])
+        else:
+            no_face_vec = no_face
+        
+        no_face_list = _safe_float_list(no_face_vec)
+        if not no_face_list:
+            continue
+        
+        sim = _cosine_similarity(embedding, no_face_list)
+        if sim >= threshold:
+            return True  # This is a known false positive
+    
+    return False
+
+
+def _match_face(embedding: list[float], people: list[dict[str, Any]], threshold: float, no_face_embeddings: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
     """Match a face embedding against people database using centroids.
     
     Uses pre-computed centroids for faster matching. Falls back to
     comparing against all embeddings if no centroid is available.
     
     Also checks negative samples to prevent false matches.
+    Checks global no_face_embeddings to filter out false positives.
     """
     if not embedding or not people:
         return None
+    
+    # First check if this is a known false positive (not a real face)
+    if no_face_embeddings and _is_no_face(embedding, no_face_embeddings):
+        return {"is_no_face": True}  # Signal that this should be filtered out
     
     candidates = []
     
@@ -510,6 +546,7 @@ async def analyze_recording(
     face_store_embeddings: bool = False,
     people_db: list[dict[str, Any]] | None = None,
     face_detector_url: str | None = None,
+    no_face_embeddings: list[dict[str, Any]] | None = None,
 ) -> dict:
     """Offline analysis stub: extracts frames and writes a results JSON.
 
@@ -873,7 +910,10 @@ async def analyze_recording(
                             # Allow matching with any embedding type (including fallback)
                             # for basic face recognition without dedicated embedding model
                             if emb_list and people_db:
-                                match = _match_face(emb_list, people_db, face_match_threshold)
+                                match = _match_face(emb_list, people_db, face_match_threshold, no_face_embeddings)
+                                # Check if this is a known false positive (not a real face)
+                                if match and match.get("is_no_face"):
+                                    continue  # Skip this face entirely, it's a false positive
                                 if match:
                                     faces_matched += 1
 

@@ -1281,12 +1281,33 @@ class RtspRecorderCard extends HTMLElement {
 
         // Event-Handler für "Kein Gesicht"-Button
         container.querySelectorAll('button[data-action="no-face"]').forEach(btn => {
-            btn.onclick = () => {
+            btn.onclick = async () => {
                 const idx = parseInt(btn.getAttribute('data-idx'), 10);
-                if (!isNaN(idx)) {
-                    // Entferne das Sample aus der Liste
+                if (!isNaN(idx) && this._analysisFaceSamples[idx]) {
+                    const sample = this._analysisFaceSamples[idx];
+                    const embedding = sample.embedding;
+                    const thumb = sample.thumb;
+                    
+                    if (embedding && embedding.length > 0) {
+                        // Speichere das Embedding als "kein Gesicht" im Backend
+                        try {
+                            await this._hass.connection.sendMessagePromise({
+                                type: 'rtsp_recorder/add_no_face',
+                                embedding: embedding,
+                                thumb: thumb || '',
+                                source: 'ui_marked'
+                            });
+                            this.showToast('Als "kein Gesicht" gespeichert - wird zukünftig gefiltert.', 'success');
+                        } catch (err) {
+                            console.error('Fehler beim Speichern:', err);
+                            this.showToast('Fehler beim Speichern: ' + (err.message || err), 'error');
+                        }
+                    } else {
+                        this.showToast('Kein Embedding vorhanden - nur aus Liste entfernt.', 'warning');
+                    }
+                    
+                    // Entferne das Sample aus der aktuellen Liste
                     this._analysisFaceSamples.splice(idx, 1);
-                    this.showToast('Sample als "kein Gesicht" entfernt.', 'info');
                     this.renderPeopleTab(container);
                 }
             };

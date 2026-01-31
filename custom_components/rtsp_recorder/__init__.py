@@ -349,6 +349,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
 
                             people_data = await _load_people_db(people_db_path)
                             people = people_data.get("people", [])
+                            no_face_embeddings = people_data.get("no_face_embeddings", [])
                             auto_device = await _resolve_auto_device()
                             result = await analyze_recording(
                                 video_path=path,
@@ -365,6 +366,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                                 face_store_embeddings=analysis_face_store_embeddings,
                                 people_db=people,
                                 face_detector_url=analysis_detector_url,
+                                no_face_embeddings=no_face_embeddings,
                             )
                             if person_entities_enabled:
                                 try:
@@ -456,6 +458,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
 
             people_data = await _load_people_db(people_db_path)
             people = people_data.get("people", [])
+            no_face_embeddings = people_data.get("no_face_embeddings", [])
 
             # MED-004 Fix: Use semaphore for rate limiting
             semaphore = _get_analysis_semaphore()
@@ -507,6 +510,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                             face_store_embeddings=analysis_face_store_embeddings,
                             people_db=people,
                             face_detector_url=analysis_detector_url,
+                            no_face_embeddings=no_face_embeddings,
                         )
                         if person_entities_enabled and result:
                             updated = _update_person_entities_from_result(result)
@@ -570,6 +574,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                         perf_snapshot = _sensor_snapshot()
                         people_data = await _load_people_db(people_db_path)
                         people = people_data.get("people", [])
+                        no_face_embeddings = people_data.get("no_face_embeddings", [])
                         result = await analyze_recording(
                             video_path=video_path,
                             output_root=output_dir,
@@ -585,6 +590,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                             face_store_embeddings=analysis_face_store_embeddings,
                             people_db=people,
                             face_detector_url=analysis_detector_url,
+                            no_face_embeddings=no_face_embeddings,
                         )
                         if person_entities_enabled and result:
                             updated = _update_person_entities_from_result(result)
@@ -1491,6 +1497,66 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
 
         websocket_api.async_register_command(hass, ws_add_negative_sample)
+
+        # v1.0.7: WebSocket API: Add "No Face" embedding (global false positive filter)
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "rtsp_recorder/add_no_face",
+                vol.Required("embedding"): list,
+                vol.Optional("thumb"): str,
+                vol.Optional("source"): str,
+            }
+        )
+        @websocket_api.async_response
+        async def ws_add_no_face(hass, connection, msg):
+            """Add embedding to global 'no face' filter list."""
+            try:
+                embedding = msg.get("embedding") or []
+                thumb = msg.get("thumb")
+                source = msg.get("source", "manual")
+                
+                try:
+                    embedding = [float(v) for v in embedding]
+                except Exception:
+                    connection.send_error(msg["id"], "invalid_embedding", "Embedding ungueltig")
+                    return
+                
+                embedding = _normalize_embedding_simple(embedding)
+                if not embedding:
+                    connection.send_error(msg["id"], "invalid_embedding", "Embedding ungueltig")
+                    return
+                
+                data = await _load_people_db(people_db_path)
+                
+                # Initialize no_face_embeddings list if not present
+                if "no_face_embeddings" not in data:
+                    data["no_face_embeddings"] = []
+                
+                entry = {
+                    "vector": embedding,
+                    "source": source,
+                    "created_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+                }
+                if thumb:
+                    entry["thumb"] = thumb
+                
+                data["no_face_embeddings"].append(entry)
+                
+                await _save_people_db(people_db_path, data)
+                
+                no_face_count = len(data.get("no_face_embeddings", []))
+                log_to_file(f"INIT: Added 'no face' embedding (total: {no_face_count})")
+                
+                connection.send_result(msg["id"], {
+                    "success": True,
+                    "no_face_count": no_face_count
+                })
+                
+            except Exception as exc:
+                log_to_file(f"INIT: add_no_face ERROR: {type(exc).__name__}: {exc}")
+                connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
+
+        websocket_api.async_register_command(hass, ws_add_no_face)
 
         # WebSocket API: Set Analysis Config (updates config entry)
         @websocket_api.websocket_command(
