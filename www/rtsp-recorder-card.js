@@ -1226,7 +1226,7 @@ class RtspRecorderCard extends HTMLElement {
             ? `<div>
                 <div style="font-weight:500; margin-bottom:8px; color:#27ae60;">✓ Erkannte Gesichter (${knownFaces.length})</div>
                 <div style="display:flex; flex-wrap:wrap; gap:8px; padding:10px; background:#1a1a1a; border-radius:10px; max-height:400px; overflow-y:auto;">
-                    ${renderFaceGrid(knownFaces, false)}
+                    ${renderFaceGrid(knownFaces, true)}
                 </div>
                </div>`
             : '';
