@@ -93,6 +93,12 @@ _inference_stats = get_inference_stats()
 # People database lock (re-exported for backwards compatibility)
 _people_lock = get_people_lock()
 
+# ===== Debounce State for Re-Match Task (Performance Fix) =====
+# Prevents multiple expensive re-match operations when user assigns many samples quickly
+_rematch_pending = False  # Flag: re-match is scheduled
+_rematch_lock = asyncio.Lock()  # Protects _rematch_pending
+_REMATCH_DEBOUNCE_SECONDS = 3.0  # Wait 3 seconds after last assignment before re-matching
+
 
 async def async_setup(hass, config):
     """Set up the Ring Recorder component."""
@@ -1409,19 +1415,37 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 # Send success response immediately (don't wait for re-matching)
                 connection.send_result(msg["id"], {"person": _public_people_view([updated])[0]})
                 
-                # Re-match all faces in background (fire-and-forget)
-                async def _background_rematch():
+                # Schedule debounced re-match (waits for user to finish assigning)
+                async def _debounced_rematch():
+                    global _rematch_pending
+                    async with _rematch_lock:
+                        if _rematch_pending:
+                            # Another re-match is already scheduled, skip
+                            log_to_file("INIT: Re-match already scheduled, skipping duplicate")
+                            return
+                        _rematch_pending = True
+                    
                     try:
+                        # Wait for debounce period (allows user to make multiple assignments)
+                        log_to_file(f"INIT: Waiting {_REMATCH_DEBOUNCE_SECONDS}s before re-matching (debounce)")
+                        await asyncio.sleep(_REMATCH_DEBOUNCE_SECONDS)
+                        
+                        # Reload people DB to get ALL recent changes
+                        fresh_data = await _load_people_db(people_db_path)
+                        
                         updated_analyses = await _update_all_face_matches(
                             analysis_output_path, 
-                            data.get("people", []), 
+                            fresh_data.get("people", []), 
                             analysis_face_match_threshold
                         )
                         log_to_file(f"INIT: Re-matched faces in {updated_analyses} analysis files after training")
                     except Exception as e:
                         log_to_file(f"INIT: Background re-match error: {e}")
+                    finally:
+                        async with _rematch_lock:
+                            _rematch_pending = False
                 
-                hass.async_create_task(_background_rematch())
+                hass.async_create_task(_debounced_rematch())
                 
             except Exception as exc:
                 log_to_file(f"INIT: add_person_embedding ERROR: {type(exc).__name__}: {exc}")

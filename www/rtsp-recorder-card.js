@@ -1529,7 +1529,15 @@ class RtspRecorderCard extends HTMLElement {
                 payload.name = person.name || null;
                 payload.created_utc = person.created_utc || null;
             }
-            await this._hass.callWS(payload);
+            
+            // Fire-and-forget: Don't await the WebSocket call for faster UI response
+            // The server will process in background
+            this._hass.callWS(payload).catch(e => {
+                console.error('Embedding error:', e);
+                this.showToast('Fehler beim Embedding: ' + (e.message || e), 'error');
+            });
+            
+            // Immediately update UI state without waiting for server
             if (this._analysisFaceSamples) {
                 const sample = this._analysisFaceSamples.find(s => s.embedding === embedding && s.thumb === thumb);
                 if (sample) {
@@ -1538,14 +1546,32 @@ class RtspRecorderCard extends HTMLElement {
                     this._enrolledSampleKeys.add(key);
                 }
             }
-            await this.refreshPeople();
-            this.showToast('Embedding hinzugefuegt', 'success');
-            if (this._activeTab === 'people') {
-                this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
+            
+            // Update local person count optimistically
+            if (person) {
+                person.embeddings_count = (person.embeddings_count || 0) + 1;
             }
+            
+            this.showToast('Embedding hinzugefuegt', 'success');
+            
+            // Debounced refresh: only refresh people list after 2 seconds of inactivity
+            this._scheduleRefreshPeople();
         } catch (e) {
             this.showToast('Fehler beim Embedding: ' + (e.message || e), 'error');
         }
+    }
+    
+    _scheduleRefreshPeople() {
+        // Debounce: Wait 2 seconds after last assignment before refreshing
+        if (this._refreshPeopleTimeout) {
+            clearTimeout(this._refreshPeopleTimeout);
+        }
+        this._refreshPeopleTimeout = setTimeout(async () => {
+            await this.refreshPeople();
+            if (this._activeTab === 'people') {
+                this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
+            }
+        }, 2000);
     }
 
     async addNegativeSample(personId, personName, embedding, thumb = null) {
