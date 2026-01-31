@@ -1330,18 +1330,20 @@ class RtspRecorderCard extends HTMLElement {
 
         // Event-Handler für Skip-Icon (X im Bild)
         container.querySelectorAll('.skip-face-icon').forEach(el => {
-            el.onclick = (e) => {
+            el.onclick = async (e) => {
                 e.stopPropagation();
                 e.preventDefault();
                 const idx = parseInt(el.getAttribute('data-idx'), 10);
                 const sample = this._analysisFaceSamples[idx];
-                if (sample) {
-                    // Gleiche Logik wie bei addEmbeddingToPerson
+                if (sample && sample.embedding) {
+                    // Backend-Call zum permanenten Ignorieren
+                    await this.addIgnoredEmbedding(sample.embedding, sample.thumb || null);
+                } else if (sample) {
+                    // Fallback: nur lokales Markieren wenn kein Embedding
                     const sampleKey = `${sample.time_s}|${sample.thumb || ''}`;
                     if (!this._enrolledSampleKeys) this._enrolledSampleKeys = new Set();
                     this._enrolledSampleKeys.add(sampleKey);
-                    this.showToast('Bild übersprungen', 'info');
-                    // Gleicher Selektor wie addEmbeddingToPerson
+                    this.showToast('Bild übersprungen (lokal)', 'info');
                     if (this._activeTab === 'people') {
                         this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
                     }
@@ -1442,29 +1444,30 @@ class RtspRecorderCard extends HTMLElement {
                         btn.onmouseout = () => btn.style.background = '#663333';
                     });
                     
-                    // Event-Handler für "Überspringen" (Bild aus Liste entfernen)
+                    // Event-Handler für "Überspringen" (Bild ignorieren - Backend-Call)
                     // Speichere this-Referenz für Callbacks
                     const self = this;
                     
                     const skipBtn = popup.querySelector('.skip-face-btn');
                     if (skipBtn) {
-                        skipBtn.onclick = () => {
-                            // Gleiche Logik wie bei addEmbeddingToPerson
-                            const sampleKey = `${sample.time_s}|${sample.thumb || ''}`;
-                            if (!self._enrolledSampleKeys) self._enrolledSampleKeys = new Set();
-                            self._enrolledSampleKeys.add(sampleKey);
-                            
+                        skipBtn.onclick = async () => {
                             // Popup entfernen
                             if (popup.parentNode) {
                                 popup.parentNode.removeChild(popup);
                             }
                             
-                            // Toast anzeigen
-                            self.showToast('Bild übersprungen', 'info');
-                            
-                            // Render neu - gleicher Selektor wie addEmbeddingToPerson
-                            if (self._activeTab === 'people') {
-                                self.renderPeopleTab(self.shadowRoot.querySelector('#menu-content'));
+                            // Backend-Call zum permanenten Ignorieren
+                            if (sample.embedding) {
+                                await self.addIgnoredEmbedding(sample.embedding, sample.thumb || null);
+                            } else {
+                                // Fallback: nur lokales Markieren
+                                const sampleKey = `${sample.time_s}|${sample.thumb || ''}`;
+                                if (!self._enrolledSampleKeys) self._enrolledSampleKeys = new Set();
+                                self._enrolledSampleKeys.add(sampleKey);
+                                self.showToast('Bild übersprungen (lokal)', 'info');
+                                if (self._activeTab === 'people') {
+                                    self.renderPeopleTab(self.shadowRoot.querySelector('#menu-content'));
+                                }
                             }
                         };
                         skipBtn.onmouseover = () => skipBtn.style.background = '#555';
@@ -1611,6 +1614,37 @@ class RtspRecorderCard extends HTMLElement {
             }
         } catch (e) {
             this.showToast('Fehler beim Negativ-Sample: ' + (e.message || e), 'error');
+        }
+    }
+
+    async addIgnoredEmbedding(embedding, thumb = null) {
+        // Fügt ein Embedding zur Ignorieren-Liste hinzu (wird bei zukünftigen Analysen übersprungen)
+        try {
+            const payload = {
+                type: 'rtsp_recorder/add_ignored_embedding',
+                embedding,
+                thumb
+            };
+            const result = await this._hass.callWS(payload);
+            
+            // Markiere das Sample als bearbeitet
+            if (this._analysisFaceSamples) {
+                const sample = this._analysisFaceSamples.find(s => s.embedding === embedding && s.thumb === thumb);
+                if (sample) {
+                    const key = `${sample.time_s}|${sample.thumb || ''}`;
+                    if (!this._enrolledSampleKeys) this._enrolledSampleKeys = new Set();
+                    this._enrolledSampleKeys.add(key);
+                }
+            }
+            
+            this.showToast(`Gesicht ignoriert (${result.ignored_count} insgesamt)`, 'info');
+            if (this._activeTab === 'people') {
+                this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
+            }
+            return true;
+        } catch (e) {
+            this.showToast('Fehler beim Ignorieren: ' + (e.message || e), 'error');
+            return false;
         }
     }
 

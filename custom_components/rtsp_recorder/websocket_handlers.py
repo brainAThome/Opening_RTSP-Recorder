@@ -687,3 +687,47 @@ def register_people_websocket_handlers(
             connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
 
     websocket_api.async_register_command(hass, ws_add_negative_sample)
+
+    # ===== Add Ignored Embedding Handler =====
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/add_ignored_embedding",
+        vol.Required("embedding"): list,
+        vol.Optional("thumb"): str,
+    })
+    @websocket_api.async_response
+    async def ws_add_ignored_embedding(hass, connection, msg):
+        """Add an embedding to the ignored list (skip this face in future)."""
+        log_to_file("INIT: add_ignored_embedding called")
+        try:
+            embedding = msg.get("embedding") or []
+            thumb = msg.get("thumb")
+
+            try:
+                embedding = [float(v) for v in embedding]
+            except Exception:
+                connection.send_error(msg["id"], "invalid_embedding", "Embedding ungueltig")
+                return
+
+            embedding = _normalize_embedding_simple(embedding)
+            if not embedding:
+                connection.send_error(msg["id"], "invalid_embedding", "Embedding ungueltig")
+                return
+
+            # Import here to avoid circular imports
+            from .people_db import add_ignored_embedding, get_ignored_count
+            
+            await add_ignored_embedding(people_db_path, embedding, thumb)
+            ignored_count = await get_ignored_count(people_db_path)
+            
+            log_to_file(f"INIT: Added ignored embedding (total: {ignored_count})")
+
+            connection.send_result(msg["id"], {
+                "success": True,
+                "ignored_count": ignored_count
+            })
+
+        except Exception as exc:
+            log_to_file(f"INIT: add_ignored_embedding ERROR: {type(exc).__name__}: {exc}")
+            connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
+
+    websocket_api.async_register_command(hass, ws_add_ignored_embedding)

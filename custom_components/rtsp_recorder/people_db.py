@@ -82,6 +82,7 @@ def _default_people_db() -> dict[str, Any]:
     return {
         "version": PEOPLE_DB_VERSION,
         "people": [],
+        "ignored_embeddings": [],  # Embeddings marked as "skip/ignore"
         "created_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
         "updated_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
     }
@@ -276,3 +277,62 @@ def get_people_lock() -> asyncio.Lock:
         The global asyncio.Lock for people database
     """
     return _people_lock
+
+
+async def add_ignored_embedding(path: str, embedding: list[float], thumb: str | None = None) -> bool:
+    """Add an embedding to the ignored list.
+    
+    Ignored embeddings are skipped during face matching - useful for
+    false positives, background faces, or faces the user doesn't want to track.
+    
+    Args:
+        path: Path to people database JSON file
+        embedding: Face embedding vector to ignore
+        thumb: Optional thumbnail URL for reference
+        
+    Returns:
+        True if successfully added
+    """
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    
+    def update_fn(data: dict[str, Any]) -> dict[str, Any]:
+        if "ignored_embeddings" not in data:
+            data["ignored_embeddings"] = []
+        
+        data["ignored_embeddings"].append({
+            "embedding": embedding,
+            "thumb": thumb,
+            "added_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
+        })
+        data["updated_utc"] = now_utc.strftime("%Y%m%d_%H%M%S")
+        return data
+    
+    await _update_people_db(path, update_fn)
+    return True
+
+
+async def get_ignored_embeddings(path: str) -> list[list[float]]:
+    """Get all ignored embeddings.
+    
+    Args:
+        path: Path to people database JSON file
+        
+    Returns:
+        List of embedding vectors that should be ignored
+    """
+    data = await _load_people_db(path)
+    ignored = data.get("ignored_embeddings", [])
+    return [item.get("embedding") for item in ignored if item.get("embedding")]
+
+
+async def get_ignored_count(path: str) -> int:
+    """Get count of ignored embeddings.
+    
+    Args:
+        path: Path to people database JSON file
+        
+    Returns:
+        Number of ignored embeddings
+    """
+    data = await _load_people_db(path)
+    return len(data.get("ignored_embeddings", []))
