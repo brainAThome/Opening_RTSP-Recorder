@@ -5,8 +5,8 @@ A complete video surveillance solution with AI-powered object detection using Co
 ![Version](https://img.shields.io/badge/version-1.0.8%20STABLE-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![ISO 25010](https://img.shields.io/badge/ISO%2025010-91.5%25-brightgreen)
-![ISO 27001](https://img.shields.io/badge/ISO%2027001-88.5%25-brightgreen)
+![ISO 25010](https://img.shields.io/badge/ISO%2025010-92.4%25-brightgreen)
+![ISO 27001](https://img.shields.io/badge/ISO%2027001-89.5%25-brightgreen)
 
 📋 **[Audit Report v1.0.8](AUDIT_REPORT_v1.0.8_STABLE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
 
@@ -568,6 +568,14 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 - ✅ ISO 27001 audit: 88.5% security score
 - ✅ Hardcore test: 100% pass rate
 
+### v1.0.8 Highlights (STABLE)
+- **Ignored Embeddings System** - Permanently ignore false-positive faces
+- **Similarity-based filtering** with 0.85 threshold for reliable face exclusion
+- **New WebSocket API**: `add_ignored_embedding` endpoint
+- **SHA256 Model Hash Verification** - Security against supply-chain attacks
+- **CORS Origins Restriction** - Limited to local Home Assistant instances
+- Combined ISO Score: **90.95%** (+0.95% vs v1.0.7)
+
 ### v1.0.7 Highlights
 - Per-camera detection thresholds (detector, face, match)
 - Negative samples for person exclusion
@@ -576,6 +584,12 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 ## Audit Report
 
 See [AUDIT_REPORT_v1.0.8_STABLE.md](AUDIT_REPORT_v1.0.8_STABLE.md) for the combined ISO 25010 + ISO 27001 audit report.
+
+| Metric | Score |
+|--------|-------|
+| ISO 25010 (Quality) | 92.4% |
+| ISO 27001 (Security) | 89.5% |
+| **Combined** | **90.95%** |
 
 ## License
 
