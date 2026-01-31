@@ -155,7 +155,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
 ## Audit Report
 
-See [AUDIT_REPORT_v1.0.7_COMPLETE.md](AUDIT_REPORT_v1.0.7_COMPLETE.md) for the latest audit report (v1.0.7 - 87.2% quality score).
+See [AUDIT_REPORT_v1.0.7_ISO.md](AUDIT_REPORT_v1.0.7_ISO.md) for the latest ISO 25010 audit report (v1.0.7 - **90% quality score**).
 
 ## License
 
