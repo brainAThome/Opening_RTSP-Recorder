@@ -1199,10 +1199,13 @@ class RtspRecorderCard extends HTMLElement {
                         <div style="position:relative;">
                             ${f.thumb 
                                 ? `<img src="${f.thumb}" style="width:70px; height:70px; object-fit:cover; border-radius:10px; border:3px solid ${borderColor}; cursor:pointer;" 
-                                    data-action="enroll" data-idx="${realIdx}" title="${showAssignBtn ? 'Klicken zum Zuweisen' : match}" />`
+                                    data-action="enroll" data-idx="${realIdx}" title="Klicken zum Zuweisen" />`
                                 : `<div style="width:70px; height:70px; background:#333; border-radius:10px; display:flex; align-items:center; justify-content:center;">👤</div>`
                             }
-                            ${isEnrolled ? '<div style="position:absolute; top:-5px; right:-5px; background:#27ae60; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:12px;">✓</div>' : ''}
+                            ${isEnrolled 
+                                ? '<div style="position:absolute; top:-5px; right:-5px; background:#27ae60; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:12px;">✓</div>' 
+                                : `<div class="skip-face-icon" data-idx="${realIdx}" style="position:absolute; top:-8px; right:-8px; background:#e74c3c; border:2px solid #222; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold; cursor:pointer; opacity:0.85; transition:all 0.2s; box-shadow:0 2px 4px rgba(0,0,0,0.5);" title="Bild entfernen">✕</div>`
+                            }
                         </div>
                         <div style="font-size:0.7em; color:#888; margin-top:4px; text-align:center; max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                             ${match || `t=${f.time_s}s`}
@@ -1258,9 +1261,16 @@ class RtspRecorderCard extends HTMLElement {
                     ${knownFacesHtml}
                     ${noFacesHtml}
                     
-                    <div style="margin-top:12px; font-size:0.8em; color:#666; text-align:center;">
-                        💡 Klicke auf ein unbekanntes Gesicht um es einer Person zuzuweisen
-                    </div>
+                    ${faceSamples.length ? `<div style="margin-top:15px; padding:12px 15px; background:linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius:10px; border:1px solid #333;">
+                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                            <span style="font-size:1.3em;">👆</span>
+                            <span style="color:#aaa; font-size:0.85em;"><strong style="color:#3498db;">Bild klicken</strong> = Person zuweisen oder korrigieren</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; background:#e74c3c; border-radius:50%; font-size:11px; font-weight:bold;">✕</span>
+                            <span style="color:#aaa; font-size:0.85em;"><strong style="color:#e74c3c;">X klicken</strong> = Bild überspringen / entfernen</span>
+                        </div>
+                    </div>` : ''}
                 </div>
             </div>
         `;
@@ -1318,6 +1328,29 @@ class RtspRecorderCard extends HTMLElement {
             };
         }
 
+        // Event-Handler für Skip-Icon (X im Bild)
+        container.querySelectorAll('.skip-face-icon').forEach(el => {
+            el.onclick = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const idx = parseInt(el.getAttribute('data-idx'), 10);
+                const sample = this._analysisFaceSamples[idx];
+                if (sample) {
+                    // Gleiche Logik wie bei addEmbeddingToPerson
+                    const sampleKey = `${sample.time_s}|${sample.thumb || ''}`;
+                    if (!this._enrolledSampleKeys) this._enrolledSampleKeys = new Set();
+                    this._enrolledSampleKeys.add(sampleKey);
+                    this.showToast('Bild übersprungen', 'info');
+                    // Gleicher Selektor wie addEmbeddingToPerson
+                    if (this._activeTab === 'people') {
+                        this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
+                    }
+                }
+            };
+            el.onmouseover = () => { el.style.opacity = '1'; el.style.transform = 'scale(1.15)'; };
+            el.onmouseout = () => { el.style.opacity = '0.85'; el.style.transform = 'scale(1)'; };
+        });
+
         // Event-Handler für Enroll (Button oder Bild-Klick)
         container.querySelectorAll('[data-action="enroll"]').forEach(el => {
             el.onclick = async (e) => {
@@ -1361,9 +1394,16 @@ class RtspRecorderCard extends HTMLElement {
                                     </div>
                                 `).join('')}
                             </div>
+                            <div style="margin-top:10px; border-top:1px solid #444; padding-top:10px;">
+                                <button class="skip-face-btn" style="width:100%; padding:12px; background:#444; border:none; border-radius:8px; color:#aaa; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                    <span style="font-size:1.2em;">🚫</span>
+                                    <span>Keine Person / Überspringen</span>
+                                </button>
+                            </div>
                             <div style="margin-top:12px; padding:10px; background:#333; border-radius:8px; font-size:0.8em; color:#aaa;">
-                                💡 <strong>Zuweisen:</strong> Links klicken<br>
-                                ❌ <strong>Ausschließen:</strong> Rechts klicken (Negativ-Sample)
+                                💡 <strong>Zuweisen:</strong> Person links klicken<br>
+                                ❌ <strong>Ausschließen:</strong> ❌ rechts = "Das ist NICHT diese Person"<br>
+                                🚫 <strong>Überspringen:</strong> Kein Gesicht / Fehlererkennung
                             </div>
                             <button class="close-popup-btn" style="margin-top:12px; width:100%; padding:10px; background:#555; border:none; border-radius:8px; color:#fff; cursor:pointer;">Abbrechen</button>
                         </div>
@@ -1401,6 +1441,35 @@ class RtspRecorderCard extends HTMLElement {
                         btn.onmouseover = () => btn.style.background = '#884444';
                         btn.onmouseout = () => btn.style.background = '#663333';
                     });
+                    
+                    // Event-Handler für "Überspringen" (Bild aus Liste entfernen)
+                    // Speichere this-Referenz für Callbacks
+                    const self = this;
+                    
+                    const skipBtn = popup.querySelector('.skip-face-btn');
+                    if (skipBtn) {
+                        skipBtn.onclick = () => {
+                            // Gleiche Logik wie bei addEmbeddingToPerson
+                            const sampleKey = `${sample.time_s}|${sample.thumb || ''}`;
+                            if (!self._enrolledSampleKeys) self._enrolledSampleKeys = new Set();
+                            self._enrolledSampleKeys.add(sampleKey);
+                            
+                            // Popup entfernen
+                            if (popup.parentNode) {
+                                popup.parentNode.removeChild(popup);
+                            }
+                            
+                            // Toast anzeigen
+                            self.showToast('Bild übersprungen', 'info');
+                            
+                            // Render neu - gleicher Selektor wie addEmbeddingToPerson
+                            if (self._activeTab === 'people') {
+                                self.renderPeopleTab(self.shadowRoot.querySelector('#menu-content'));
+                            }
+                        };
+                        skipBtn.onmouseover = () => skipBtn.style.background = '#555';
+                        skipBtn.onmouseout = () => skipBtn.style.background = '#444';
+                    }
                     
                     popup.querySelector('.close-popup-btn').onclick = () => document.body.removeChild(popup);
                     popup.onclick = (e) => { if (e.target === popup) document.body.removeChild(popup); };
