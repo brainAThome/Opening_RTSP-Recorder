@@ -1193,7 +1193,6 @@ class RtspRecorderCard extends HTMLElement {
                 const sampleKey = `${f.time_s}|${f.thumb || ''}`;
                 const isEnrolled = this._enrolledSampleKeys.has(sampleKey);
                 const borderColor = isEnrolled ? '#27ae60' : (f.match ? 'var(--primary-color)' : '#555');
-                
                 return `
                     <div class="face-sample" style="display:flex; flex-direction:column; align-items:center; width:85px; ${isEnrolled ? 'opacity:0.6;' : ''}">
                         <div style="position:relative;">
@@ -1208,6 +1207,7 @@ class RtspRecorderCard extends HTMLElement {
                             ${match || `t=${f.time_s}s`}
                         </div>
                         ${similarity ? `<div style="font-size:0.65em; color:var(--primary-color);">${similarity}</div>` : ''}
+                        ${showAssignBtn ? `<button class="fm-btn-small" data-action="no-face" data-idx="${realIdx}" style="margin-top:4px; background:#444; color:#eee; border:none; border-radius:6px; padding:2px 8px; font-size:0.75em; cursor:pointer;">Kein Gesicht</button>` : ''}
                     </div>
                 `;
             }).join('');
@@ -1278,6 +1278,19 @@ class RtspRecorderCard extends HTMLElement {
                 if (input) input.value = '';
             };
         }
+
+        // Event-Handler für "Kein Gesicht"-Button
+        container.querySelectorAll('button[data-action="no-face"]').forEach(btn => {
+            btn.onclick = () => {
+                const idx = parseInt(btn.getAttribute('data-idx'), 10);
+                if (!isNaN(idx)) {
+                    // Entferne das Sample aus der Liste
+                    this._analysisFaceSamples.splice(idx, 1);
+                    this.showToast('Sample als "kein Gesicht" entfernt.', 'info');
+                    this.renderPeopleTab(container);
+                }
+            };
+        });
 
         container.querySelectorAll('[data-action="rename"]').forEach(btn => {
             btn.onclick = async () => {
