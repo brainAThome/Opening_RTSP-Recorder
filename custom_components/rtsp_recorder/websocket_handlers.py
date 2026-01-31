@@ -15,7 +15,7 @@ from homeassistant.components import websocket_api
 
 from .const import DOMAIN
 from .helpers import log_to_file, get_system_stats, get_inference_stats
-from .face_matching import _normalize_embedding_simple, _update_person_centroid
+from .face_matching import _normalize_embedding_simple, _update_person_centroid, _cosine_similarity_simple
 from .people_db import _load_people_db, _save_people_db, _public_people_view, get_ignored_embeddings
 from .analysis_helpers import (
     _read_analysis_results,
@@ -175,15 +175,26 @@ def register_websocket_handlers(
         result = await hass.async_add_executor_job(_find_analysis_for_video, analysis_output_path, video_path)
         if result:
             result.pop("frames", None)
-            # Filter out ignored embeddings from face results
+            # Filter out ignored embeddings from face results using similarity matching
             ignored_embs = await get_ignored_embeddings(people_db_path)
             if ignored_embs and "detections" in result:
-                ignored_set = {tuple(e) for e in ignored_embs if e}
+                # Use same threshold as face matching (0.85 = very high similarity)
+                IGNORE_THRESHOLD = 0.85
+                
+                def is_ignored(face_emb):
+                    """Check if embedding matches any ignored embedding."""
+                    if not face_emb:
+                        return False
+                    for ign_emb in ignored_embs:
+                        if ign_emb and _cosine_similarity_simple(face_emb, ign_emb) >= IGNORE_THRESHOLD:
+                            return True
+                    return False
+                
                 for detection in result["detections"]:
                     if "faces" in detection:
                         detection["faces"] = [
                             f for f in detection["faces"]
-                            if not f.get("embedding") or tuple(f["embedding"]) not in ignored_set
+                            if not is_ignored(f.get("embedding"))
                         ]
         connection.send_result(msg["id"], result or {})
 
