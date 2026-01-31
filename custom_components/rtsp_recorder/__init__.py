@@ -460,23 +460,50 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             # MED-004 Fix: Use semaphore for rate limiting
             semaphore = _get_analysis_semaphore()
             
+            def _extract_camera_name_from_path(video_path: str) -> str:
+                """Extract camera name from video path like /media/rtsp_recordings/CameraName/file.mp4"""
+                parts = video_path.replace("\\", "/").split("/")
+                # Find the camera folder (usually second-to-last)
+                for i, part in enumerate(parts):
+                    if part in ("rtsp_recordings", "recordings") and i + 1 < len(parts) - 1:
+                        return parts[i + 1]
+                # Fallback: use parent folder name
+                if len(parts) >= 2:
+                    return parts[-2]
+                return ""
+
             processed = 0
             for path in files:
                 async with semaphore:  # Limit concurrent analyses
                     try:
                         perf_snapshot = _sensor_snapshot()
+                        
+                        # v1.0.7: Extract camera name and use camera-specific thresholds
+                        cam_name = _extract_camera_name_from_path(path)
+                        cam_detector_conf = config_data.get(f"detector_confidence_{cam_name}", 0)
+                        cam_face_conf = config_data.get(f"face_confidence_{cam_name}", 0)
+                        cam_face_threshold = config_data.get(f"face_match_threshold_{cam_name}", 0)
+                        
+                        detector_conf_to_use = cam_detector_conf if cam_detector_conf > 0 else analysis_detector_confidence
+                        face_conf_to_use = cam_face_conf if cam_face_conf > 0 else analysis_face_confidence
+                        face_threshold_to_use = cam_face_threshold if cam_face_threshold > 0 else analysis_face_match_threshold
+                        
+                        # v1.0.7: Also check camera-specific objects
+                        cam_objects = config_data.get(f"analysis_objects_{cam_name}", [])
+                        objects_to_use = cam_objects if cam_objects else objects
+                        
                         result = await analyze_recording(
                             video_path=path,
                             output_root=analysis_output_path,
-                            objects=objects,
+                            objects=objects_to_use,
                             device=device,
                             interval_s=analysis_frame_interval,
                             perf_snapshot=perf_snapshot,
                             detector_url=analysis_detector_url,
-                            detector_confidence=analysis_detector_confidence,
+                            detector_confidence=detector_conf_to_use,
                             face_enabled=analysis_face_enabled,
-                            face_confidence=analysis_face_confidence,
-                            face_match_threshold=analysis_face_match_threshold,
+                            face_confidence=face_conf_to_use,
+                            face_match_threshold=face_threshold_to_use,
                             face_store_embeddings=analysis_face_store_embeddings,
                             people_db=people,
                             face_detector_url=analysis_detector_url,
@@ -516,6 +543,27 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                     return
 
                 output_dir = analysis_output_path
+                
+                # v1.0.7: Extract camera name from path for camera-specific settings
+                def _extract_cam_name(vpath: str) -> str:
+                    parts = vpath.replace("\\", "/").split("/")
+                    for i, part in enumerate(parts):
+                        if part in ("rtsp_recordings", "recordings") and i + 1 < len(parts) - 1:
+                            return parts[i + 1]
+                    if len(parts) >= 2:
+                        return parts[-2]
+                    return ""
+                
+                cam_name = _extract_cam_name(video_path)
+                cam_detector_conf = config_data.get(f"detector_confidence_{cam_name}", 0)
+                cam_face_conf = config_data.get(f"face_confidence_{cam_name}", 0)
+                cam_face_threshold = config_data.get(f"face_match_threshold_{cam_name}", 0)
+                cam_objects = config_data.get(f"analysis_objects_{cam_name}", [])
+                
+                detector_conf_to_use = cam_detector_conf if cam_detector_conf > 0 else analysis_detector_confidence
+                face_conf_to_use = cam_face_conf if cam_face_conf > 0 else analysis_face_confidence
+                face_threshold_to_use = cam_face_threshold if cam_face_threshold > 0 else analysis_face_match_threshold
+                objects_to_use = cam_objects if cam_objects else objects
 
                 async def _run_analysis():
                     try:
@@ -525,15 +573,15 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                         result = await analyze_recording(
                             video_path=video_path,
                             output_root=output_dir,
-                            objects=objects,
+                            objects=objects_to_use,
                             device=device,
                             interval_s=analysis_frame_interval,
                             perf_snapshot=perf_snapshot,
                             detector_url=analysis_detector_url,
-                            detector_confidence=analysis_detector_confidence,
+                            detector_confidence=detector_conf_to_use,
                             face_enabled=analysis_face_enabled,
-                            face_confidence=analysis_face_confidence,
-                            face_match_threshold=analysis_face_match_threshold,
+                            face_confidence=face_conf_to_use,
+                            face_match_threshold=face_threshold_to_use,
                             face_store_embeddings=analysis_face_store_embeddings,
                             people_db=people,
                             face_detector_url=analysis_detector_url,
