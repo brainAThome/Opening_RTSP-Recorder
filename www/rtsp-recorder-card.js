@@ -1,4 +1,4 @@
-// ===== RTSP Recorder Card v1.0.7 =====
+// ===== RTSP Recorder Card v1.0.8 STABLE =====
 // MED-008 Fix: Debug logging behind feature flag
 const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
 const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
@@ -7,7 +7,7 @@ const rtspWarn = (...args) => console.warn('[RTSP]', ...args);  // Warnings alwa
 const rtspError = (...args) => console.error('[RTSP]', ...args);  // Errors always shown
 
 if (RTSP_DEBUG) {
-    console.info("%c RTSP RECORDER CARD \n%c v1.0.7 (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #e74c3c;");
+    console.info("%c RTSP RECORDER CARD \\n%c v1.0.8 STABLE (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #27ae60;");
 }
 
 class RtspRecorderCard extends HTMLElement {

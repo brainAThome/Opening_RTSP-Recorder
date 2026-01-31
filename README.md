@@ -2,12 +2,13 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.0.7%20BETA-orange)
+![Version](https://img.shields.io/badge/version-1.0.8%20STABLE-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Quality](https://img.shields.io/badge/Quality%20Score-90%25-brightgreen)
+![ISO 25010](https://img.shields.io/badge/ISO%2025010-91.5%25-brightgreen)
+![ISO 27001](https://img.shields.io/badge/ISO%2027001-88.5%25-brightgreen)
 
-📋 **[ISO 25010 Audit Report v1.0.7](AUDIT_REPORT_v1.0.7_ISO.md)** - Umfassende Qualitätsanalyse
+📋 **[Audit Report v1.0.8](AUDIT_REPORT_v1.0.8_STABLE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
 
 ## Features
 
@@ -560,15 +561,21 @@ thumb_path: /local/thumbnails
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
+### v1.0.8 Highlights (STABLE)
+- 🔒 SHA256 model verification for supply-chain security
+- 🛡️ CORS restriction to local Home Assistant instances
+- ✅ ISO 25010 audit: 91.5% quality score
+- ✅ ISO 27001 audit: 88.5% security score
+- ✅ Hardcore test: 100% pass rate
+
 ### v1.0.7 Highlights
 - Per-camera detection thresholds (detector, face, match)
 - Negative samples for person exclusion
 - MoveNet pose estimation integration
-- ISO 25010 audit: 90% quality score
 
 ## Audit Report
 
-See [AUDIT_REPORT_v1.0.7_ISO.md](AUDIT_REPORT_v1.0.7_ISO.md) for the latest ISO 25010 audit report (v1.0.7 - **90% quality score**).
+See [AUDIT_REPORT_v1.0.8_STABLE.md](AUDIT_REPORT_v1.0.8_STABLE.md) for the combined ISO 25010 + ISO 27001 audit report.
 
 ## License
 
