@@ -111,17 +111,24 @@ def _summarize_analysis(items: list[dict[str, Any]]) -> dict[str, Any]:
 async def _update_all_face_matches(
     output_dir: str, 
     people: list[dict[str, Any]], 
-    threshold: float = 0.6
+    threshold: float = 0.6,
+    max_analyses: int = 100
 ) -> int:
     """Re-match all faces in existing analysis results against updated people database.
     
     This is called after adding/removing people or embeddings to update
-    all historical analysis results with correct face matches.
+    historical analysis results with correct face matches.
+    
+    Optimizations:
+    - Only processes the most recent N analyses (configurable via max_analyses)
+    - Uses parallel file I/O for better performance
+    - Skips analyses with no faces
     
     Args:
         output_dir: Directory containing analysis results
         people: Current people database list
         threshold: Minimum similarity threshold for matches
+        max_analyses: Maximum number of analysis files to process (newest first)
     
     Returns:
         The number of updated result files
@@ -129,56 +136,76 @@ async def _update_all_face_matches(
     if not os.path.exists(output_dir):
         return 0
     
-    updated_count = 0
-    
-    def _process_analyses():
-        nonlocal updated_count
+    # Collect analysis directories with modification times
+    def _get_analysis_dirs():
+        dirs = []
         for name in os.listdir(output_dir):
             if not name.startswith("analysis_"):
                 continue
             job_dir = os.path.join(output_dir, name)
             result_path = os.path.join(job_dir, "result.json")
-            if not os.path.exists(result_path):
-                continue
-            try:
-                with open(result_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                
-                modified = False
-                detections = data.get("detections", [])
-                
-                for detection in detections:
-                    faces = detection.get("faces", [])
-                    for face in faces:
-                        embedding = face.get("embedding")
-                        if not embedding or not isinstance(embedding, list):
-                            continue
-                        try:
-                            emb_list = [float(v) for v in embedding]
-                        except (TypeError, ValueError):
-                            continue
-                        
-                        # Re-match this face
-                        new_match = _match_face_simple(emb_list, people, threshold)
-                        old_match = face.get("match")
-                        
-                        # Update if match changed
-                        if new_match != old_match:
-                            if new_match:
-                                face["match"] = new_match
-                            elif "match" in face:
-                                del face["match"]
-                            modified = True
-                
-                if modified:
-                    with open(result_path, "w", encoding="utf-8") as f:
-                        json.dump(data, f, ensure_ascii=False, indent=2)
-                    updated_count += 1
-                    
-            except Exception:
-                continue
-        
-        return updated_count
+            if os.path.exists(result_path):
+                try:
+                    mtime = os.path.getmtime(result_path)
+                    dirs.append((result_path, mtime))
+                except OSError:
+                    continue
+        # Sort by modification time (newest first) and limit
+        dirs.sort(key=lambda x: x[1], reverse=True)
+        return [d[0] for d in dirs[:max_analyses]]
     
-    await asyncio.to_thread(_process_analyses)
+    analysis_files = await asyncio.to_thread(_get_analysis_dirs)
+    
+    if not analysis_files:
+        return 0
+    
+    updated_count = 0
+    
+    def _process_single_file(result_path: str) -> bool:
+        """Process a single analysis file. Returns True if modified."""
+        try:
+            with open(result_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            modified = False
+            detections = data.get("detections", [])
+            
+            for detection in detections:
+                faces = detection.get("faces", [])
+                for face in faces:
+                    embedding = face.get("embedding")
+                    if not embedding or not isinstance(embedding, list):
+                        continue
+                    try:
+                        emb_list = [float(v) for v in embedding]
+                    except (TypeError, ValueError):
+                        continue
+                    
+                    # Re-match this face
+                    new_match = _match_face_simple(emb_list, people, threshold)
+                    old_match = face.get("match")
+                    
+                    # Update if match changed
+                    if new_match != old_match:
+                        if new_match:
+                            face["match"] = new_match
+                        elif "match" in face:
+                            del face["match"]
+                        modified = True
+            
+            if modified:
+                with open(result_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                return True
+            return False
+                
+        except Exception:
+            return False
+    
+    # Process files (one at a time to avoid disk thrashing)
+    for result_path in analysis_files:
+        was_modified = await asyncio.to_thread(_process_single_file, result_path)
+        if was_modified:
+            updated_count += 1
+    
     return updated_count

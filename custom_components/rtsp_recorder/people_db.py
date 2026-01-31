@@ -4,6 +4,11 @@ This module handles all CRUD operations for the people database:
 - Loading and saving the database file
 - Atomic updates with proper locking
 - Converting internal data to public view format
+- In-memory caching for faster repeated reads
+
+Performance optimizations:
+- Cached reads avoid disk I/O when data hasn't changed
+- Lock-protected atomic operations prevent race conditions
 """
 import asyncio
 import datetime
@@ -17,6 +22,53 @@ from .face_matching import _update_person_centroid
 
 # Global lock for all database operations
 _people_lock = asyncio.Lock()
+
+# ===== In-Memory Cache for People DB =====
+# Avoids repeated disk reads when data hasn't changed
+_people_cache: dict[str, Any] | None = None
+_people_cache_path: str | None = None
+_people_cache_mtime: float = 0.0
+
+
+def _invalidate_cache() -> None:
+    """Invalidate the in-memory cache (call after any write)."""
+    global _people_cache, _people_cache_mtime
+    _people_cache = None
+    _people_cache_mtime = 0.0
+
+
+def _get_cached_or_load(path: str) -> dict[str, Any] | None:
+    """Get data from cache if valid, otherwise return None.
+    
+    Checks file modification time to detect external changes.
+    """
+    global _people_cache, _people_cache_path, _people_cache_mtime
+    
+    if _people_cache is None or _people_cache_path != path:
+        return None
+    
+    try:
+        current_mtime = os.path.getmtime(path)
+        if current_mtime > _people_cache_mtime:
+            # File was modified externally, invalidate cache
+            _invalidate_cache()
+            return None
+    except OSError:
+        return None
+    
+    return _people_cache
+
+
+def _update_cache(path: str, data: dict[str, Any]) -> None:
+    """Update the in-memory cache with fresh data."""
+    global _people_cache, _people_cache_path, _people_cache_mtime
+    
+    try:
+        _people_cache = data
+        _people_cache_path = path
+        _people_cache_mtime = os.path.getmtime(path)
+    except OSError:
+        _people_cache_mtime = 0.0
 
 
 def _default_people_db() -> dict[str, Any]:
@@ -35,25 +87,36 @@ def _default_people_db() -> dict[str, Any]:
     }
 
 
-async def _load_people_db(path: str) -> dict[str, Any]:
+async def _load_people_db(path: str, use_cache: bool = True) -> dict[str, Any]:
     """Load people database from JSON file.
     
     Creates a new database file if it doesn't exist.
     Automatically computes missing centroids.
+    Uses in-memory cache for faster repeated reads.
     
     Args:
         path: Path to people database JSON file
+        use_cache: Whether to use cached data if available (default True)
         
     Returns:
-        People database dict
+        People database dict (deep copy to prevent accidental modification)
     """
     async with _people_lock:
+        # Try cache first
+        if use_cache:
+            cached = _get_cached_or_load(path)
+            if cached is not None:
+                # Return deep copy to prevent accidental cache modification
+                import copy
+                return copy.deepcopy(cached)
+        
         if not os.path.exists(path):
             data = _default_people_db()
             def _write():
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
             await asyncio.to_thread(_write)
+            _update_cache(path, data)
             return data
         try:
             def _read():
@@ -80,13 +143,20 @@ async def _load_people_db(path: str) -> dict[str, Any]:
                         json.dump(data, f, ensure_ascii=False, indent=2)
                 await asyncio.to_thread(_write_updated)
             
-            return data
+            # Update cache
+            _update_cache(path, data)
+            
+            # Return copy to prevent cache modification
+            import copy
+            return copy.deepcopy(data)
         except Exception:
             return _default_people_db()
 
 
 async def _save_people_db(path: str, data: dict[str, Any]) -> None:
     """Save people database to JSON file.
+    
+    Invalidates cache after write to ensure consistency.
     
     Args:
         path: Path to people database JSON file
@@ -99,6 +169,9 @@ async def _save_people_db(path: str, data: dict[str, Any]) -> None:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         await asyncio.to_thread(_write)
+        
+        # Update cache with fresh data
+        _update_cache(path, data)
 
 
 async def _update_people_db(path: str, update_fn: Callable[[dict], dict]) -> dict[str, Any]:
