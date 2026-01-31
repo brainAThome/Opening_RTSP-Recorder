@@ -1193,6 +1193,7 @@ class RtspRecorderCard extends HTMLElement {
                 const sampleKey = `${f.time_s}|${f.thumb || ''}`;
                 const isEnrolled = this._enrolledSampleKeys.has(sampleKey);
                 const borderColor = isEnrolled ? '#27ae60' : (f.match ? 'var(--primary-color)' : '#555');
+                
                 return `
                     <div class="face-sample" style="display:flex; flex-direction:column; align-items:center; width:85px; ${isEnrolled ? 'opacity:0.6;' : ''}">
                         <div style="position:relative;">
@@ -1202,7 +1203,6 @@ class RtspRecorderCard extends HTMLElement {
                                 : `<div style="width:70px; height:70px; background:#333; border-radius:10px; display:flex; align-items:center; justify-content:center;">👤</div>`
                             }
                             ${isEnrolled ? '<div style="position:absolute; top:-5px; right:-5px; background:#27ae60; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:12px;">✓</div>' : ''}
-                            ${!isEnrolled ? `<button class="no-face-btn" data-action="no-face" data-idx="${realIdx}" title="Kein Gesicht (Fehlererkennung entfernen)" style="position:absolute; bottom:-4px; right:-4px; background:#e74c3c; color:#fff; border:2px solid #222; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:10px; cursor:pointer; line-height:1; padding:0;">✕</button>` : ''}
                         </div>
                         <div style="font-size:0.7em; color:#888; margin-top:4px; text-align:center; max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                             ${match || `t=${f.time_s}s`}
@@ -1226,17 +1226,10 @@ class RtspRecorderCard extends HTMLElement {
             ? `<div>
                 <div style="font-weight:500; margin-bottom:8px; color:#27ae60;">✓ Erkannte Gesichter (${knownFaces.length})</div>
                 <div style="display:flex; flex-wrap:wrap; gap:8px; padding:10px; background:#1a1a1a; border-radius:10px; max-height:400px; overflow-y:auto;">
-                    ${renderFaceGrid(knownFaces, true)}
+                    ${renderFaceGrid(knownFaces, false)}
                 </div>
                </div>`
             : '';
-        
-        const helpTextHtml = faceSamples.length ? `
-            <div style="margin-top:10px; padding:8px 12px; background:#1a1a1a; border-radius:8px; font-size:0.75em; color:#888; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-                <span>💡 <strong>Bild klicken</strong> = Person zuweisen</span>
-                <span><span style="display:inline-block; width:14px; height:14px; background:#e74c3c; border-radius:50%; vertical-align:middle; text-align:center; line-height:14px; font-size:9px; color:#fff;">✕</span> = Kein Gesicht (Fehlererkennung)</span>
-            </div>
-            <div style="height:200px;"></div>` : '';  // Extra padding for scroll centering
         
         const noFacesHtml = !faceSamples.length ? '<div style="color:#888; padding:20px; text-align:center;">Keine Face-Samples geladen.<br><small>Wähle eine Aufnahme und klicke "Analyse laden"</small></div>' : '';
 
@@ -1264,7 +1257,10 @@ class RtspRecorderCard extends HTMLElement {
                     ${unknownFacesHtml}
                     ${knownFacesHtml}
                     ${noFacesHtml}
-                    ${helpTextHtml}
+                    
+                    <div style="margin-top:12px; font-size:0.8em; color:#666; text-align:center;">
+                        💡 Klicke auf ein unbekanntes Gesicht um es einer Person zuzuweisen
+                    </div>
                 </div>
             </div>
         `;
@@ -1282,40 +1278,6 @@ class RtspRecorderCard extends HTMLElement {
                 if (input) input.value = '';
             };
         }
-
-        // Event-Handler für "Kein Gesicht"-Button
-        container.querySelectorAll('button[data-action="no-face"]').forEach(btn => {
-            btn.onclick = async () => {
-                const idx = parseInt(btn.getAttribute('data-idx'), 10);
-                if (!isNaN(idx) && this._analysisFaceSamples[idx]) {
-                    const sample = this._analysisFaceSamples[idx];
-                    const embedding = sample.embedding;
-                    const thumb = sample.thumb;
-                    
-                    if (embedding && embedding.length > 0) {
-                        // Speichere das Embedding als "kein Gesicht" im Backend
-                        try {
-                            await this._hass.connection.sendMessagePromise({
-                                type: 'rtsp_recorder/add_no_face',
-                                embedding: embedding,
-                                thumb: thumb || '',
-                                source: 'ui_marked'
-                            });
-                            this.showToast('Als "kein Gesicht" gespeichert - wird zukünftig gefiltert.', 'success');
-                        } catch (err) {
-                            console.error('Fehler beim Speichern:', err);
-                            this.showToast('Fehler beim Speichern: ' + (err.message || err), 'error');
-                        }
-                    } else {
-                        this.showToast('Kein Embedding vorhanden - nur aus Liste entfernt.', 'warning');
-                    }
-                    
-                    // Entferne das Sample aus der aktuellen Liste
-                    this._analysisFaceSamples.splice(idx, 1);
-                    this.renderPeopleTab(container);
-                }
-            };
-        });
 
         container.querySelectorAll('[data-action="rename"]').forEach(btn => {
             btn.onclick = async () => {
@@ -1533,15 +1495,7 @@ class RtspRecorderCard extends HTMLElement {
                 payload.name = person.name || null;
                 payload.created_utc = person.created_utc || null;
             }
-            
-            // Fire-and-forget: Don't await the WebSocket call for faster UI response
-            // The server will process in background
-            this._hass.callWS(payload).catch(e => {
-                console.error('Embedding error:', e);
-                this.showToast('Fehler beim Embedding: ' + (e.message || e), 'error');
-            });
-            
-            // Immediately update UI state without waiting for server
+            await this._hass.callWS(payload);
             if (this._analysisFaceSamples) {
                 const sample = this._analysisFaceSamples.find(s => s.embedding === embedding && s.thumb === thumb);
                 if (sample) {
@@ -1550,32 +1504,14 @@ class RtspRecorderCard extends HTMLElement {
                     this._enrolledSampleKeys.add(key);
                 }
             }
-            
-            // Update local person count optimistically
-            if (person) {
-                person.embeddings_count = (person.embeddings_count || 0) + 1;
-            }
-            
-            this.showToast('Embedding hinzugefuegt', 'success');
-            
-            // Debounced refresh: only refresh people list after 2 seconds of inactivity
-            this._scheduleRefreshPeople();
-        } catch (e) {
-            this.showToast('Fehler beim Embedding: ' + (e.message || e), 'error');
-        }
-    }
-    
-    _scheduleRefreshPeople() {
-        // Debounce: Wait 2 seconds after last assignment before refreshing
-        if (this._refreshPeopleTimeout) {
-            clearTimeout(this._refreshPeopleTimeout);
-        }
-        this._refreshPeopleTimeout = setTimeout(async () => {
             await this.refreshPeople();
+            this.showToast('Embedding hinzugefuegt', 'success');
             if (this._activeTab === 'people') {
                 this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
             }
-        }, 2000);
+        } catch (e) {
+            this.showToast('Fehler beim Embedding: ' + (e.message || e), 'error');
+        }
     }
 
     async addNegativeSample(personId, personName, embedding, thumb = null) {

@@ -7,6 +7,10 @@ FROM ghcr.io/home-assistant/amd64-base-debian:bookworm
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 ENV PIP_NO_CACHE_DIR=1
 ENV EDGETPU_DEVICE=usb
+# SEC-002: CORS_ORIGINS can be set to restrict cross-origin requests
+# Default allows local HA instances. Set to "*" only for development.
+# Example: CORS_ORIGINS="http://homeassistant.local:8123,https://my-ha.duckdns.org"
+# ENV CORS_ORIGINS=""
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \

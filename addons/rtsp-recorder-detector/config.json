@@ -1,6 +1,6 @@
 {
   "name": "RTSP Recorder Detector",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "slug": "rtsp_recorder_detector",
   "description": "Local object detector with Coral USB EdgeTPU support (Frigate-compatible)",
   "url": "https://github.com/brainAThome/RTSP-Recorder",
@@ -18,11 +18,13 @@
   },
   "options": {
     "device": "auto",
-    "confidence": 0.4
+    "confidence": 0.4,
+    "cors_origins": ""
   },
   "schema": {
     "device": "str",
-    "confidence": "float"
+    "confidence": "float",
+    "cors_origins": "str?"
   },
   "usb": true,
   "udev": true,
