@@ -1235,7 +1235,8 @@ class RtspRecorderCard extends HTMLElement {
             <div style="margin-top:10px; padding:8px 12px; background:#1a1a1a; border-radius:8px; font-size:0.75em; color:#888; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
                 <span>💡 <strong>Bild klicken</strong> = Person zuweisen</span>
                 <span><span style="display:inline-block; width:14px; height:14px; background:#e74c3c; border-radius:50%; vertical-align:middle; text-align:center; line-height:14px; font-size:9px; color:#fff;">✕</span> = Kein Gesicht (Fehlererkennung)</span>
-            </div>` : '';
+            </div>
+            <div style="height:200px;"></div>` : '';  // Extra padding for scroll centering
         
         const noFacesHtml = !faceSamples.length ? '<div style="color:#888; padding:20px; text-align:center;">Keine Face-Samples geladen.<br><small>Wähle eine Aufnahme und klicke "Analyse laden"</small></div>' : '';
 
