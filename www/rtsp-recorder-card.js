@@ -427,7 +427,7 @@ class RtspRecorderCard extends HTMLElement {
             
             <div class="fm-container animated" id="container" role="application" aria-label="RTSP Recorder Kamera Archiv">
                 <div class="fm-header" role="banner">
-                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.0.7</span></div>
+                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">STABLE v1.0.8</span></div>
                     <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
                         <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>
@@ -438,7 +438,7 @@ class RtspRecorderCard extends HTMLElement {
                     <div class="fm-player-col">
                         <div class="fm-player-body">
                             <div class="fm-overlay-tl" id="txt-cam" aria-live="polite">Waehle Aufnahme</div>
-                            <div class="fm-overlay-tr" id="txt-date">BETA VERSION</div>
+                            <div class="fm-overlay-tr" id="txt-date">STABLE VERSION</div>
                             <video id="main-video" controls autoplay muted playsinline aria-label="Aufnahme Videoplayer"></video>
                             <canvas id="overlay-canvas" aria-hidden="true"></canvas>
                         
