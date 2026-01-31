@@ -5,6 +5,9 @@ A complete video surveillance solution with AI-powered object detection using Co
 ![Version](https://img.shields.io/badge/version-1.0.7%20BETA-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Quality](https://img.shields.io/badge/Quality%20Score-90%25-brightgreen)
+
+📋 **[ISO 25010 Audit Report v1.0.7](AUDIT_REPORT_v1.0.7_ISO.md)** - Umfassende Qualitätsanalyse
 
 ## Features
 
