@@ -7,6 +7,7 @@ to prevent incomplete files from appearing in the media library.
 import asyncio
 import logging
 import os
+import shutil
 from typing import Callable, Optional, Any
 
 _LOGGER = logging.getLogger(__name__)
@@ -14,6 +15,53 @@ _LOGGER = logging.getLogger(__name__)
 # Type alias for recording completion callback
 # Signature: (output_path: str, success: bool, error_msg: Optional[str]) -> None
 RecordingCallback = Callable[[str, bool, Optional[str]], None]
+
+# LOW-002 Fix: Cache FFmpeg availability
+_ffmpeg_available: bool | None = None
+
+
+async def check_ffmpeg_available() -> bool:
+    """Check if FFmpeg is available on the system (LOW-002 Fix).
+    
+    Returns:
+        True if FFmpeg is available and working, False otherwise.
+    
+    Note:
+        Result is cached after first check for performance.
+    """
+    global _ffmpeg_available
+    
+    if _ffmpeg_available is not None:
+        return _ffmpeg_available
+    
+    # First check: shutil.which (fast)
+    if not shutil.which("ffmpeg"):
+        _LOGGER.warning("FFmpeg not found in PATH")
+        _ffmpeg_available = False
+        return False
+    
+    # Second check: actually run ffmpeg -version
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-version",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await asyncio.wait_for(process.wait(), timeout=5.0)
+        _ffmpeg_available = (process.returncode == 0)
+        if not _ffmpeg_available:
+            _LOGGER.warning("FFmpeg returned non-zero exit code")
+    except asyncio.TimeoutError:
+        _LOGGER.warning("FFmpeg check timed out")
+        _ffmpeg_available = False
+    except Exception as e:
+        _LOGGER.warning("FFmpeg check failed: %s", e)
+        _ffmpeg_available = False
+    
+    if _ffmpeg_available:
+        _LOGGER.debug("FFmpeg is available")
+    
+    return _ffmpeg_available
 
 
 def log_to_file(msg: str) -> None:

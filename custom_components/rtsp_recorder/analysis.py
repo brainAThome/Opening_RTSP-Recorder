@@ -10,6 +10,14 @@ import io
 
 _LOGGER = logging.getLogger(__name__)
 
+# LOW-003 Fix: Import defaults from const.py instead of hardcoding
+from .const import (
+    DEFAULT_DETECTOR_CONFIDENCE,
+    DEFAULT_FACE_CONFIDENCE,
+    DEFAULT_FACE_MATCH_THRESHOLD,
+    DEFAULT_ANALYSIS_FRAME_INTERVAL,
+)
+
 # ===== Memory Management Constants (HIGH-005 Fix) =====
 # Limit the number of faces with embedded thumbnails to prevent memory exhaustion
 # Each base64 thumbnail is ~6KB (80x80 JPEG), limiting to 50 faces = ~300KB max per analysis
@@ -18,6 +26,8 @@ MAX_FACES_WITH_THUMBS = 50
 MAX_THUMB_SIZE = 80
 # JPEG quality for thumbnails (lower = smaller file)
 THUMB_JPEG_QUALITY = 70
+# Face retry confidence multiplier
+FACE_RETRY_CONFIDENCE_MULTIPLIER = 0.6
 # ===== End Memory Management Constants =====
 
 # Lazy access to stats tracker from parent module
@@ -499,7 +509,18 @@ async def _render_annotated_video(
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
     )
-    await process.wait()
+    
+    try:
+        await process.wait()
+    except Exception:
+        # MED-002 Fix: Terminate FFmpeg process on error
+        if process.returncode is None:
+            try:
+                process.terminate()
+                await asyncio.wait_for(process.wait(), timeout=5.0)
+            except Exception:
+                process.kill()
+        raise
 
     if not os.path.exists(output_video):
         raise RuntimeError("Annotated video not created")
@@ -507,7 +528,10 @@ async def _render_annotated_video(
 
 
 async def extract_frames(video_path: str, output_dir: str, interval_s: int = 2) -> list[str]:
-    """Extract frames from a video using ffmpeg. Returns list of frame files."""
+    """Extract frames from a video using ffmpeg. Returns list of frame files.
+    
+    MED-002 Fix: Uses try/finally to ensure FFmpeg process is terminated on error.
+    """
     _safe_mkdir(output_dir)
     pattern = os.path.join(output_dir, "frame_%04d.jpg")
     fps = 1 / max(1, int(interval_s))
@@ -523,7 +547,18 @@ async def extract_frames(video_path: str, output_dir: str, interval_s: int = 2) 
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
     )
-    await process.wait()
+    
+    try:
+        await process.wait()
+    except Exception:
+        # MED-002 Fix: Terminate FFmpeg process on error
+        if process.returncode is None:
+            try:
+                process.terminate()
+                await asyncio.wait_for(process.wait(), timeout=5.0)
+            except Exception:
+                process.kill()
+        raise
 
     files = sorted(
         [os.path.join(output_dir, f) for f in os.listdir(output_dir) if f.startswith("frame_")]
@@ -536,13 +571,13 @@ async def analyze_recording(
     output_root: str,
     objects: list[str],
     device: str,
-    interval_s: int = 2,
+    interval_s: int = DEFAULT_ANALYSIS_FRAME_INTERVAL,
     perf_snapshot: dict | None = None,
     detector_url: str | None = None,
-    detector_confidence: float = 0.4,
+    detector_confidence: float = DEFAULT_DETECTOR_CONFIDENCE,
     face_enabled: bool = False,
-    face_confidence: float = 0.2,
-    face_match_threshold: float = 0.35,
+    face_confidence: float = DEFAULT_FACE_CONFIDENCE,
+    face_match_threshold: float = DEFAULT_FACE_MATCH_THRESHOLD,
     face_store_embeddings: bool = False,
     people_db: list[dict[str, Any]] | None = None,
     face_detector_url: str | None = None,
@@ -551,6 +586,8 @@ async def analyze_recording(
     """Offline analysis stub: extracts frames and writes a results JSON.
 
     This function runs locally and prepares data for later detection.
+    
+    LOW-003 Fix: Default values now sourced from const.py.
     """
     _safe_mkdir(output_root)
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -724,8 +761,9 @@ async def analyze_recording(
                                     raise RuntimeError(f"Face detector error {resp.status}")
                                 data = await resp.json()
                             # Retry once with lower confidence if no faces found
+                            # LOW-003 Fix: Use constants instead of magic numbers
                             if not (data.get("faces") or []) and float(face_confidence) > 0.25:
-                                retry_conf = max(0.2, float(face_confidence) * 0.6)
+                                retry_conf = max(DEFAULT_FACE_CONFIDENCE, float(face_confidence) * FACE_RETRY_CONFIDENCE_MULTIPLIER)
                                 form_retry = aiohttp.FormData()
                                 form_retry.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
                                 form_retry.add_field("device", device)

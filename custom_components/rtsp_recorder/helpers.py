@@ -185,20 +185,43 @@ def get_system_stats() -> dict[str, Any]:
 
 
 # ===== Logging =====
+# LOW-001 Fix: Log rotation constants
+_LOG_FILE_PATH = "/config/rtsp_debug.log"
+_LOG_MAX_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB max log file size
+_LOG_BACKUP_PATH = "/config/rtsp_debug.log.old"
+
+
+def _rotate_log_if_needed() -> None:
+    """Rotate log file if it exceeds max size (LOW-001 Fix)."""
+    try:
+        if os.path.exists(_LOG_FILE_PATH):
+            size = os.path.getsize(_LOG_FILE_PATH)
+            if size > _LOG_MAX_SIZE_BYTES:
+                # Rename current log to .old (overwriting previous .old)
+                if os.path.exists(_LOG_BACKUP_PATH):
+                    os.remove(_LOG_BACKUP_PATH)
+                os.rename(_LOG_FILE_PATH, _LOG_BACKUP_PATH)
+    except Exception:
+        pass  # Rotation failure should not break logging
+
+
 def log_to_file(msg: str) -> None:
     """Log message to both standard logger and fallback debug file.
     
     This dual logging approach ensures messages are captured by Home
     Assistant's debug logging system while also maintaining a persistent
     file log for troubleshooting deployment issues.
+    
+    LOW-001 Fix: Implements log rotation at 10MB to prevent unbounded growth.
     """
     # Write to standard logger for "Enable Debug Logging" support
     _LOGGER.debug(msg)
     
-    # Keep file logging for fallback
+    # Keep file logging for fallback with rotation check
     try:
         def _write_log():
-            with open("/config/rtsp_debug.log", "a") as f:
+            _rotate_log_if_needed()
+            with open(_LOG_FILE_PATH, "a") as f:
                 f.write(f"RTSP: {msg}\n")
 
         try:

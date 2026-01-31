@@ -156,6 +156,7 @@ async def _load_people_db(path: str, use_cache: bool = True) -> dict[str, Any]:
 async def _save_people_db(path: str, data: dict[str, Any]) -> None:
     """Save people database to JSON file.
     
+    Creates a backup before writing (MED-001 Fix).
     Invalidates cache after write to ensure consistency.
     
     Args:
@@ -163,6 +164,17 @@ async def _save_people_db(path: str, data: dict[str, Any]) -> None:
         data: People database dict to save
     """
     async with _people_lock:
+        # MED-001 Fix: Create backup before writing
+        backup_path = path + ".bak"
+        def _create_backup():
+            if os.path.exists(path):
+                try:
+                    import shutil
+                    shutil.copy2(path, backup_path)
+                except Exception:
+                    pass  # Backup failure should not block save
+        await asyncio.to_thread(_create_backup)
+        
         # MED-005 Fix: Use timezone-aware datetime
         data["updated_utc"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
         def _write():
