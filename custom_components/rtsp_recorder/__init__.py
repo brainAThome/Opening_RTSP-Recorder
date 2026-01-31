@@ -398,6 +398,74 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         # Register update listener
         entry.async_on_unload(entry.add_update_listener(update_listener))
 
+        # ===== Camera Health Watchdog =====
+        
+        # Track last recording time per camera
+        camera_last_recording: dict[str, datetime.datetime] = {}
+        camera_expected_activity: dict[str, bool] = {}  # Track if camera should be recording
+        
+        async def check_camera_health(now=None):
+            """Check if cameras are recording as expected."""
+            try:
+                # Get all configured cameras from motion sensors
+                for key, value in config_data.items():
+                    if not key.startswith("sensor_"):
+                        continue
+                    
+                    camera_name = key.replace("sensor_", "")
+                    motion_entity = value
+                    cam_folder = os.path.join(storage_path, camera_name)
+                    
+                    if not os.path.exists(cam_folder):
+                        continue
+                    
+                    # Find newest recording
+                    try:
+                        files = [f for f in os.listdir(cam_folder) if f.endswith('.mp4')]
+                        if files:
+                            files.sort(reverse=True)
+                            newest = files[0]
+                            # Parse timestamp from filename: CameraName_YYYYMMDD_HHMMSS.mp4
+                            parts = newest.replace('.mp4', '').split('_')
+                            if len(parts) >= 3:
+                                date_str = parts[-2]
+                                time_str = parts[-1]
+                                try:
+                                    last_rec = datetime.datetime.strptime(f"{date_str}_{time_str}", "%Y%m%d_%H%M%S")
+                                    camera_last_recording[camera_name] = last_rec
+                                except ValueError:
+                                    pass
+                    except Exception as e:
+                        log_to_file(f"Watchdog: Error checking {camera_name}: {e}")
+                    
+                    # Check motion sensor state
+                    state = hass.states.get(motion_entity)
+                    if state:
+                        camera_expected_activity[camera_name] = (state.state == "on")
+                
+                # Log health status
+                now_dt = datetime.datetime.now()
+                stale_cameras = []
+                for cam_name, last_rec in camera_last_recording.items():
+                    age_minutes = (now_dt - last_rec).total_seconds() / 60
+                    # If camera has motion but no recording in 30+ minutes, flag it
+                    if camera_expected_activity.get(cam_name, False) and age_minutes > 30:
+                        stale_cameras.append(f"{cam_name} ({age_minutes:.0f}min)")
+                
+                if stale_cameras:
+                    log_to_file(f"⚠️ WATCHDOG: Stale cameras (motion active but old recordings): {', '.join(stale_cameras)}")
+                    _LOGGER.warning(f"RTSP Recorder Watchdog: Cameras may have issues: {stale_cameras}")
+                    
+            except Exception as e:
+                log_to_file(f"Watchdog error: {e}")
+        
+        # Run watchdog every 15 minutes
+        unsub_watchdog = async_track_time_interval(hass, check_camera_health, timedelta(minutes=15))
+        entry.async_on_unload(unsub_watchdog)
+        
+        # Run initial check after 60 seconds
+        hass.loop.call_later(60, lambda: hass.async_create_task(check_camera_health()))
+
         # ===== Register WebSocket Handlers (from websocket_handlers.py) =====
         
         register_websocket_handlers(

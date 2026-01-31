@@ -107,11 +107,16 @@ async def _monitor_recording(
     success = False
     
     try:
-        await process.wait()
+        # Wait for process and capture stderr for debugging
+        stdout, stderr = await process.communicate()
         log_to_file(f"FFmpeg finished with code {process.returncode}")
         
         if process.returncode != 0:
             error_msg = f"FFmpeg exited with code {process.returncode}"
+            # Log last 500 chars of stderr for debugging
+            if stderr:
+                stderr_text = stderr.decode('utf-8', errors='replace')[-500:]
+                log_to_file(f"FFmpeg STDERR: {stderr_text}")
             log_to_file(f"FFmpeg ERROR: {error_msg}")
         
         # Check if file exists and has size > 0
@@ -180,28 +185,40 @@ async def async_record_stream(
     # Use .tmp extension while recording
     tmp_path = output_path + ".tmp"
     
+    # FIX: Improved FFmpeg command with proper RTSP options
+    # -rtsp_transport tcp: Use TCP for more reliable streaming
+    # -timeout: Connection timeout in microseconds (5 seconds)
+    # -t after -i: Duration as output option for more reliable recording
     command = [
         "ffmpeg",
-        "-y",
-        "-t", str(duration),
-        "-i", rtsp_url,
-        "-c", "copy",
-        "-f", "mp4",  # EXPLICITLY set format since ext is .tmp
+        "-y",                           # Overwrite output
+        "-rtsp_transport", "tcp",       # Use TCP for RTSP (more reliable)
+        "-timeout", "5000000",          # 5 second connection timeout
+        "-i", rtsp_url,                 # Input RTSP stream
+        "-t", str(duration),            # Recording duration (as output option)
+        "-c", "copy",                   # Copy codec (no re-encoding)
+        "-f", "mp4",                    # Output format (important for .tmp extension)
+        "-movflags", "+faststart",      # Enable fast start for web playback
         tmp_path
     ]
     
-    log_to_file(f"START RECORD: {rtsp_url} -> {tmp_path}")
+    log_to_file(f"START RECORD: duration={duration}s, url={rtsp_url[:50]}..., output={tmp_path}")
     
     # Ensure directory exists
     folder = os.path.dirname(output_path)
     if not os.path.exists(folder):
         os.makedirs(folder, exist_ok=True)
 
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        log_to_file(f"FFmpeg process started with PID: {process.pid}")
+    except Exception as e:
+        log_to_file(f"CRITICAL: Failed to start FFmpeg: {e}")
+        raise
     
     # Create background task to handle the rename when finished
     hass.async_create_task(_monitor_recording(process, tmp_path, output_path, on_complete))
