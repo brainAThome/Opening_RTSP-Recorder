@@ -1372,42 +1372,60 @@ class RtspRecorderCard extends HTMLElement {
                 e.preventDefault();
                 const idx = parseInt(el.getAttribute('data-idx'), 10);
                 const personId = this._selectedPersonId;
+                const sample = this._analysisFaceSamples[idx];
+                if (!sample) return;
                 
-                // Wenn keine Person ausgewählt, zeige Schnellauswahl-Dialog
-                if (!personId) {
-                    const people = this._people || [];
-                    if (people.length === 0) {
-                        this.showToast('Bitte erst eine Person anlegen', 'warning');
+                // Prüfe ob Sample bereits zugewiesen ist (grün markiert)
+                const sampleKey = `${sample.time_s}|${sample.thumb || ''}`;
+                if (!this._enrolledSampleKeys) this._enrolledSampleKeys = new Set();
+                const isAlreadyEnrolled = this._enrolledSampleKeys.has(sampleKey);
+                
+                // Wenn BEREITS zugewiesen → Korrektur-Popup zeigen
+                // Wenn NICHT zugewiesen UND Person ausgewählt → direkt zuweisen
+                // Wenn NICHT zugewiesen UND KEINE Person ausgewählt → Popup zeigen
+                
+                if (!isAlreadyEnrolled && personId) {
+                    // Direkt zur ausgewählten Person hinzufügen
+                    if (!sample.embedding) {
+                        this.showToast('Kein Embedding im Sample vorhanden', 'warning');
                         return;
                     }
-                    
-                    // Erstelle Schnellauswahl-Popup
-                    const sample = this._analysisFaceSamples[idx];
-                    if (!sample) return;
-                    
-                    const popup = document.createElement('div');
-                    popup.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; z-index:10000;';
-                    popup.innerHTML = `
-                        <div style="background:#222; border-radius:16px; padding:20px; max-width:400px; width:90%;">
-                            <div style="text-align:center; margin-bottom:15px;">
-                                ${sample.thumb ? `<img src="${sample.thumb}" style="width:100px; height:100px; object-fit:cover; border-radius:12px; border:3px solid var(--primary-color);" />` : ''}
-                                <div style="margin-top:10px; font-weight:500;">Person zuweisen</div>
-                            </div>
-                            <div style="display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto;">
-                                ${people.map(p => `
-                                    <div style="display:flex; gap:4px;">
-                                        <button class="quick-assign-btn" data-person-id="${p.id}" style="flex:1; padding:10px; background:#333; border:none; border-radius:8px 0 0 8px; color:#fff; cursor:pointer; text-align:left; display:flex; align-items:center; gap:10px;">
-                                            ${p.recent_thumbs && p.recent_thumbs[0] ? `<img src="${p.recent_thumbs[0]}" style="width:36px; height:36px; object-fit:cover; border-radius:6px;" />` : '<div style="width:36px; height:36px; background:#444; border-radius:6px; display:flex; align-items:center; justify-content:center;">👤</div>'}
-                                            <div>
-                                                <div style="font-weight:500;">${p.name}</div>
-                                                <div style="font-size:0.75em; color:#888;">${p.embeddings_count} Samples</div>
-                                            </div>
-                                        </button>
-                                        <button class="negative-sample-btn" data-person-id="${p.id}" data-person-name="${p.name}" style="padding:10px 12px; background:#663333; border:none; border-radius:0 8px 8px 0; color:#fff; cursor:pointer; font-size:0.9em;" title="Das ist NICHT ${p.name}">
-                                            ❌
-                                        </button>
-                                    </div>
-                                `).join('')}
+                    // Markiere sofort als enrolled BEVOR der API-Call
+                    this._enrolledSampleKeys.add(sampleKey);
+                    await this.addEmbeddingToPerson(personId, sample.embedding, sample.thumb || null);
+                    return;
+                }
+                
+                // Popup zeigen (für Korrektur oder wenn keine Person ausgewählt)
+                const people = this._people || [];
+                if (people.length === 0) {
+                    this.showToast('Bitte erst eine Person anlegen', 'warning');
+                    return;
+                }
+                
+                const popup = document.createElement('div');
+                popup.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; z-index:10000;';
+                popup.innerHTML = `
+                    <div style="background:#222; border-radius:16px; padding:20px; max-width:400px; width:90%;">
+                        <div style="text-align:center; margin-bottom:15px;">
+                            ${sample.thumb ? `<img src="${sample.thumb}" style="width:100px; height:100px; object-fit:cover; border-radius:12px; border:3px solid var(--primary-color);" />` : ''}
+                            <div style="margin-top:10px; font-weight:500;">${isAlreadyEnrolled ? 'Person korrigieren' : 'Person zuweisen'}</div>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto;">
+                            ${people.map(p => `
+                                <div style="display:flex; gap:4px;">
+                                    <button class="quick-assign-btn" data-person-id="${p.id}" style="flex:1; padding:10px; background:#333; border:none; border-radius:8px 0 0 8px; color:#fff; cursor:pointer; text-align:left; display:flex; align-items:center; gap:10px;">
+                                        ${p.recent_thumbs && p.recent_thumbs[0] ? `<img src="${p.recent_thumbs[0]}" style="width:36px; height:36px; object-fit:cover; border-radius:6px;" />` : '<div style="width:36px; height:36px; background:#444; border-radius:6px; display:flex; align-items:center; justify-content:center;">👤</div>'}
+                                        <div>
+                                            <div style="font-weight:500;">${p.name}</div>
+                                            <div style="font-size:0.75em; color:#888;">${p.embeddings_count} Samples</div>
+                                        </div>
+                                    </button>
+                                    <button class="negative-sample-btn" data-person-id="${p.id}" data-person-name="${p.name}" style="padding:10px 12px; background:#663333; border:none; border-radius:0 8px 8px 0; color:#fff; cursor:pointer; font-size:0.9em;" title="Das ist NICHT ${p.name}">
+                                        ❌
+                                    </button>
+                                </div>
+                            `).join('')}
                             </div>
                             <div style="margin-top:10px; border-top:1px solid #444; padding-top:10px;">
                                 <button class="skip-face-btn" style="width:100%; padding:12px; background:#444; border:none; border-radius:8px; color:#aaa; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
@@ -1489,15 +1507,6 @@ class RtspRecorderCard extends HTMLElement {
                     
                     popup.querySelector('.close-popup-btn').onclick = () => document.body.removeChild(popup);
                     popup.onclick = (e) => { if (e.target === popup) document.body.removeChild(popup); };
-                    return;
-                }
-                
-                const sample = this._analysisFaceSamples[idx];
-                if (!sample || !sample.embedding) {
-                    this.showToast('Kein Embedding im Sample vorhanden', 'warning');
-                    return;
-                }
-                await this.addEmbeddingToPerson(personId, sample.embedding, sample.thumb || null);
             };
         });
     }
