@@ -5,19 +5,31 @@ This module handles all CRUD operations for the people database:
 - Atomic updates with proper locking
 - Converting internal data to public view format
 - In-memory caching for faster repeated reads
+- SQLite backend support for improved performance (v1.0.9+)
 
 Performance optimizations:
 - Cached reads avoid disk I/O when data hasn't changed
 - Lock-protected atomic operations prevent race conditions
+- SQLite with WAL mode for concurrent read/write operations
+- Binary embedding storage for reduced database size
+
+Version: 1.0.9 - Added SQLite backend support
 """
 import asyncio
 import datetime
 import json
 import os
-from typing import Any, Callable
+import logging
+from typing import Any, Callable, Optional
 
 from .const import PEOPLE_DB_VERSION
 from .face_matching import _update_person_centroid
+
+_LOGGER = logging.getLogger(__name__)
+
+# SQLite backend flag - can be enabled via config
+_USE_SQLITE_BACKEND = False
+_sqlite_db = None
 
 
 # Global lock for all database operations
@@ -336,3 +348,170 @@ async def get_ignored_count(path: str) -> int:
     """
     data = await _load_people_db(path)
     return len(data.get("ignored_embeddings", []))
+
+
+# ==================== SQLite Backend Functions ====================
+
+def enable_sqlite_backend(config_path: str = "/config") -> bool:
+    """Enable SQLite backend for improved performance.
+    
+    This will:
+    - Initialize the SQLite database
+    - Optionally migrate existing JSON data
+    - Enable SQLite for all future operations
+    
+    Args:
+        config_path: Home Assistant config path
+        
+    Returns:
+        True if successfully enabled
+    """
+    global _USE_SQLITE_BACKEND, _sqlite_db
+    
+    try:
+        from .database import get_database
+        
+        _sqlite_db = get_database(config_path)
+        if _sqlite_db.initialize():
+            _USE_SQLITE_BACKEND = True
+            _LOGGER.info("SQLite backend enabled for people database")
+            return True
+        else:
+            _LOGGER.error("Failed to initialize SQLite database")
+            return False
+    except ImportError as e:
+        _LOGGER.error(f"SQLite database module not available: {e}")
+        return False
+    except Exception as e:
+        _LOGGER.error(f"Failed to enable SQLite backend: {e}")
+        return False
+
+
+def disable_sqlite_backend() -> None:
+    """Disable SQLite backend and use JSON files."""
+    global _USE_SQLITE_BACKEND, _sqlite_db
+    
+    if _sqlite_db:
+        from .database import close_database
+        close_database()
+    
+    _USE_SQLITE_BACKEND = False
+    _sqlite_db = None
+    _LOGGER.info("SQLite backend disabled, using JSON files")
+
+
+def is_sqlite_enabled() -> bool:
+    """Check if SQLite backend is enabled.
+    
+    Returns:
+        True if SQLite is active
+    """
+    return _USE_SQLITE_BACKEND and _sqlite_db is not None
+
+
+async def migrate_json_to_sqlite(json_path: str) -> tuple[bool, str]:
+    """Migrate existing JSON people database to SQLite.
+    
+    This should be called once when enabling SQLite for the first time.
+    The original JSON file is preserved as a backup.
+    
+    Args:
+        json_path: Path to people_db.json file
+        
+    Returns:
+        Tuple of (success, message)
+    """
+    if not _sqlite_db:
+        return False, "SQLite backend not enabled"
+    
+    if not os.path.exists(json_path):
+        return True, "No JSON file to migrate"
+    
+    try:
+        result = _sqlite_db.migrate_from_json(json_path)
+        if result[0]:
+            # Rename JSON file to indicate migration complete
+            backup_path = json_path + ".migrated"
+            os.rename(json_path, backup_path)
+            _LOGGER.info(f"JSON migrated to SQLite, backup at {backup_path}")
+        return result
+    except Exception as e:
+        return False, f"Migration failed: {e}"
+
+
+async def log_recognition_event(
+    camera_name: str,
+    person_id: str = None,
+    person_name: str = None,
+    confidence: float = None,
+    recording_path: str = None,
+    frame_path: str = None,
+    is_unknown: bool = False,
+    metadata: dict = None
+) -> int:
+    """Log a face recognition event to the database.
+    
+    Only works when SQLite backend is enabled.
+    Used for analytics and history tracking.
+    
+    Args:
+        camera_name: Camera that detected the face
+        person_id: Matched person ID (if known)
+        person_name: Person name
+        confidence: Match confidence
+        recording_path: Path to recording
+        frame_path: Path to frame image
+        is_unknown: True if face not matched
+        metadata: Additional data (bbox, landmarks)
+        
+    Returns:
+        History entry ID or -1 if not using SQLite
+    """
+    if not is_sqlite_enabled():
+        return -1
+    
+    return _sqlite_db.add_recognition(
+        camera_name=camera_name,
+        person_id=person_id,
+        person_name=person_name,
+        confidence=confidence,
+        recording_path=recording_path,
+        frame_path=frame_path,
+        is_unknown=is_unknown,
+        metadata=metadata
+    )
+
+
+async def get_recognition_stats(days: int = 7) -> dict:
+    """Get face recognition statistics.
+    
+    Only works when SQLite backend is enabled.
+    
+    Args:
+        days: Number of days to analyze
+        
+    Returns:
+        Statistics dict or empty dict if not using SQLite
+    """
+    if not is_sqlite_enabled():
+        return {}
+    
+    return _sqlite_db.get_recognition_stats(days)
+
+
+async def get_database_stats() -> dict:
+    """Get database statistics.
+    
+    Returns stats from SQLite if enabled, otherwise from JSON.
+    
+    Returns:
+        Dict with counts and sizes
+    """
+    if is_sqlite_enabled():
+        return _sqlite_db.get_db_stats()
+    
+    # Fallback to JSON stats
+    return {
+        "backend": "json",
+        "sqlite_available": False
+    }

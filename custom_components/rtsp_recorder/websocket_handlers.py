@@ -326,6 +326,8 @@ def register_websocket_handlers(
             "analysis_face_store_embeddings": analysis_face_store_embeddings,
             "camera_objects": cam_objects,
             "camera_objects_map": camera_objects_map,
+            "storage_path": storage_path,
+            "snapshot_path": snapshot_path_base,
         }
         connection.send_result(msg["id"], result)
 

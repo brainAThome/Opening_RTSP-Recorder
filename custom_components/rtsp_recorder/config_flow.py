@@ -225,7 +225,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         
         # Check allowlist status for description
         is_allowed = self._check_allowlist(storage)
-        allowlist_status = "Pfad ist freigegeben" if is_allowed else "Pfad muss in configuration.yaml freigegeben werden!"
+        allowlist_status = "✅ Speicherpfad ist in Home Assistant freigegeben" if is_allowed else "⚠️ Speicherpfad muss in configuration.yaml freigegeben werden!"
 
         # Build camera options
         cam_options = [
@@ -604,6 +604,8 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 self.config_cache["analysis_face_confidence"] = float(user_input.get("analysis_face_confidence", 0.2))
                 self.config_cache["analysis_face_match_threshold"] = float(user_input.get("analysis_face_match_threshold", 0.35))
                 self.config_cache["person_entities_enabled"] = bool(user_input.get("person_entities_enabled", False))
+                # SQLite Backend (v1.0.9+)
+                self.config_cache["use_sqlite"] = bool(user_input.get("use_sqlite", False))
                 self.config_cache["analysis_auto_enabled"] = auto_enabled
                 self.config_cache["analysis_auto_mode"] = auto_mode
                 self.config_cache["analysis_auto_time"] = auto_time or "03:00"
@@ -699,6 +701,8 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         cur_face_confidence = float(self.config_cache.get("analysis_face_confidence", 0.2))
         cur_face_threshold = float(self.config_cache.get("analysis_face_match_threshold", 0.35))
         cur_person_entities = bool(self.config_cache.get("person_entities_enabled", False))
+        # SQLite Backend (v1.0.9+)
+        cur_use_sqlite = bool(self.config_cache.get("use_sqlite", False))
 
         schema = vol.Schema({
             vol.Required("analysis_enabled", default=cur_enabled): selector.BooleanSelector(),
@@ -729,6 +733,8 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 selector.NumberSelectorConfig(min=0.2, max=0.9, step=0.05, mode=selector.NumberSelectorMode.SLIDER)
             ),
             vol.Required("person_entities_enabled", default=cur_person_entities): selector.BooleanSelector(),
+            # SQLite Backend (v1.0.9+)
+            vol.Required("use_sqlite", default=cur_use_sqlite): selector.BooleanSelector(),
             vol.Required("analysis_auto_enabled", default=cur_auto_enabled): selector.BooleanSelector(),
             vol.Required("analysis_auto_new", default=cur_auto_new): selector.BooleanSelector(),
             vol.Required("analysis_auto_mode", default=cur_auto_mode): selector.SelectSelector(

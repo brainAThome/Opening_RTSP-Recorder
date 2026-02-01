@@ -20,8 +20,10 @@ from datetime import timedelta
 from typing import Any
 
 import aiohttp
+from aiohttp import web
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import HomeAssistantView
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.event import async_track_state_change_event
@@ -34,13 +36,21 @@ from .analysis import detect_available_devices
 from .const import (
     DOMAIN,
     PEOPLE_DB_DEFAULT_PATH,
+    CONF_USE_SQLITE,
+    DEFAULT_USE_SQLITE,
 )
 from .helpers import (
     log_to_file,
     _validate_person_name,
     _parse_hhmm,
 )
-from .people_db import _load_people_db
+from .people_db import (
+    _load_people_db,
+    enable_sqlite_backend,
+    disable_sqlite_backend,
+    is_sqlite_enabled,
+    migrate_json_to_sqlite,
+)
 from .analysis_helpers import _find_analysis_for_video
 
 # NEW: Modularized handlers (HIGH-001 Fix)
@@ -48,6 +58,47 @@ from .websocket_handlers import register_websocket_handlers, register_people_web
 from .services import register_services
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class ThumbnailView(HomeAssistantView):
+    """HTTP View to serve thumbnails from any configured path."""
+    
+    url = "/api/rtsp_recorder/thumbnail/{camera}/{filename}"
+    name = "api:rtsp_recorder:thumbnail"
+    requires_auth = False  # Thumbnails are not sensitive
+    
+    def __init__(self, snapshot_path: str):
+        """Initialize with the configured snapshot path."""
+        self._snapshot_path = snapshot_path
+    
+    async def get(self, request: web.Request, camera: str, filename: str) -> web.Response:
+        """Handle thumbnail request."""
+        # Security: Prevent path traversal
+        if ".." in camera or ".." in filename or "/" in filename or "\\" in filename:
+            return web.Response(status=403, text="Forbidden")
+        
+        # Build full path
+        file_path = os.path.join(self._snapshot_path, camera, filename)
+        
+        # Check if file exists
+        if not os.path.isfile(file_path):
+            return web.Response(status=404, text="Not found")
+        
+        # Determine content type
+        content_type = "image/jpeg"
+        if filename.lower().endswith(".png"):
+            content_type = "image/png"
+        elif filename.lower().endswith(".webp"):
+            content_type = "image/webp"
+        
+        # Read and return file
+        try:
+            with open(file_path, "rb") as f:
+                data = f.read()
+            return web.Response(body=data, content_type=content_type)
+        except Exception as e:
+            _LOGGER.error(f"Error reading thumbnail {file_path}: {e}")
+            return web.Response(status=500, text="Internal error")
 
 
 async def async_setup(hass, config):
@@ -116,6 +167,9 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             camera_name = key.replace("retention_hours_", "")
             if isinstance(value, (int, float)) and value > 0:
                 override_map[camera_name] = value
+    
+    # SQLite backend configuration (v1.0.9+)
+    use_sqlite = bool(config_data.get(CONF_USE_SQLITE, DEFAULT_USE_SQLITE))
             
     log_to_file(f"Config: Path={storage_path}, Video={retention_days}d, Snap={snapshot_retention_days}d")
     if override_map:
@@ -133,7 +187,24 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         if not os.path.exists(analysis_output_path):
             os.makedirs(analysis_output_path, exist_ok=True)
 
-        # People DB sicherstellen
+        # 2. Register HTTP endpoint for thumbnails (v1.0.9+)
+        # This allows thumbnails to be served from any configured path
+        hass.http.register_view(ThumbnailView(snapshot_path_base))
+        log_to_file(f"Registered thumbnail endpoint: /api/rtsp_recorder/thumbnail/")
+
+        # 3. Initialize database backend (v1.0.9+)
+        if use_sqlite:
+            log_to_file("Enabling SQLite backend for people database...")
+            if enable_sqlite_backend("/config"):
+                # Migrate existing JSON data if present
+                if os.path.exists(people_db_path):
+                    success, msg = await migrate_json_to_sqlite(people_db_path)
+                    log_to_file(f"SQLite migration: {msg}")
+                log_to_file("SQLite backend enabled successfully")
+            else:
+                log_to_file("SQLite backend initialization failed, using JSON fallback")
+        
+        # People DB sicherstellen (JSON fallback or initial load)
         await _load_people_db(people_db_path)
 
         # ===== Helper functions needed by services =====

@@ -1,166 +1,168 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "🎬 RTSP Recorder einrichten",
-        "description": "Willkommen! Konfiguriere den Speicherort für deine Kamera-Aufnahmen.\n\n⚠️ **Wichtig:** Der Speicherpfad muss in deiner `configuration.yaml` freigegeben sein:\n```yaml\nhomeassistant:\n  allowlist_external_dirs:\n    - /media\n```",
-        "data": {
-          "storage_path": "📁 Speicherpfad",
-          "snapshot_path": "🖼️ Thumbnail-Pfad",
-          "retention_days": "📅 Aufbewahrung (Tage)",
-          "retention_hours": "⏰ Zusätzliche Stunden"
+    "config": {
+        "step": {
+            "user": {
+                "title": "🎬 RTSP Recorder einrichten",
+                "description": "Willkommen! Konfiguriere den Speicherort für deine Kamera-Aufnahmen.",
+                "data": {
+                    "storage_path": "📁 Speicherpfad",
+                    "snapshot_path": "📸 Thumbnail-Pfad",
+                    "retention_days": "📅 Aufbewahrung (Tage)",
+                    "retention_hours": "⏰ Zusätzliche Stunden"
+                },
+                "data_description": {
+                    "storage_path": "z.B. /media/rtsp_recordings",
+                    "snapshot_path": "Standard: /config/www/thumbnails",
+                    "retention_days": "Wie lange Videos behalten werden",
+                    "retention_hours": "Optional: Extra Stunden zur Aufbewahrung"
+                }
+            }
         },
-        "data_description": {
-          "storage_path": "Vollständiger Pfad wo die Aufnahmen gespeichert werden (z.B. /media/rtsp_recordings)",
-          "snapshot_path": "Pfad für Vorschaubilder (z.B. /config/www/thumbnails)",
-          "retention_days": "Nach wie vielen Tagen alte Videos automatisch gelöscht werden",
-          "retention_hours": "Extra Stunden zusätzlich zu den Tagen (optional, 0-23)"
+        "error": {
+            "auth_error": "Zugriffsfehler",
+            "invalid_path": "Ungültiger Pfad - muss mit / beginnen",
+            "invalid_retention": "Aufbewahrung muss mindestens 1 Tag sein",
+            "unknown": "Unbekannter Fehler"
+        },
+        "abort": {
+            "single_instance_allowed": "Bereits konfiguriert. Nutze 'Konfigurieren' zum Bearbeiten."
         }
-      }
     },
-    "error": {
-      "auth_error": "Zugriffsfehler",
-      "invalid_path": "Ungültiger Pfad - muss mit / beginnen",
-      "invalid_retention": "Aufbewahrung muss mindestens 1 Tag sein",
-      "unknown": "Unbekannter Fehler"
-    },
-    "abort": {
-      "single_instance_allowed": "Bereits konfiguriert. Nutze 'Konfigurieren' zum Bearbeiten."
+    "options": {
+        "step": {
+            "init": {
+                "title": "⚙️ RTSP Recorder Einstellungen",
+                "description": "**{allowlist_status}**\n\nFalls nicht erlaubt, füge folgendes zur `configuration.yaml` hinzu:\n```\nhomeassistant:\n  allowlist_external_dirs:\n    - /media\n```\n\nGlobale Aufbewahrungszeit und Kamera-Konfiguration.\n\n✅ = Kamera bereits konfiguriert",
+                "data": {
+                    "storage_path": "📁 Speicherpfad",
+                    "snapshot_path": "📸 Thumbnail-Pfad",
+                    "retention_days": "🎬 Video-Aufbewahrung",
+                    "snapshot_retention_days": "📸 Thumbnail-Aufbewahrung",
+                    "camera_selection": "📹 Kamera konfigurieren",
+                    "analysis_configure": "🧠 Analyse konfigurieren"
+                },
+                "data_description": {
+                    "storage_path": "Pfad für Videoaufnahmen (z.B. /media/rtsp_recordings)",
+                    "snapshot_path": "Pfad für Vorschaubilder (Standard: /config/www/thumbnails)",
+                    "retention_days": "Aufnahmen werden nach X Tagen automatisch gelöscht",
+                    "snapshot_retention_days": "Vorschaubilder werden nach X Tagen gelöscht",
+                    "camera_selection": "Wähle eine Kamera um Bewegungssensor und Aufnahmedauer einzustellen",
+                    "analysis_configure": "Öffnet die erweiterten Analyse-Einstellungen"
+                }
+            },
+            "analysis": {
+                "title": "🧠 Offline-Analyse",
+                "description": "Analysiert gespeicherte Videos lokal und speichert Ergebnisse im Analyse-Ordner.",
+                "data": {
+                    "analysis_enabled": "✅ Analyse aktiv",
+                    "analysis_device": "🖥️ Hardware",
+                    "analysis_objects": "🎯 Objekte",
+                    "analysis_output_path": "📂 Analyse-Ordner",
+                    "analysis_frame_interval": "⏱️ Frame-Intervall (Sekunden)",
+                    "analysis_detector_url": "🔗 Detector URL",
+                    "analysis_detector_confidence": "📊 Erkennungs-Schwelle",
+                    "analysis_face_enabled": "👤 Gesichtserkennung aktiv",
+                    "analysis_face_confidence": "👁️ Gesichts-Erkennungsschwelle",
+                    "analysis_face_match_threshold": "🎚️ Gesichts-Matching-Schwelle",
+                    "person_entities_enabled": "🏠 Personen-Entitäten erstellen",
+                    "use_sqlite": "🗄️ SQLite Datenbank nutzen",
+                    "analysis_auto_enabled": "🔄 Automatik aktiv",
+                    "analysis_auto_mode": "📋 Modus",
+                    "analysis_auto_time": "🕐 Uhrzeit (HH:MM)",
+                    "analysis_auto_interval_hours": "⏰ Intervall (Stunden)",
+                    "analysis_auto_since_days": "📅 Zeitraum (Tage)",
+                    "analysis_auto_limit": "🔢 Limit pro Lauf",
+                    "analysis_auto_skip_existing": "⏭️ Nur neue Dateien",
+                    "analysis_auto_new": "⚡ Neue Videos sofort analysieren",
+                    "analysis_perf_cpu_entity": "💻 CPU Sensor",
+                    "analysis_perf_igpu_entity": "🎮 iGPU Sensor",
+                    "analysis_perf_coral_entity": "🪸 Coral Sensor"
+                },
+                "data_description": {
+                    "analysis_enabled": "Aktiviert die Offline-Analyse",
+                    "analysis_device": "Rechenziel für Analyse (Coral, iGPU, CPU)",
+                    "analysis_objects": "Welche Objekte gesucht werden sollen",
+                    "analysis_output_path": "Ordner für Analyse-Ergebnisse",
+                    "analysis_frame_interval": "Alle X Sekunden ein Frame extrahieren",
+                    "analysis_detector_url": "URL des Detector-Add-ons (z.B. http://a0d7b954-rtsp_recorder_detector:5000)",
+                    "analysis_detector_confidence": "Mindest-Konfidenz für Objekterkennung (0.1-0.9)",
+                    "analysis_face_enabled": "Aktiviert Gesichtserkennung und Embedding-Extraktion bei der Analyse",
+                    "analysis_face_confidence": "Mindest-Konfidenz für Gesichtserkennung (niedriger = mehr Gesichter, empfohlen: 0.2)",
+                    "analysis_face_match_threshold": "Schwellwert für Gesichts-Matching (niedriger = mehr Matches, empfohlen: 0.35)",
+                    "person_entities_enabled": "Erstellt Binary Sensors für erkannte Personen (für Automationen)",
+                    "use_sqlite": "Nutzt SQLite statt JSON für bessere Performance bei vielen Personen und für Erkennungs-Historie",
+                    "analysis_auto_enabled": "Analysiert Aufnahmen automatisch nach Zeitplan",
+                    "analysis_auto_new": "Analysiert neue Aufnahmen direkt nach dem Speichern",
+                    "analysis_auto_mode": "Täglich oder in festen Abständen",
+                    "analysis_auto_time": "Uhrzeit für tägliche Analyse (z.B. 03:00)",
+                    "analysis_auto_interval_hours": "Intervall in Stunden (nur bei Modus Intervall)",
+                    "analysis_auto_since_days": "Nur Aufnahmen der letzten X Tage",
+                    "analysis_auto_limit": "Maximale Anzahl pro Lauf (0 = unbegrenzt)",
+                    "analysis_auto_skip_existing": "Vorhandene Analysen überspringen",
+                    "analysis_perf_cpu_entity": "Sensor für CPU-Auslastung",
+                    "analysis_perf_igpu_entity": "Sensor für iGPU-Auslastung",
+                    "analysis_perf_coral_entity": "Sensor für Coral-Auslastung"
+                }
+            },
+            "camera_config": {
+                "title": "📹 {camera_name} konfigurieren",
+                "description": "Bewegungserkennung und Aufnahme-Einstellungen für diese Kamera.",
+                "data": {
+                    "motion_sensor": "🏃 Bewegungssensor",
+                    "recording_duration": "⏱️ Aufnahmedauer",
+                    "snapshot_delay": "📸 Snapshot-Verzögerung",
+                    "rtsp_url": "🔗 RTSP-URL (Optional)",
+                    "camera_retention": "🗑️ Eigene Aufbewahrung (Stunden)",
+                    "camera_objects": "🎯 Objekte für diese Kamera",
+                    "camera_detector_confidence": "📊 Erkennungs-Schwelle",
+                    "camera_face_confidence": "👁️ Gesichts-Erkennungsschwelle",
+                    "camera_face_match_threshold": "🎚️ Gesichts-Matching-Schwelle",
+                    "configure_another": "🔄 Weitere Kamera konfigurieren"
+                },
+                "data_description": {
+                    "motion_sensor": "Binary Sensor der die Aufnahme startet (z.B. Bewegungssensor)",
+                    "recording_duration": "Wie lange nach Bewegung aufgenommen wird (Sekunden)",
+                    "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung für bessere Bilder",
+                    "rtsp_url": "Eigene RTSP-URL statt der von Home Assistant erkannten (z.B. rtsp://user:pass@192.168.1.100:554/stream)",
+                    "camera_retention": "0 = Globale Einstellung nutzen. Sonst: Stunden für diese Kamera",
+                    "camera_objects": "Leer = Globale Objekte. Sonst: Nur diese Objekte analysieren",
+                    "camera_detector_confidence": "0 = Global. Mindest-Konfidenz für Objekterkennung (0.1-0.9)",
+                    "camera_face_confidence": "0 = Global. Mindest-Konfidenz für Gesichtserkennung (empfohlen: 0.2)",
+                    "camera_face_match_threshold": "0 = Global. Schwelle für Gesichts-Matching (empfohlen: 0.35)",
+                    "configure_another": "Aktivieren um danach eine weitere Kamera einzurichten"
+                }
+            },
+            "manual_camera": {
+                "title": "🎥 Manuelle RTSP-Kamera hinzufügen",
+                "description": "Füge eine Kamera hinzu, die nicht automatisch von Home Assistant erkannt wurde.",
+                "data": {
+                    "camera_name": "📹 Kamera-Name",
+                    "rtsp_url": "🔗 RTSP-URL",
+                    "motion_sensor": "🏃 Bewegungssensor",
+                    "recording_duration": "⏱️ Aufnahmedauer",
+                    "snapshot_delay": "📸 Snapshot-Verzögerung",
+                    "camera_retention": "🗑️ Eigene Aufbewahrung (Stunden)",
+                    "configure_another": "🔄 Weitere Kamera hinzufügen"
+                },
+                "data_description": {
+                    "camera_name": "Eindeutiger Name für die Kamera (z.B. Garage, Einfahrt)",
+                    "rtsp_url": "RTSP-Stream-URL der Kamera (z.B. rtsp://user:pass@192.168.1.100:554/stream)",
+                    "motion_sensor": "Binary Sensor der die Aufnahme startet (z.B. Bewegungssensor)",
+                    "recording_duration": "Wie lange nach Bewegung aufgenommen wird (Sekunden)",
+                    "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung für bessere Bilder",
+                    "camera_retention": "0 = Globale Einstellung nutzen. Sonst: Stunden für diese Kamera",
+                    "configure_another": "Aktivieren um danach eine weitere Kamera hinzuzufügen"
+                }
+            }
+        },
+        "error": {
+            "invalid_path": "Ungültiger Pfad - muss mit / beginnen (z.B. /media/recordings)",
+            "invalid_camera_name": "Bitte einen Kameranamen angeben",
+            "invalid_rtsp": "RTSP-URL ungültig (muss mit rtsp:// oder rtsps:// beginnen)",
+            "camera_exists": "Kamera existiert bereits",
+            "invalid_time": "Ungültige Uhrzeit (HH:MM)",
+            "invalid_interval": "Intervall muss mindestens 1 Stunde sein",
+            "invalid_number": "Ungültiger Wert"
+        }
     }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "⚙️ RTSP Recorder Einstellungen",
-        "description": "**{allowlist_status}**\n\nGlobale Einstellungen und Kamera-Konfiguration.\n\n✅ = Kamera bereits konfiguriert",
-        "data": {
-          "storage_path": "📁 Speicherpfad für Aufnahmen",
-          "snapshot_path": "🖼️ Thumbnail-Pfad",
-          "retention_days": "🎬 Video-Aufbewahrung (Tage)",
-          "snapshot_retention_days": "📸 Thumbnail-Aufbewahrung (Tage)",
-          "camera_selection": "📹 Kamera konfigurieren",
-          "analysis_configure": "🧠 Analyse konfigurieren"
-        },
-        "data_description": {
-          "storage_path": "z.B. /media/rtsp_recordings",
-          "snapshot_path": "z.B. /config/www/thumbnails",
-          "retention_days": "Automatische Löschung nach X Tagen",
-          "snapshot_retention_days": "Vorschaubilder löschen nach X Tagen",
-          "camera_selection": "Bewegungssensor & Aufnahmedauer einstellen",
-          "analysis_configure": "Einstellungen für Offline-Analyse öffnen"
-        }
-      },
-      "analysis": {
-        "title": "🧠 Offline-Analyse",
-        "description": "Analysiert gespeicherte Videos lokal und speichert Ergebnisse im Analyse-Ordner.",
-        "data": {
-          "analysis_enabled": "✅ Analyse aktiv",
-          "analysis_device": "🖥️ Hardware",
-          "analysis_objects": "🎯 Objekte",
-          "analysis_output_path": "📂 Analyse-Ordner",
-          "analysis_frame_interval": "⏱️ Frame-Intervall (Sekunden)",
-          "analysis_detector_url": "🔗 Detector URL",
-          "analysis_detector_confidence": "📊 Erkennungs-Schwelle",
-          "analysis_face_enabled": "👤 Gesichtserkennung aktiv",
-          "analysis_face_confidence": "👁️ Gesichts-Erkennungsschwelle",
-          "analysis_face_match_threshold": "🎚️ Gesichts-Matching-Schwelle",
-          "person_entities_enabled": "🏠 Personen-Entitäten erstellen",
-          "analysis_auto_enabled": "🔄 Automatik aktiv",
-          "analysis_auto_mode": "📋 Modus",
-          "analysis_auto_time": "🕐 Uhrzeit (HH:MM)",
-          "analysis_auto_interval_hours": "⏰ Intervall (Stunden)",
-          "analysis_auto_since_days": "📅 Zeitraum (Tage)",
-          "analysis_auto_limit": "🔢 Limit pro Lauf",
-          "analysis_auto_skip_existing": "⏭️ Nur neue Dateien",
-          "analysis_perf_cpu_entity": "💻 CPU Sensor",
-          "analysis_perf_igpu_entity": "🎮 iGPU Sensor",
-          "analysis_perf_coral_entity": "🪸 Coral Sensor",
-          "analysis_auto_new": "⚡ Neue Aufnahmen sofort analysieren"
-        },
-        "data_description": {
-          "analysis_enabled": "Aktiviert die Offline-Analyse",
-          "analysis_device": "Rechenziel für Analyse (Coral, iGPU, CPU)",
-          "analysis_objects": "Welche Objekte gesucht werden sollen",
-          "analysis_output_path": "Ordner für Analyse-Ergebnisse",
-          "analysis_frame_interval": "Alle X Sekunden ein Frame extrahieren",
-          "analysis_detector_url": "URL des Detector-Add-ons (z.B. http://a0d7b954-rtsp_recorder_detector:5000)",
-          "analysis_detector_confidence": "Mindest-Konfidenz für Objekterkennung (0.1-0.9)",
-          "analysis_face_enabled": "Aktiviert Gesichtserkennung und Embedding-Extraktion bei der Analyse",
-          "analysis_face_confidence": "Mindest-Konfidenz für Gesichtserkennung (niedriger = mehr Gesichter, empfohlen: 0.2)",
-          "analysis_face_match_threshold": "Schwellwert für Gesichts-Matching (niedriger = mehr Matches, empfohlen: 0.35)",
-          "person_entities_enabled": "Erstellt binary_sensor.rtsp_recorder_person_NAME für Automationen",
-          "analysis_auto_enabled": "Analysiert Aufnahmen automatisch nach Zeitplan",
-          "analysis_auto_mode": "Täglich oder in festen Abständen",
-          "analysis_auto_time": "Uhrzeit für tägliche Analyse (z.B. 03:00)",
-          "analysis_auto_interval_hours": "Intervall in Stunden (nur bei Modus Intervall)",
-          "analysis_auto_since_days": "Nur Aufnahmen der letzten X Tage",
-          "analysis_auto_limit": "Maximale Anzahl pro Lauf (0 = unbegrenzt)",
-          "analysis_auto_skip_existing": "Vorhandene Analysen überspringen",
-          "analysis_perf_cpu_entity": "Sensor für CPU-Auslastung",
-          "analysis_perf_igpu_entity": "Sensor für iGPU-Auslastung",
-          "analysis_perf_coral_entity": "Sensor für Coral-Auslastung",
-          "analysis_auto_new": "Startet die Analyse direkt nach dem Speichern einer neuen Aufnahme"
-        }
-      },
-      "camera_config": {
-        "title": "📹 {camera_name} konfigurieren",
-        "description": "Bewegungserkennung und Aufnahme-Einstellungen für diese Kamera.",
-        "data": {
-          "motion_sensor": "🏃 Bewegungssensor",
-          "recording_duration": "⏱️ Aufnahmedauer (Sekunden)",
-          "snapshot_delay": "📸 Snapshot-Verzögerung (Sekunden)",
-          "rtsp_url": "🔗 RTSP-Stream (optional)",
-          "camera_retention": "🗑️ Eigene Aufbewahrung (Stunden)",
-          "camera_objects": "🎯 Objekte für diese Kamera",
-          "camera_detector_confidence": "📊 Erkennungs-Schwelle",
-          "camera_face_confidence": "👁️ Gesichts-Erkennungsschwelle",
-          "camera_face_match_threshold": "🎚️ Gesichts-Matching-Schwelle",
-          "configure_another": "🔄 Weitere Kamera konfigurieren?"
-        },
-        "data_description": {
-          "motion_sensor": "Der Bewegungssensor der die Aufnahme startet (z.B. binary_sensor.kamera_motion)",
-          "recording_duration": "Wie lange nach erkannter Bewegung aufgenommen wird (10-600 Sekunden)",
-          "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung - längere Zeit = besseres Bild",
-          "rtsp_url": "Falls gesetzt, wird direkt über diesen RTSP-Stream aufgenommen (statt camera.record)",
-          "camera_retention": "0 = Globale Tage verwenden, sonst Stunden für diese Kamera",
-          "camera_objects": "Leer = Globale Objekte. Sonst: Nur diese Objekte analysieren",
-          "camera_detector_confidence": "0 = Global. Mindest-Konfidenz für Objekterkennung (0.1-0.9)",
-          "camera_face_confidence": "0 = Global. Mindest-Konfidenz für Gesichtserkennung (empfohlen: 0.2)",
-          "camera_face_match_threshold": "0 = Global. Schwelle für Gesichts-Matching (empfohlen: 0.35)",
-          "configure_another": "Aktivieren um danach direkt eine weitere Kamera einzurichten"
-        }
-      },
-      "manual_camera": {
-        "title": "➕ Manuelle RTSP-Kamera",
-        "description": "Füge eine Kamera hinzu, auch wenn kein Home Assistant Kamera-Entity existiert.",
-        "data": {
-          "camera_name": "🏷️ Kameraname",
-          "rtsp_url": "🔗 RTSP-URL",
-          "motion_sensor": "🏃 Bewegungssensor (optional)",
-          "recording_duration": "⏱️ Aufnahmedauer (Sekunden)",
-          "snapshot_delay": "📸 Snapshot-Verzögerung (Sekunden)",
-          "camera_retention": "🗑️ Eigene Aufbewahrung (Stunden)",
-          "configure_another": "🔄 Weitere Kamera konfigurieren?"
-        },
-        "data_description": {
-          "camera_name": "Freier Name für die neue Kamera (z.B. Terrasse)",
-          "rtsp_url": "RTSP-Adresse (rtsp://... oder rtsps://...)",
-          "motion_sensor": "Optionaler Sensor der die Aufnahme startet",
-          "recording_duration": "Wie lange nach erkannter Bewegung aufgenommen wird (10-600 Sekunden)",
-          "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung - längere Zeit = besseres Bild",
-          "camera_retention": "0 = Globale Tage verwenden, sonst Stunden für diese Kamera",
-          "configure_another": "Aktivieren um danach direkt eine weitere Kamera einzurichten"
-        }
-      }
-    },
-    "error": {
-      "invalid_path": "Ungültiger Pfad - muss mit / beginnen (z.B. /media/recordings)",
-      "invalid_camera_name": "Bitte einen Kameranamen angeben",
-      "invalid_rtsp": "RTSP-URL ungültig (muss mit rtsp:// oder rtsps:// beginnen)",
-      "camera_exists": "Kamera existiert bereits",
-      "invalid_time": "Ungültige Uhrzeit (HH:MM)",
-      "invalid_interval": "Intervall muss mindestens 1 Stunde sein",
-      "invalid_number": "Ungültiger Wert"
-    }
-  }
 }

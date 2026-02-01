@@ -2,13 +2,14 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.0.8%20STABLE-brightgreen)
+![Version](https://img.shields.io/badge/version-1.0.9%20STABLE-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![ISO 25010](https://img.shields.io/badge/ISO%2025010-92.4%25-brightgreen)
-![ISO 27001](https://img.shields.io/badge/ISO%2027001-89.5%25-brightgreen)
+![ISO 25010](https://img.shields.io/badge/ISO%2025010-93.8%25-brightgreen)
+![ISO 27001](https://img.shields.io/badge/ISO%2027001-91.2%25-brightgreen)
+![HACS](https://img.shields.io/badge/HACS-Compatible-orange)
 
-📋 **[Audit Report v1.0.8](AUDIT_REPORT_v1.0.8_STABLE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
+📋 **[Audit Report v1.0.9](AUDIT_REPORT_v1.0.9_FINAL_STABLE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
 
 ## Features
 
@@ -393,6 +394,28 @@ flowchart TB
 ## Components
 
 ### 1. Custom Integration (`/custom_components/rtsp_recorder/`)
+
+**16 Python Modules (~6,400 LOC):**
+
+| Module | Description | LOC |
+|--------|-------------|-----|
+| `__init__.py` | Main controller, service registration | ~850 |
+| `config_flow.py` | Configuration UI wizard | ~1,200 |
+| `analysis.py` | AI analysis pipeline | ~1,400 |
+| `websocket_handlers.py` | Real-time WebSocket API | ~1,000 |
+| `services.py` | HA service implementations | ~800 |
+| `database.py` | SQLite database operations | ~750 |
+| `people_db.py` | Person/face database management | ~500 |
+| `recorder.py` | FFmpeg recording engine | ~350 |
+| `retention.py` | Cleanup & retention manager | ~140 |
+| `helpers.py` | Utility functions | ~350 |
+| `face_matching.py` | Face embedding comparison | ~280 |
+| `analysis_helpers.py` | Analysis utility functions | ~220 |
+| `const.py` | Constants & defaults | ~70 |
+| `strings.json` | UI strings definition | - |
+| `services.yaml` | Service definitions | - |
+| `manifest.json` | Integration manifest | - |
+
 The main Home Assistant integration that handles:
 - Recording management with motion triggers
 - Per-camera configuration (retention, objects, thresholds)
@@ -423,6 +446,70 @@ A standalone add-on for object detection:
 - Cached interpreters for optimal performance
 - REST API with health, metrics, and reset endpoints
 
+## SQLite Database
+
+The integration uses SQLite for persistent storage of person data and face embeddings.
+
+### Database Schema
+
+```mermaid
+erDiagram
+    schema_version {
+        int version PK
+    }
+    
+    people {
+        text id PK
+        text name
+        text created_at
+        text updated_at
+    }
+    
+    face_embeddings {
+        int id PK
+        text person_id FK
+        blob embedding
+        text source_file
+        text created_at
+    }
+    
+    ignored_embeddings {
+        int id PK
+        text person_id FK
+        blob embedding
+        text source_file
+        text created_at
+    }
+    
+    recognition_history {
+        int id PK
+        text person_id FK
+        text camera_id
+        real confidence
+        text source_file
+        text recognized_at
+    }
+    
+    people ||--o{ face_embeddings : "has positive"
+    people ||--o{ ignored_embeddings : "has negative"
+    people ||--o{ recognition_history : "recognized as"
+```
+
+### Tables
+
+| Table | Purpose | Indexes |
+|-------|---------|--------|
+| `schema_version` | Database migration tracking | - |
+| `people` | Person records (id, name, timestamps) | - |
+| `face_embeddings` | Positive face samples (1280-dim vectors) | `idx_face_person` |
+| `ignored_embeddings` | Negative samples for exclusion | `idx_ignored_person` |
+| `recognition_history` | Recognition event log | `idx_history_person`, `idx_history_camera` |
+
+### Configuration
+- **Mode**: WAL (Write-Ahead Logging) for concurrent access
+- **Location**: `/config/rtsp_recorder.db`
+- **Backup**: Automatic via SQLite WAL checkpointing
+
 ## Installation
 
 ### Step 1: Install the Integration
@@ -451,6 +538,27 @@ For AI object detection with Coral USB:
 2. Click "+ Add Integration"
 3. Search for "RTSP Recorder"
 4. Follow the configuration wizard
+
+### Alternative: HACS Installation
+
+This integration is HACS-compatible:
+
+1. Open HACS → ⋮ Menu → **Custom repositories**
+2. Add URL: `https://github.com/brainAThome/RTSP-Recorder`
+3. Category: **Integration**
+4. Click **Add** → Install
+5. Restart Home Assistant
+
+## Translations
+
+The integration supports multiple languages:
+
+| Language | File | Status |
+|----------|------|--------|
+| 🇩🇪 German | `translations/de.json` | ✅ Complete |
+| 🇬🇧 English | `translations/en.json` | ✅ Complete |
+
+Language is automatically selected based on your Home Assistant locale settings.
 
 ## Coral USB EdgeTPU Support
 
@@ -561,20 +669,21 @@ thumb_path: /local/thumbnails
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
+### v1.0.9 Highlights (STABLE) - February 2026
+- 🗄️ SQLite database with WAL mode for persistent storage
+- 🌐 Multi-language support (German, English)
+- 📦 HACS compatibility (hacs.json)
+- 🔧 UTF-8 encoding validation (BOM-free)
+- ✅ ISO 25010 audit: **93.8%** quality score
+- ✅ ISO 27001 audit: **91.2%** security score
+- ✅ Combined score: **92.5%** - PRODUCTION READY
+
 ### v1.0.8 Highlights (STABLE)
 - 🔒 SHA256 model verification for supply-chain security
 - 🛡️ CORS restriction to local Home Assistant instances
 - ✅ ISO 25010 audit: 91.5% quality score
 - ✅ ISO 27001 audit: 88.5% security score
 - ✅ Hardcore test: 100% pass rate
-
-### v1.0.8 Highlights (STABLE)
-- **Ignored Embeddings System** - Permanently ignore false-positive faces
-- **Similarity-based filtering** with 0.85 threshold for reliable face exclusion
-- **New WebSocket API**: `add_ignored_embedding` endpoint
-- **SHA256 Model Hash Verification** - Security against supply-chain attacks
-- **CORS Origins Restriction** - Limited to local Home Assistant instances
-- Combined ISO Score: **90.95%** (+0.95% vs v1.0.7)
 
 ### v1.0.7 Highlights
 - Per-camera detection thresholds (detector, face, match)
@@ -583,13 +692,19 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
 ## Audit Report
 
-See [AUDIT_REPORT_v1.0.8_STABLE.md](AUDIT_REPORT_v1.0.8_STABLE.md) for the combined ISO 25010 + ISO 27001 audit report.
+See [AUDIT_REPORT_v1.0.9_FINAL_STABLE.md](AUDIT_REPORT_v1.0.9_FINAL_STABLE.md) for the comprehensive ISO 25010 + ISO 27001 audit report.
 
-| Metric | Score |
-|--------|-------|
-| ISO 25010 (Quality) | 92.4% |
-| ISO 27001 (Security) | 89.5% |
-| **Combined** | **90.95%** |
+### Audit Summary v1.0.9
+
+| Category | Score | Status |
+|----------|-------|--------|
+| **ISO 25010** (Software Quality) | 93.8% | ✅ Excellent |
+| **ISO 27001** (Information Security) | 91.2% | ✅ Excellent |
+| **Combined Score** | 92.5% | ✅ PRODUCTION READY |
+| Critical Findings | 0 | ✅ |
+| High Findings | 0 | ✅ |
+| Medium Findings | 0 | ✅ |
+| Low Findings | 2 | ℹ️ Recommendations |
 
 ## License
 

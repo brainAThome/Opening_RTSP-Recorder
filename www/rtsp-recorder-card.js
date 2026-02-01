@@ -1,4 +1,4 @@
-// ===== RTSP Recorder Card v1.0.8 STABLE =====
+// ===== RTSP Recorder Card v1.0.9 STABLE =====
 // MED-008 Fix: Debug logging behind feature flag
 const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
 const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
@@ -7,7 +7,7 @@ const rtspWarn = (...args) => console.warn('[RTSP]', ...args);  // Warnings alwa
 const rtspError = (...args) => console.error('[RTSP]', ...args);  // Errors always shown
 
 if (RTSP_DEBUG) {
-    console.info("%c RTSP RECORDER CARD \\n%c v1.0.8 STABLE (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #27ae60;");
+    console.info("%c RTSP RECORDER CARD \\n%c v1.0.9 STABLE (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #27ae60;");
 }
 
 class RtspRecorderCard extends HTMLElement {
@@ -70,7 +70,7 @@ class RtspRecorderCard extends HTMLElement {
     setConfig(config) {
         this._config = config || {};
         this._basePath = this._config.base_path || '/media/rtsp_recordings';
-        this._thumbBase = this._config.thumb_path || '/local/thumbnails';
+        this._thumbBase = '/api/rtsp_recorder/thumbnail'; // v1.0.9: Default auf API-Endpoint
     }
 
     set hass(hass) {
@@ -78,10 +78,15 @@ class RtspRecorderCard extends HTMLElement {
         if (!this._renderDone) {
             this.render();
             this._renderDone = true;
-            this.loadData();
-            this.loadAnalysisConfig(); // v1.0.6: Lade globale Analyse-Einstellungen
+            this.initializeCard(); // v1.0.9: Async initialization
             this.renderCalendar();
         }
+    }
+
+    // v1.0.9: Async initialization - loadAnalysisConfig first, then loadData
+    async initializeCard() {
+        await this.loadAnalysisConfig();
+        this.loadData();
     }
 
     // v1.0.6: Laedt globale Analyse-Konfiguration aus der Integration
@@ -108,6 +113,14 @@ class RtspRecorderCard extends HTMLElement {
                     deviceSelect.value = this._analysisDevice;
                 }
             }
+            // v1.0.9: Lade Speicherpfade aus der Integration
+            if (config && config.storage_path) {
+                this._basePath = config.storage_path;
+                console.log('[RTSP-Recorder] Using storage_path from integration:', this._basePath);
+            }
+            // v1.0.9: Thumbnails ueber API-Endpoint laden (funktioniert mit jedem Pfad)
+            this._thumbBase = '/api/rtsp_recorder/thumbnail';
+            console.log('[RTSP-Recorder] Using thumbnail API endpoint:', this._thumbBase);
         } catch (e) {
             console.warn('[RTSP-Recorder] Could not load analysis config:', e);
         }
@@ -427,7 +440,7 @@ class RtspRecorderCard extends HTMLElement {
             
             <div class="fm-container animated" id="container" role="application" aria-label="RTSP Recorder Kamera Archiv">
                 <div class="fm-header" role="banner">
-                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">STABLE v1.0.8</span></div>
+                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">STABLE v1.0.9</span></div>
                     <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
                         <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>

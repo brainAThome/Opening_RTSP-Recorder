@@ -6,11 +6,13 @@
                 "description": "Willkommen! Konfiguriere den Speicherort für deine Kamera-Aufnahmen.",
                 "data": {
                     "storage_path": "📁 Speicherpfad",
+                    "snapshot_path": "📸 Thumbnail-Pfad",
                     "retention_days": "📅 Aufbewahrung (Tage)",
                     "retention_hours": "⏰ Zusätzliche Stunden"
                 },
                 "data_description": {
                     "storage_path": "z.B. /media/rtsp_recordings",
+                    "snapshot_path": "Standard: /config/www/thumbnails",
                     "retention_days": "Wie lange Videos behalten werden",
                     "retention_hours": "Optional: Extra Stunden zur Aufbewahrung"
                 }
@@ -30,16 +32,22 @@
         "step": {
             "init": {
                 "title": "⚙️ RTSP Recorder Einstellungen",
-                "description": "**{allowlist_status}**\n\nGlobale Aufbewahrungszeit und Kamera-Konfiguration.\n\n✅ = Kamera bereits konfiguriert",
+                "description": "**{allowlist_status}**\n\nFalls nicht erlaubt, füge folgendes zur `configuration.yaml` hinzu:\n```\nhomeassistant:\n  allowlist_external_dirs:\n    - /media\n```\n\nGlobale Aufbewahrungszeit und Kamera-Konfiguration.\n\n✅ = Kamera bereits konfiguriert",
                 "data": {
+                    "storage_path": "📁 Speicherpfad",
+                    "snapshot_path": "📸 Thumbnail-Pfad",
                     "retention_days": "🎬 Video-Aufbewahrung",
                     "snapshot_retention_days": "📸 Thumbnail-Aufbewahrung",
-                    "camera_selection": "📹 Kamera konfigurieren"
+                    "camera_selection": "📹 Kamera konfigurieren",
+                    "analysis_configure": "🧠 Analyse konfigurieren"
                 },
                 "data_description": {
+                    "storage_path": "Pfad für Videoaufnahmen (z.B. /media/rtsp_recordings)",
+                    "snapshot_path": "Pfad für Vorschaubilder (Standard: /config/www/thumbnails)",
                     "retention_days": "Aufnahmen werden nach X Tagen automatisch gelöscht",
                     "snapshot_retention_days": "Vorschaubilder werden nach X Tagen gelöscht",
-                    "camera_selection": "Wähle eine Kamera um Bewegungssensor und Aufnahmedauer einzustellen"
+                    "camera_selection": "Wähle eine Kamera um Bewegungssensor und Aufnahmedauer einzustellen",
+                    "analysis_configure": "Öffnet die erweiterten Analyse-Einstellungen"
                 }
             },
             "analysis": {
@@ -57,6 +65,7 @@
                     "analysis_face_confidence": "👁️ Gesichts-Erkennungsschwelle",
                     "analysis_face_match_threshold": "🎚️ Gesichts-Matching-Schwelle",
                     "person_entities_enabled": "🏠 Personen-Entitäten erstellen",
+                    "use_sqlite": "🗄️ SQLite Datenbank nutzen",
                     "analysis_auto_enabled": "🔄 Automatik aktiv",
                     "analysis_auto_mode": "📋 Modus",
                     "analysis_auto_time": "🕐 Uhrzeit (HH:MM)",
@@ -81,6 +90,7 @@
                     "analysis_face_confidence": "Mindest-Konfidenz für Gesichtserkennung (niedriger = mehr Gesichter, empfohlen: 0.2)",
                     "analysis_face_match_threshold": "Schwellwert für Gesichts-Matching (niedriger = mehr Matches, empfohlen: 0.35)",
                     "person_entities_enabled": "Erstellt Binary Sensors für erkannte Personen (für Automationen)",
+                    "use_sqlite": "Nutzt SQLite statt JSON für bessere Performance bei vielen Personen und für Erkennungs-Historie",
                     "analysis_auto_enabled": "Analysiert Aufnahmen automatisch nach Zeitplan",
                     "analysis_auto_new": "Analysiert neue Aufnahmen direkt nach dem Speichern",
                     "analysis_auto_mode": "Täglich oder in festen Abständen",
@@ -101,6 +111,7 @@
                     "motion_sensor": "🏃 Bewegungssensor",
                     "recording_duration": "⏱️ Aufnahmedauer",
                     "snapshot_delay": "📸 Snapshot-Verzögerung",
+                    "rtsp_url": "🔗 RTSP-URL (Optional)",
                     "camera_retention": "🗑️ Eigene Aufbewahrung (Stunden)",
                     "camera_objects": "🎯 Objekte für diese Kamera",
                     "camera_detector_confidence": "📊 Erkennungs-Schwelle",
@@ -112,12 +123,35 @@
                     "motion_sensor": "Binary Sensor der die Aufnahme startet (z.B. Bewegungssensor)",
                     "recording_duration": "Wie lange nach Bewegung aufgenommen wird (Sekunden)",
                     "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung für bessere Bilder",
+                    "rtsp_url": "Eigene RTSP-URL statt der von Home Assistant erkannten (z.B. rtsp://user:pass@192.168.1.100:554/stream)",
                     "camera_retention": "0 = Globale Einstellung nutzen. Sonst: Stunden für diese Kamera",
                     "camera_objects": "Leer = Globale Objekte. Sonst: Nur diese Objekte analysieren",
                     "camera_detector_confidence": "0 = Global. Mindest-Konfidenz für Objekterkennung (0.1-0.9)",
                     "camera_face_confidence": "0 = Global. Mindest-Konfidenz für Gesichtserkennung (empfohlen: 0.2)",
                     "camera_face_match_threshold": "0 = Global. Schwelle für Gesichts-Matching (empfohlen: 0.35)",
                     "configure_another": "Aktivieren um danach eine weitere Kamera einzurichten"
+                }
+            },
+            "manual_camera": {
+                "title": "🎥 Manuelle RTSP-Kamera hinzufügen",
+                "description": "Füge eine Kamera hinzu, die nicht automatisch von Home Assistant erkannt wurde.",
+                "data": {
+                    "camera_name": "📹 Kamera-Name",
+                    "rtsp_url": "🔗 RTSP-URL",
+                    "motion_sensor": "🏃 Bewegungssensor",
+                    "recording_duration": "⏱️ Aufnahmedauer",
+                    "snapshot_delay": "📸 Snapshot-Verzögerung",
+                    "camera_retention": "🗑️ Eigene Aufbewahrung (Stunden)",
+                    "configure_another": "🔄 Weitere Kamera hinzufügen"
+                },
+                "data_description": {
+                    "camera_name": "Eindeutiger Name für die Kamera (z.B. Garage, Einfahrt)",
+                    "rtsp_url": "RTSP-Stream-URL der Kamera (z.B. rtsp://user:pass@192.168.1.100:554/stream)",
+                    "motion_sensor": "Binary Sensor der die Aufnahme startet (z.B. Bewegungssensor)",
+                    "recording_duration": "Wie lange nach Bewegung aufgenommen wird (Sekunden)",
+                    "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung für bessere Bilder",
+                    "camera_retention": "0 = Globale Einstellung nutzen. Sonst: Stunden für diese Kamera",
+                    "configure_another": "Aktivieren um danach eine weitere Kamera hinzuzufügen"
                 }
             }
         },
