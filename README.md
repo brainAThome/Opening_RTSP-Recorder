@@ -882,13 +882,19 @@ thumb_path: /local/thumbnails
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
+### v1.1.1 Highlights - February 2026
+- 🔍 **Deep Analysis Audit v4.0** with 10 Hardcore Security Tests
+- ✅ ISO 25010 audit: **93/100** quality score (EXCELLENT)
+- ✅ ISO 27001 audit: **85/100** security score (GOOD)
+- 📝 Type Hints Coverage: **88.2%** (134/152 functions)
+- 🧹 Repository cleanup (18 obsolete files removed)
+- 📚 Documentation fully updated
+
 ### v1.1.0k Highlights (BETA) - February 2026
 - 🧹 Automatic analysis folder cleanup with video deletion
 - ⏰ Configurable cleanup interval (1-24 hours slider)
 - 📊 Fixed movement profile logging (recognition_history)
 - 🔧 Per-camera retention support for analysis cleanup
-- ✅ ISO 25010 audit: **90.0%** quality score
-- ✅ ISO 27001 audit: **90.0%** security score
 - ✅ 20 Python modules, 10,062 LOC
 - ✅ 20 WebSocket handlers, 5 languages
 
@@ -904,43 +910,41 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 - 🌐 Multi-language support (German, English)
 - 📦 HACS compatibility (hacs.json)
 - 🔧 UTF-8 encoding validation (BOM-free)
-- ✅ ISO 25010 audit: **93.8%** quality score
-- ✅ ISO 27001 audit: **91.2%** security score
 - ✅ Combined score: **92.5%** - PRODUCTION READY
 
 ### v1.0.8 Highlights (STABLE)
 - 🔒 SHA256 model verification for supply-chain security
 - 🛡️ CORS restriction to local Home Assistant instances
-- ✅ ISO 25010 audit: 91.5% quality score
-- ✅ ISO 27001 audit: 88.5% security score
 - ✅ Hardcore test: 100% pass rate
 
 ## Audit Report
 
-See [AUDIT_REPORT_v1.1.0k_FINAL.md](AUDIT_REPORT_v1.1.0k_FINAL.md) for the comprehensive ISO 25010 + ISO 27001 audit report.
+See [COMPREHENSIVE_AUDIT_REPORT_v4.0_2026-02-03.md](COMPREHENSIVE_AUDIT_REPORT_v4.0_2026-02-03.md) for the comprehensive ISO 25010 + ISO 27001 audit report.
 
-### Audit Summary v1.1.0k
+### Audit Summary v1.1.1
 
 | Category | Score | Status |
 |----------|-------|--------|
-| **ISO 25010** (Software Quality) | 90.0% | ✅ Excellent |
-| **ISO 27001** (Information Security) | 90.0% | ✅ Excellent |
-| **Combined Score** | 90.0% | ✅ Grade A |
+| **ISO 25010** (Software Quality) | 93/100 | ✅ EXCELLENT |
+| **ISO 27001** (Information Security) | 85/100 | ✅ GOOD |
+| **Type Hints Coverage** | 88.2% | ✅ GOOD |
 | Critical Findings | 0 | ✅ |
 | High Findings | 0 | ✅ |
-| Medium Findings | 5 | ⚠️ Tracked |
-| Low Findings | 7 | ℹ️ Recommendations |
+| Medium Findings | 2 | ⚠️ Tracked |
+| Low Findings | 3 | ℹ️ Recommendations |
 
 ### Validation Results
 
 | Test | Result |
 |------|--------|
-| Python Syntax | ✅ 20/20 modules passed |
+| Python Syntax | ✅ All modules passed |
 | UTF-8 Encoding | ✅ All files correct (no BOM) |
 | JSON Validation | ✅ 5/5 translation files valid |
 | Security Scan | ✅ No critical vulnerabilities |
-| SQL Injection | ✅ Parameterized queries only |
-| XSS Protection | ✅ 68% innerHTML escaped |
+| SQL Injection | ✅ 83+ parameterized queries |
+| XSS Protection | ✅ 36+ escapeHtml() calls |
+| Path Traversal | ✅ realpath + prefix validation |
+| Hardcore Tests | ✅ 10/10 passed |
 
 ## License
 
