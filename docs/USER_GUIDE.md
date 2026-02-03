@@ -1,6 +1,6 @@
 # RTSP Recorder - Benutzerhandbuch
 
-**Version:** 1.1.0n BETA  
+**Version:** 1.1.1  
 **Datum:** Februar 2026  
 **Kompatibilität:** Home Assistant 2024.1+
 

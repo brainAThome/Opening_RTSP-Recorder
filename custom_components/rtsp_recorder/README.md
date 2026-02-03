@@ -2,19 +2,20 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.1.0k%20BETA-orange)
+![Version](https://img.shields.io/badge/version-1.1.1-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![ISO 25010](https://img.shields.io/badge/ISO%2025010-93.8%25-brightgreen)
-![ISO 27001](https://img.shields.io/badge/ISO%2027001-91.2%25-brightgreen)
+![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%2F100-brightgreen)
+![ISO 27001](https://img.shields.io/badge/ISO%2027001-85%2F100-brightgreen)
+![Type Hints](https://img.shields.io/badge/Type%20Hints-88.2%25-brightgreen)
 ![HACS](https://img.shields.io/badge/HACS-Compatible-orange)
 
-📋 **[Audit Report v1.0.9](AUDIT_REPORT_v1.0.9_FINAL_STABLE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
+📋 **[Audit Report v4.0](../../COMPREHENSIVE_AUDIT_REPORT_v4.0_2026-02-03.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
 
 ## Version Comparison
 
-| Feature | v1.0.9 STABLE | v1.1.0k BETA |
-|---------|---------------|-------------|
+| Feature | v1.0.9 STABLE | v1.1.1 |
+|---------|---------------|--------|
 | **Database** | JSON + optional SQLite | ⚡ SQLite-Only |
 | **Recording** | Sequential (record → then snapshot) | ⚡ Parallel (snapshot DURING recording) |
 | **Timeline Update** | After recording saved | ⚡ Immediate on start |
@@ -26,6 +27,7 @@ A complete video surveillance solution with AI-powered object detection using Co
 | **Movement Profile** | ❌ Not available | ✅ Recognition history |
 | **Analysis Cleanup** | ❌ Manual | ✅ Automatic with videos |
 | **Cleanup Interval** | Fixed 24h | ✅ Configurable 1-24h |
+| **Type Hints** | ~60% | ✅ 88.2% Coverage |
 | **Face Recognition** | ✅ | ✅ |
 | **Coral EdgeTPU** | ✅ | ✅ |
 | **HACS Compatible** | ✅ | ✅ |

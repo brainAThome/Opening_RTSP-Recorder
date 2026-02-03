@@ -1,6 +1,6 @@
 # 📚 RTSP Recorder - Dokumentation
 
-**Version:** 1.1.0n BETA | **Audit Score:** 84.4% (B+)
+**Version:** 1.1.1 | **ISO 25010:** 93/100 | **ISO 27001:** 85/100
 
 ---
 

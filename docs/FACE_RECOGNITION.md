@@ -1,6 +1,6 @@
 # 🧠 RTSP Recorder - Gesichtserkennung
 
-**Version:** 1.1.0n BETA  
+**Version:** 1.1.1  
 **Letzte Aktualisierung:** 03. Februar 2026
 
 ---

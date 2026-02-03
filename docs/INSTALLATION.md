@@ -1,7 +1,7 @@
 # 🚀 RTSP Recorder - Installationsanleitung
 
-**Version:** 1.1.0 BETA  
-**Letzte Aktualisierung:** 02. Februar 2026
+**Version:** 1.1.1  
+**Letzte Aktualisierung:** 03. Februar 2026
 
 ---
 
