@@ -11,6 +11,8 @@ A complete video surveillance solution with AI-powered object detection using Co
 
 📋 **[Audit Report v1.1.0k](AUDIT_REPORT_v1.1.0k_FINAL.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
 
+📊 **[Market Comparison](MARKET_COMPARISON.md)** - Vergleich mit Frigate, MotionEye, Double Take & Projekteinschätzung
+
 ## Version Comparison
 
 | Feature | v1.0.9 STABLE | v1.1.0k BETA |
