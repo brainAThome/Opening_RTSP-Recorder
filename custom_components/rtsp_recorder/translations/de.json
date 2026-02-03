@@ -38,6 +38,7 @@
                     "snapshot_path": "📸 Thumbnail-Pfad",
                     "retention_days": "🎬 Video-Aufbewahrung",
                     "snapshot_retention_days": "📸 Thumbnail-Aufbewahrung",
+                    "cleanup_interval_hours": "🧹 Aufräum-Intervall",
                     "camera_selection": "📹 Kamera konfigurieren",
                     "analysis_configure": "🧠 Analyse konfigurieren"
                 },
@@ -46,6 +47,7 @@
                     "snapshot_path": "Pfad für Vorschaubilder (Standard: /config/www/thumbnails)",
                     "retention_days": "Aufnahmen werden nach X Tagen automatisch gelöscht",
                     "snapshot_retention_days": "Vorschaubilder werden nach X Tagen gelöscht",
+                    "cleanup_interval_hours": "Wie oft alte Dateien gelöscht werden (für kurze Aufbewahrungszeiten auf 1 Std stellen)",
                     "camera_selection": "Wähle eine Kamera um Bewegungssensor und Aufnahmedauer einzustellen",
                     "analysis_configure": "Öffnet die erweiterten Analyse-Einstellungen"
                 }

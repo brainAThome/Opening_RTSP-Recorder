@@ -1,3 +1,26 @@
+"""Video Analysis Module for RTSP Recorder Integration.
+
+This module provides AI-powered video analysis capabilities:
+- Object detection using TFLite models (MobileDet, SSD MobileNet)
+- Face detection and embedding extraction
+- Person matching against trained faces database
+- Frame extraction and annotation
+- Support for Coral EdgeTPU acceleration
+
+Key Features:
+- Async processing with non-blocking I/O
+- Memory-efficient thumbnail generation
+- Cosine similarity matching for face recognition
+- Centroid-based fast matching algorithm
+- Negative sample filtering to prevent false positives
+
+Memory Management:
+- MAX_FACES_WITH_THUMBS: Limits embedded thumbnails per analysis
+- MAX_THUMB_SIZE: Constrains thumbnail dimensions
+- THUMB_JPEG_QUALITY: Controls compression level
+
+Version: 1.1.0 BETA
+"""
 import asyncio
 import json
 import logging
@@ -30,12 +53,12 @@ THUMB_JPEG_QUALITY = 70
 FACE_RETRY_CONFIDENCE_MULTIPLIER = 0.6
 # ===== End Memory Management Constants =====
 
-# Lazy access to stats tracker from parent module
+# Lazy access to stats tracker from helpers module
 def _get_inference_stats():
-    """Get the inference stats tracker from the parent module."""
+    """Get the inference stats tracker from helpers module."""
     try:
-        from . import _inference_stats as stats
-        return stats
+        from .helpers import get_inference_stats
+        return get_inference_stats()
     except ImportError:
         return None
 
@@ -647,22 +670,23 @@ async def analyze_recording(
                 if detector_url:
                     async with aiohttp.ClientSession() as session:
                         for idx, frame_path in enumerate(frames):
-                            with open(frame_path, "rb") as f:
-                                form = aiohttp.FormData()
-                                form.add_field("file", f, filename=os.path.basename(frame_path), content_type="image/jpeg")
-                                form.add_field("objects", json.dumps(objects))
-                                form.add_field("device", device)
-                                form.add_field("confidence", str(detector_confidence))
-                                _detect_start = time.perf_counter()
-                                async with session.post(f"{detector_url.rstrip('/')}/detect", data=form, timeout=30) as resp:
-                                    if resp.status != 200:
-                                        raise RuntimeError(f"Detector error {resp.status}")
-                                    data = await resp.json()
-                                _detect_ms = (time.perf_counter() - _detect_start) * 1000
-                                _used_device = data.get("device", device)
-                                _stats = _get_inference_stats()
-                                if _stats:
-                                    _stats.record(_used_device, _detect_ms, 1)
+                            # v1.1.0 fix: Read file in executor to avoid blocking event loop
+                            frame_bytes = await asyncio.to_thread(lambda p=frame_path: open(p, "rb").read())
+                            form = aiohttp.FormData()
+                            form.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
+                            form.add_field("objects", json.dumps(objects))
+                            form.add_field("device", device)
+                            form.add_field("confidence", str(detector_confidence))
+                            _detect_start = time.perf_counter()
+                            async with session.post(f"{detector_url.rstrip('/')}/detect", data=form, timeout=30) as resp:
+                                if resp.status != 200:
+                                    raise RuntimeError(f"Detector error {resp.status}")
+                                data = await resp.json()
+                            _detect_ms = (time.perf_counter() - _detect_start) * 1000
+                            _used_device = data.get("device", device)
+                            _stats = _get_inference_stats()
+                            if _stats:
+                                _stats.record(_used_device, _detect_ms, 1)
                             dets = data.get("objects", [])
                             if objects:
                                 dets = [d for d in dets if d.get("label") in objects]
@@ -733,8 +757,8 @@ async def analyze_recording(
                             break
 
                         try:
-                            with open(frame_path, "rb") as f:
-                                frame_bytes = f.read()
+                            # v1.1.0 fix: Read file in executor to avoid blocking event loop
+                            frame_bytes = await asyncio.to_thread(lambda p=frame_path: open(p, "rb").read())
                         except Exception as read_err:
                             _LOGGER.debug("Failed to read frame %d: %s", idx, read_err)
                             consecutive_face_errors += 1
@@ -1018,6 +1042,16 @@ async def analyze_recording(
         result["status"] = "completed"
         result["completed_utc"] = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         result["processing_time_seconds"] = round(time.monotonic() - start_time, 2)
+        
+        # v1.1.0n: Cleanup frames after successful analysis to save disk space
+        # Frames are only needed during detection, not afterwards
+        try:
+            import shutil
+            if os.path.isdir(frames_dir):
+                shutil.rmtree(frames_dir)
+                result["frames_cleaned"] = True
+        except Exception as cleanup_err:
+            result["frames_cleanup_error"] = str(cleanup_err)
         
         return result
     except asyncio.CancelledError:

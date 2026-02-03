@@ -9,14 +9,19 @@ Services:
 - analyze_all_recordings: Batch analyze multiple recordings
 - delete_recording: Delete a single recording and its thumbnail
 - delete_all_recordings: Bulk delete with optional filters
+
+v1.1.0k: Added automatic analysis folder cleanup when deleting videos.
 """
 import os
 import re
 import glob
 import asyncio
 import datetime
+import time
 from datetime import timedelta
 from typing import Any, Callable
+
+from .retention import delete_analysis_for_video
 
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import HomeAssistantError
@@ -32,6 +37,78 @@ from .recorder import async_record_stream, async_take_snapshot
 from .analysis import analyze_recording
 from .people_db import _load_people_db
 from .analysis_helpers import _build_analysis_index
+
+
+# v1.1.0: Metrics System for performance measurement
+def record_metric(name: str, camera: str, start_time: float, extra_info: str = "") -> float:
+    """Record a performance metric to the debug log.
+    
+    Format: METRIC|<camera>|<metric_name>|<elapsed>s[|<extra_info>]
+    
+    Args:
+        name: Metric name (e.g., 'recording_to_saved', 'analysis_duration')
+        camera: Camera name
+        start_time: time.time() value when the operation started
+        extra_info: Optional additional info to append
+        
+    Returns:
+        Elapsed time in seconds
+    """
+    elapsed = time.time() - start_time
+    if extra_info:
+        log_to_file(f"METRIC|{camera}|{name}|{elapsed:.3f}s|{extra_info}")
+    else:
+        log_to_file(f"METRIC|{camera}|{name}|{elapsed:.3f}s")
+    return elapsed
+
+
+# Global batch analysis progress tracking
+_batch_analysis_progress = {
+    "running": False,
+    "total": 0,
+    "current": 0,
+    "current_file": "",
+    "started_at": None,
+}
+
+# Global single analysis progress tracking
+_single_analysis_progress = {
+    "running": False,
+    "media_id": "",
+    "video_path": "",
+    "started_at": None,
+    "completed": False,
+}
+
+# v1.1.0: Global recording progress tracking - supports multiple simultaneous recordings
+# Key = video_path, Value = recording info dict
+_active_recordings = {}
+
+
+def get_batch_analysis_progress() -> dict:
+    """Get current batch analysis progress (for WebSocket handler)."""
+    return dict(_batch_analysis_progress)
+
+
+def get_single_analysis_progress() -> dict:
+    """Get current single analysis progress (for WebSocket handler)."""
+    return dict(_single_analysis_progress)
+
+
+def get_recording_progress() -> dict:
+    """Get current recording progress (for WebSocket handler).
+    
+    Returns dict with:
+    - running: True if any recording is active
+    - count: Number of active recordings
+    - recordings: List of active recording info dicts
+    """
+    recordings = list(_active_recordings.values())
+    return {
+        "running": len(recordings) > 0,
+        "count": len(recordings),
+        "recordings": recordings
+    }
 
 
 def register_services(
@@ -52,7 +129,6 @@ def register_services(
     analysis_face_confidence: float,
     analysis_face_match_threshold: float,
     analysis_face_store_embeddings: bool,
-    people_db_path: str,
     person_entities_enabled: bool,
     get_sensor_snapshot_func: Callable,
     resolve_auto_device_func: Callable,
@@ -79,7 +155,6 @@ def register_services(
         analysis_face_confidence: Face detection confidence
         analysis_face_match_threshold: Face match threshold
         analysis_face_store_embeddings: Store face embeddings
-        people_db_path: People database path
         person_entities_enabled: Person entities enabled
         get_sensor_snapshot_func: Function to get sensor snapshot
         resolve_auto_device_func: Function to resolve auto device
@@ -122,6 +197,9 @@ def register_services(
 
     async def handle_save_recording(call: ServiceCall = None, camera_name: str = None, duration: int = 30, snapshot_delay: float = 0):
         """Handle recording. Can be called via Service (manual) or Internal Event (auto)."""
+        # v1.1.0 METRICS: Track total pipeline time from start
+        pipeline_start = time.time()
+        
         try:
             entity_id = None
             clean_name_raw = None
@@ -192,51 +270,196 @@ def register_services(
             
             log_to_file(f"Recording to: {full_path}")
 
+            # v1.1.0: Add to active recordings for UI display
+            global _active_recordings
+            _active_recordings[full_path] = {
+                "camera": clean_name,
+                "video_path": full_path,
+                "duration": duration,
+                "started_at": datetime.datetime.now().isoformat(),
+            }
+            
+            # v1.1.0: Fire event immediately so thumbnail appears in timeline
+            hass.bus.async_fire("rtsp_recorder_recording_started", {
+                "camera": clean_name,
+                "video_path": full_path,
+                "duration": duration,
+                "timestamp": timestamp,
+            })
+            log_to_file(f"Fired rtsp_recorder_recording_started event for {clean_name}")
+
             if use_rtsp:
-                await async_record_stream(hass, rtsp_url, duration, full_path)
+                # v1.1.0 OPTIMIZED: Event-based recording completion (not polling)
+                recording_complete = asyncio.Event()
+                recording_result = {"success": False, "error": None}
+                
+                def on_recording_complete(path: str, success: bool, error_msg: str | None) -> None:
+                    """Callback when FFmpeg finishes and file is renamed."""
+                    recording_result["success"] = success
+                    recording_result["error"] = error_msg
+                    recording_complete.set()
+                    log_to_file(f"Recording callback: success={success}, error={error_msg}")
+                
+                # Start recording with callback (returns immediately)
+                process = await async_record_stream(hass, rtsp_url, duration, full_path, on_complete=on_recording_complete)
+                log_to_file(f"Recording started, waiting for completion via callback...")
+                
+                # v1.1.0 OPTIMIZED: Start snapshot task in parallel (after snapshot_delay)
+                # Snapshot runs DURING recording, not after - saves time!
+                snap_folder = os.path.join(snapshot_path_base, clean_name)
+                if not os.path.exists(snap_folder):
+                    os.makedirs(snap_folder, exist_ok=True)
+                snap_filename = f"{clean_name}_{timestamp}.jpg"
+                snap_full_path = os.path.join(snap_folder, snap_filename)
+                
+                async def take_snapshot_parallel():
+                    """Take snapshot after configured delay (runs parallel to recording)."""
+                    try:
+                        if snapshot_delay > 0:
+                            log_to_file(f"Snapshot scheduled in {snapshot_delay}s (parallel to recording)")
+                            await asyncio.sleep(snapshot_delay)
+                        log_to_file(f"Taking parallel snapshot: {snap_full_path}")
+                        await async_take_snapshot(hass, rtsp_url, snap_full_path, delay=0)
+                        log_to_file(f"Parallel snapshot complete: {snap_full_path}")
+                    except Exception as e:
+                        log_to_file(f"Parallel snapshot error: {e}")
+                
+                # Start snapshot task (runs in parallel)
+                snapshot_task = hass.async_create_task(take_snapshot_parallel())
+                
+                # Wait for recording to complete (event-based, not polling!)
+                # Timeout = duration + 30s safety buffer
+                try:
+                    await asyncio.wait_for(recording_complete.wait(), timeout=duration + 30)
+                    if recording_result["success"]:
+                        log_to_file(f"Recording completed successfully via callback")
+                    else:
+                        log_to_file(f"Recording completed with error: {recording_result['error']}")
+                except asyncio.TimeoutError:
+                    log_to_file(f"WARNING: Recording callback timeout after {duration + 30}s, checking file...")
+                    # Fallback: Check if file exists anyway
+                    if os.path.exists(full_path):
+                        log_to_file(f"File exists despite timeout, continuing")
+                    else:
+                        log_to_file(f"ERROR: Recording failed - file not found")
+                
+                # Wait for snapshot to complete (if still running)
+                try:
+                    await asyncio.wait_for(asyncio.shield(snapshot_task), timeout=10)
+                except asyncio.TimeoutError:
+                    log_to_file(f"Snapshot task still running, continuing without waiting")
+                except Exception:
+                    pass  # Snapshot task may have completed already
+                
+                log_to_file(f"Recording and snapshot complete")
             else:
+                # v1.1.0 OPTIMIZED: Parallel snapshot for HA Camera entities too
+                snap_folder = os.path.join(snapshot_path_base, clean_name)
+                if not os.path.exists(snap_folder):
+                    os.makedirs(snap_folder, exist_ok=True)
+                snap_filename = f"{clean_name}_{timestamp}.jpg"
+                snap_full_path = os.path.join(snap_folder, snap_filename)
+                
+                async def take_ha_snapshot_parallel():
+                    """Take HA camera snapshot after configured delay (parallel to recording)."""
+                    try:
+                        if snapshot_delay > 0:
+                            log_to_file(f"HA Snapshot scheduled in {snapshot_delay}s (parallel to recording)")
+                            await asyncio.sleep(snapshot_delay)
+                        log_to_file(f"Taking parallel HA snapshot: {snap_full_path}")
+                        await hass.services.async_call("camera", "snapshot", {
+                            "entity_id": entity_id,
+                            "filename": snap_full_path
+                        })
+                        log_to_file(f"Parallel HA snapshot complete: {snap_full_path}")
+                    except Exception as e:
+                        log_to_file(f"Parallel HA snapshot error: {e}")
+                
+                # Start snapshot task in parallel
+                snapshot_task = hass.async_create_task(take_ha_snapshot_parallel())
+                
                 await hass.services.async_call("camera", "record", {
                     "entity_id": entity_id,
                     "filename": full_path,
                     "duration": duration,
                     "lookback": 0
                 })
-            
-            # 2. Snapshot
-            snap_folder = os.path.join(snapshot_path_base, clean_name)
-            if not os.path.exists(snap_folder):
-                os.makedirs(snap_folder, exist_ok=True)
+                # HA camera.record returns immediately, wait for recording duration
+                # v1.1.0 OPTIMIZED: Reduced from +2s to +1s - files are usually ready sooner
+                log_to_file(f"HA camera recording started, waiting {duration}s...")
+                await asyncio.sleep(duration + 1)
                 
-            snap_filename = f"{clean_name}_{timestamp}.jpg"
-            snap_full_path = os.path.join(snap_folder, snap_filename)
-            
-            if use_rtsp:
-                log_to_file(f"Taking snapshot to: {snap_full_path}")
-                await async_take_snapshot(hass, rtsp_url, snap_full_path, delay=snapshot_delay)
-            else:
-                if snapshot_delay > 0:
-                    log_to_file(f"Waiting {snapshot_delay}s before snapshot...")
-                    await asyncio.sleep(snapshot_delay)
+                # v1.1.0 OPTIMIZED: Faster file check - 0.5s intervals, max 10s wait
+                max_wait_file = 20  # 20 * 0.5s = 10s max
+                for i in range(max_wait_file):
+                    if os.path.exists(full_path):
+                        log_to_file(f"Recording file ready: {full_path}")
+                        break
+                    await asyncio.sleep(0.5)
+                else:
+                    log_to_file(f"WARNING: File not found after {max_wait_file * 0.5}s: {full_path}")
+                
+                # Wait for snapshot to complete (if still running)
+                try:
+                    await asyncio.wait_for(asyncio.shield(snapshot_task), timeout=10)
+                except asyncio.TimeoutError:
+                    log_to_file(f"HA Snapshot task still running, continuing")
+                except Exception:
+                    pass
+                    
+                log_to_file(f"HA camera recording and snapshot complete")
 
-                log_to_file(f"Taking snapshot to: {snap_full_path}")
-                
-                await hass.services.async_call("camera", "snapshot", {
-                    "entity_id": entity_id,
-                    "filename": snap_full_path
-                })
+            # v1.1.0: Recording + Snapshot finished - NOW remove from active recordings
+            # This triggers the frontend to refresh the timeline
+            if full_path in _active_recordings:
+                del _active_recordings[full_path]
+            
+            # v1.1.0 METRICS: Record time from start to saved
+            record_metric("recording_to_saved", clean_name, pipeline_start, f"duration={duration}s")
+            
+            # v1.1.0: Fire event so frontend can refresh
+            hass.bus.async_fire("rtsp_recorder_recording_saved", {
+                "camera": clean_name,
+                "video_path": full_path,
+                "snapshot_path": snap_full_path,
+                "timestamp": timestamp,
+            })
+            log_to_file(f"Fired rtsp_recorder_recording_saved event for {clean_name}")
 
             # 3. Auto-Analyze after recording
             if analysis_enabled and analysis_auto_new:
                 async def _auto_analyze_when_ready(path: str, cam_name: str, rec_duration: int):
+                    global _single_analysis_progress
+                    # v1.1.0 METRICS: Track analysis duration
+                    analysis_start = time.time()
+                    
                     try:
-                        await asyncio.sleep(rec_duration + 2)
-
-                        ready = await _wait_for_file_ready(path, max_wait_s=120, stable_checks=3, interval_s=3)
+                        # v1.1.0 OPTIMIZED: Faster file stability check (1s intervals, 2 checks = 2s)
+                        ready = await _wait_for_file_ready(path, max_wait_s=20, stable_checks=2, interval_s=1)
                         if not ready:
                             log_to_file(f"Recording not ready for auto-analysis (timeout): {path}")
                             return
 
                         log_to_file(f"Auto-analyzing new recording: {path}")
+                        
+                        # v1.1.0: Set progress for footer display
+                        analysis_started_at = datetime.datetime.now().isoformat()
+                        _single_analysis_progress = {
+                            "running": True,
+                            "media_id": "",
+                            "video_path": path,
+                            "started_at": analysis_started_at,
+                            "completed": False,
+                        }
+                        
+                        # v1.1.0f: Fire event so frontend shows analysis indicator (PUSH)
+                        log_to_file(f"PUSH: Firing analysis_started event for {cam_name}")
+                        hass.bus.async_fire("rtsp_recorder_analysis_started", {
+                            "video_path": path,
+                            "camera": cam_name,
+                            "started_at": analysis_started_at,
+                        })
+                        
                         perf_snapshot = get_sensor_snapshot_func()
 
                         cam_objects_key = f"analysis_objects_{cam_name}"
@@ -251,7 +474,7 @@ def register_services(
                         face_conf_to_use = cam_face_conf if cam_face_conf > 0 else analysis_face_confidence
                         face_threshold_to_use = cam_face_threshold if cam_face_threshold > 0 else analysis_face_match_threshold
 
-                        people_data = await _load_people_db(people_db_path)
+                        people_data = await _load_people_db()
                         people = people_data.get("people", [])
                         auto_device = await resolve_auto_device_func()
                         result = await analyze_recording(
@@ -274,12 +497,32 @@ def register_services(
                             try:
                                 updated = update_person_entities_func(result or {})
                                 if not updated:
-                                    update_person_entities_for_video_func(path)
+                                    await update_person_entities_for_video_func(path)
                             except Exception:
                                 pass
+                        
+                        # v1.1.0 METRICS: Record analysis duration
+                        record_metric("analysis_duration", cam_name, analysis_start)
+                        # v1.1.0 METRICS: Record total pipeline time (from pipeline_start captured in closure)
+                        record_metric("total_pipeline_time", cam_name, pipeline_start, f"rec={rec_duration}s")
+                        
                         log_to_file(f"Auto-analysis completed for: {path}")
+                        # v1.1.0: Mark as completed
+                        _single_analysis_progress["running"] = False
+                        _single_analysis_progress["completed"] = True
+                        
+                        # v1.1.0f: Fire event so frontend updates (PUSH)
+                        log_to_file(f"PUSH: Firing analysis_completed event for {cam_name}")
+                        hass.bus.async_fire("rtsp_recorder_analysis_completed", {
+                            "video_path": path,
+                            "camera": cam_name,
+                            "completed_at": datetime.datetime.now().isoformat(),
+                        })
                     except Exception as ae:
                         log_to_file(f"Auto-analysis error: {ae}")
+                        # v1.1.0: Mark as failed
+                        _single_analysis_progress["running"] = False
+                        _single_analysis_progress["completed"] = False
 
                 hass.async_create_task(_auto_analyze_when_ready(full_path, clean_name, int(duration or 0)))
             
@@ -301,6 +544,8 @@ def register_services(
         camera: str | None = None,
     ) -> int:
         """Batch analyze recordings with rate limiting."""
+        global _batch_analysis_progress
+        
         now_ts = datetime.datetime.now().timestamp()
         cutoff = None
         if since_days is not None and since_days > 0:
@@ -318,13 +563,26 @@ def register_services(
         if limit and limit > 0:
             files = files[:limit]
 
-        people_data = await _load_people_db(people_db_path)
+        # Initialize progress tracking
+        _batch_analysis_progress = {
+            "running": True,
+            "total": len(files),
+            "current": 0,
+            "current_file": "",
+            "started_at": datetime.datetime.now().isoformat(),
+        }
+
+        people_data = await _load_people_db()
         people = people_data.get("people", [])
 
         semaphore = _get_analysis_semaphore()
 
         processed = 0
         for path in files:
+            # Update progress
+            _batch_analysis_progress["current"] = processed
+            _batch_analysis_progress["current_file"] = os.path.basename(path)
+            
             async with semaphore:
                 try:
                     perf_snapshot = get_sensor_snapshot_func()
@@ -360,12 +618,17 @@ def register_services(
                     if person_entities_enabled and result:
                         updated = update_person_entities_func(result)
                         if not updated:
-                            update_person_entities_for_video_func(result.get("video_path"))
+                            await update_person_entities_for_video_func(result.get("video_path"))
                     processed += 1
                 except Exception as e:
                     log_to_file(f"Batch analysis error for {path}: {e}")
             await asyncio.sleep(0)
 
+        # Mark progress as complete
+        _batch_analysis_progress["current"] = processed
+        _batch_analysis_progress["running"] = False
+        _batch_analysis_progress["current_file"] = ""
+        
         return processed
 
     async def handle_analyze_recording(call: ServiceCall):
@@ -404,9 +667,28 @@ def register_services(
             objects_to_use = cam_objects if cam_objects else objects
 
             async def _run_analysis():
+                global _single_analysis_progress
+                analysis_started_at = datetime.datetime.now().isoformat()
+                # Set progress to running
+                _single_analysis_progress = {
+                    "running": True,
+                    "media_id": media_id,
+                    "video_path": video_path,
+                    "started_at": analysis_started_at,
+                    "completed": False,
+                }
+                
+                # v1.1.0n: Fire analysis_started event for manual analysis (same as auto-analysis)
+                log_to_file(f"PUSH: Firing analysis_started event for manual analysis: {cam_name}")
+                hass.bus.async_fire("rtsp_recorder_analysis_started", {
+                    "video_path": video_path,
+                    "camera": cam_name,
+                    "started_at": analysis_started_at,
+                })
+                
                 try:
                     perf_snapshot = get_sensor_snapshot_func()
-                    people_data = await _load_people_db(people_db_path)
+                    people_data = await _load_people_db()
                     people = people_data.get("people", [])
                     result = await analyze_recording(
                         video_path=video_path,
@@ -427,10 +709,31 @@ def register_services(
                     if person_entities_enabled and result:
                         updated = update_person_entities_func(result)
                         if not updated:
-                            update_person_entities_for_video_func(result.get("video_path"))
+                            await update_person_entities_for_video_func(result.get("video_path"))
                     log_to_file(f"Analysis completed: {result.get('status') if result else 'no result'} -> {output_dir}")
+                    # Mark as completed
+                    _single_analysis_progress["running"] = False
+                    _single_analysis_progress["completed"] = True
+                    
+                    # v1.1.0n: Fire analysis_completed event for manual analysis
+                    log_to_file(f"PUSH: Firing analysis_completed event for manual analysis: {cam_name}")
+                    hass.bus.async_fire("rtsp_recorder_analysis_completed", {
+                        "video_path": video_path,
+                        "camera": cam_name,
+                        "completed_at": datetime.datetime.now().isoformat(),
+                    })
                 except Exception as e:
                     log_to_file(f"Error analyzing recording: {e}")
+                    _single_analysis_progress["running"] = False
+                    _single_analysis_progress["completed"] = False
+                    
+                    # v1.1.0n: Fire analysis_completed event even on error (so UI clears)
+                    hass.bus.async_fire("rtsp_recorder_analysis_completed", {
+                        "video_path": video_path,
+                        "camera": cam_name,
+                        "completed_at": datetime.datetime.now().isoformat(),
+                        "error": str(e),
+                    })
 
             hass.async_create_task(_run_analysis())
             log_to_file(f"Analysis queued: {video_path}")
@@ -474,6 +777,12 @@ def register_services(
             if not video_path:
                 log_to_file(f"Invalid or unsafe media_id rejected: {media_id}")
                 return
+            
+            # v1.1.0k: Delete associated analysis folder first (before video is gone)
+            if os.path.exists(video_path):
+                deleted_analysis = delete_analysis_for_video(video_path, storage_path)
+                if deleted_analysis:
+                    log_to_file(f"Deleted analysis for: {video_path}")
             
             if os.path.exists(video_path):
                 os.remove(video_path)

@@ -1,86 +1,29 @@
 """People Database management for RTSP Recorder Integration.
 
-This module handles all CRUD operations for the people database:
-- Loading and saving the database file
-- Atomic updates with proper locking
-- Converting internal data to public view format
-- In-memory caching for faster repeated reads
-- SQLite backend support for improved performance (v1.0.9+)
+This module handles all CRUD operations for the people database using SQLite.
+v1.1.0k: SQLite-only - all JSON and path parameters removed.
 
-Performance optimizations:
-- Cached reads avoid disk I/O when data hasn't changed
-- Lock-protected atomic operations prevent race conditions
+Features:
 - SQLite with WAL mode for concurrent read/write operations
 - Binary embedding storage for reduced database size
+- Recognition history for movement profiles
 
-Version: 1.0.9 - Added SQLite backend support
+Version: 1.1.0k - SQLite-only (cleaned API)
 """
 import asyncio
 import datetime
-import json
-import os
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from .const import PEOPLE_DB_VERSION
-from .face_matching import _update_person_centroid
 
 _LOGGER = logging.getLogger(__name__)
 
-# SQLite backend flag - can be enabled via config
-_USE_SQLITE_BACKEND = False
+# SQLite database instance
 _sqlite_db = None
 
-
-# Global lock for all database operations
+# Global lock for database operations
 _people_lock = asyncio.Lock()
-
-# ===== In-Memory Cache for People DB =====
-# Avoids repeated disk reads when data hasn't changed
-_people_cache: dict[str, Any] | None = None
-_people_cache_path: str | None = None
-_people_cache_mtime: float = 0.0
-
-
-def _invalidate_cache() -> None:
-    """Invalidate the in-memory cache (call after any write)."""
-    global _people_cache, _people_cache_mtime
-    _people_cache = None
-    _people_cache_mtime = 0.0
-
-
-def _get_cached_or_load(path: str) -> dict[str, Any] | None:
-    """Get data from cache if valid, otherwise return None.
-    
-    Checks file modification time to detect external changes.
-    """
-    global _people_cache, _people_cache_path, _people_cache_mtime
-    
-    if _people_cache is None or _people_cache_path != path:
-        return None
-    
-    try:
-        current_mtime = os.path.getmtime(path)
-        if current_mtime > _people_cache_mtime:
-            # File was modified externally, invalidate cache
-            _invalidate_cache()
-            return None
-    except OSError:
-        return None
-    
-    return _people_cache
-
-
-def _update_cache(path: str, data: dict[str, Any]) -> None:
-    """Update the in-memory cache with fresh data."""
-    global _people_cache, _people_cache_path, _people_cache_mtime
-    
-    try:
-        _people_cache = data
-        _people_cache_path = path
-        _people_cache_mtime = os.path.getmtime(path)
-    except OSError:
-        _people_cache_mtime = 0.0
 
 
 def _default_people_db() -> dict[str, Any]:
@@ -89,157 +32,87 @@ def _default_people_db() -> dict[str, Any]:
     Returns:
         Empty people database dict with version and timestamps
     """
-    # MED-005 Fix: Use timezone-aware datetime instead of deprecated utcnow()
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     return {
         "version": PEOPLE_DB_VERSION,
         "people": [],
-        "ignored_embeddings": [],  # Embeddings marked as "skip/ignore"
+        "ignored_embeddings": [],
         "created_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
         "updated_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
     }
 
 
-async def _load_people_db(path: str, use_cache: bool = True) -> dict[str, Any]:
-    """Load people database from JSON file.
-    
-    Creates a new database file if it doesn't exist.
-    Automatically computes missing centroids.
-    Uses in-memory cache for faster repeated reads.
+async def _load_people_db(use_cache: bool = True) -> dict[str, Any]:
+    """Load people database from SQLite.
     
     Args:
-        path: Path to people database JSON file
-        use_cache: Whether to use cached data if available (default True)
+        use_cache: Ignored (kept for API compatibility)
         
     Returns:
-        People database dict (deep copy to prevent accidental modification)
+        People database dict
     """
     async with _people_lock:
-        # Try cache first
-        if use_cache:
-            cached = _get_cached_or_load(path)
-            if cached is not None:
-                # Return deep copy to prevent accidental cache modification
-                import copy
-                return copy.deepcopy(cached)
-        
-        if not os.path.exists(path):
-            data = _default_people_db()
-            def _write():
-                with open(path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-            await asyncio.to_thread(_write)
-            _update_cache(path, data)
-            return data
-        try:
-            def _read():
-                with open(path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            data = await asyncio.to_thread(_read)
-            if not isinstance(data, dict):
-                return _default_people_db()
-            if "people" not in data:
-                data["people"] = []
-            
-            # Ensure centroids are computed for all people
-            needs_save = False
-            for person in data.get("people", []):
-                if "centroid" not in person and person.get("embeddings"):
-                    _update_person_centroid(person)
-                    needs_save = True
-            
-            # Save updated centroids if any were computed
-            if needs_save:
-                data["updated_utc"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
-                def _write_updated():
-                    with open(path, "w", encoding="utf-8") as f:
-                        json.dump(data, f, ensure_ascii=False, indent=2)
-                await asyncio.to_thread(_write_updated)
-            
-            # Update cache
-            _update_cache(path, data)
-            
-            # Return copy to prevent cache modification
-            import copy
-            return copy.deepcopy(data)
-        except Exception:
+        if not _sqlite_db:
+            _LOGGER.warning("SQLite database not initialized")
             return _default_people_db()
-
-
-async def _save_people_db(path: str, data: dict[str, Any]) -> None:
-    """Save people database to JSON file.
-    
-    Creates a backup before writing (MED-001 Fix).
-    Invalidates cache after write to ensure consistency.
-    
-    Args:
-        path: Path to people database JSON file
-        data: People database dict to save
-    """
-    async with _people_lock:
-        # MED-001 Fix: Create backup before writing
-        backup_path = path + ".bak"
-        def _create_backup():
-            if os.path.exists(path):
-                try:
-                    import shutil
-                    shutil.copy2(path, backup_path)
-                except Exception:
-                    pass  # Backup failure should not block save
-        await asyncio.to_thread(_create_backup)
         
-        # MED-005 Fix: Use timezone-aware datetime
-        data["updated_utc"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
-        def _write():
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        await asyncio.to_thread(_write)
-        
-        # Update cache with fresh data
-        _update_cache(path, data)
+        return await _load_people_from_sqlite()
 
 
-async def _update_people_db(path: str, update_fn: Callable[[dict], dict]) -> dict[str, Any]:
-    """Atomically update People DB with a modifier function.
+async def _load_people_from_sqlite() -> dict[str, Any]:
+    """Load people from SQLite database.
     
-    Ensures the entire read-modify-write cycle is protected by a single lock
-    to prevent race conditions between concurrent updates.
-    
-    Args:
-        path: Path to people DB JSON file
-        update_fn: Function that takes the current data dict and returns modified data
+    Converts SQLite format to the dict format expected by the rest of the code.
     
     Returns:
-        The updated data dict
+        People database dict
     """
-    async with _people_lock:
-        # Read current data
-        if not os.path.exists(path):
-            data = _default_people_db()
-        else:
-            try:
-                def _read():
-                    with open(path, "r", encoding="utf-8") as f:
-                        return json.load(f)
-                data = await asyncio.to_thread(_read)
-                if not isinstance(data, dict):
-                    data = _default_people_db()
-                if "people" not in data:
-                    data["people"] = []
-            except Exception:
-                data = _default_people_db()
+    if not _sqlite_db:
+        return _default_people_db()
+    
+    try:
+        people_list = []
+        sqlite_people = _sqlite_db.get_all_people()
         
-        # Apply update function
-        data = update_fn(data)
+        for p in sqlite_people:
+            person_id = p.get("id")
+            
+            # Get embeddings with thumbnails
+            if hasattr(_sqlite_db, 'get_embeddings_with_thumbs_for_person'):
+                embeddings = _sqlite_db.get_embeddings_with_thumbs_for_person(person_id)
+            else:
+                embeddings_raw = _sqlite_db.get_embeddings_for_person(person_id)
+                embeddings = [{"vector": emb_vector, "thumb": None} for emb_vector in embeddings_raw]
+            
+            # Get negative embeddings
+            negative_embeddings = []
+            if hasattr(_sqlite_db, 'get_negative_embeddings_for_person'):
+                negative_embeddings = _sqlite_db.get_negative_embeddings_for_person(person_id)
+            
+            people_list.append({
+                "id": person_id,
+                "name": p.get("name"),
+                "created_utc": p.get("created_at", ""),
+                "embeddings": embeddings,
+                "negative_embeddings": negative_embeddings,
+                "centroid": None,
+            })
         
-        # Save updated data (MED-005 Fix: timezone-aware)
-        data["updated_utc"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
-        def _write():
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        await asyncio.to_thread(_write)
+        # Get ignored embeddings
+        raw_ignored = _sqlite_db.get_ignored_embeddings() if hasattr(_sqlite_db, 'get_ignored_embeddings') else []
+        ignored = [{"embedding": emb} for emb in raw_ignored if emb]
         
-        return data
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        return {
+            "version": PEOPLE_DB_VERSION,
+            "people": people_list,
+            "ignored_embeddings": ignored,
+            "created_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
+            "updated_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
+        }
+    except Exception as e:
+        _LOGGER.error(f"Failed to load people from SQLite: {e}")
+        return _default_people_db()
 
 
 def _public_people_view(people: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -265,7 +138,6 @@ def _public_people_view(people: list[dict[str, Any]]) -> list[dict[str, Any]]:
         except Exception:
             thumbs = []
         
-        # Include negative sample count for UI
         neg_count = len(p.get("negative_embeddings", []) or [])
         
         out.append({
@@ -282,83 +154,159 @@ def _public_people_view(people: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def get_people_lock() -> asyncio.Lock:
     """Get the global people database lock.
     
-    Use this when you need to perform multiple database operations atomically
-    outside of the provided helper functions.
-    
     Returns:
         The global asyncio.Lock for people database
     """
     return _people_lock
 
 
-async def add_ignored_embedding(path: str, embedding: list[float], thumb: str | None = None) -> bool:
+async def add_ignored_embedding(embedding: list[float], thumb: str | None = None) -> bool:
     """Add an embedding to the ignored list.
     
-    Ignored embeddings are skipped during face matching - useful for
-    false positives, background faces, or faces the user doesn't want to track.
-    
     Args:
-        path: Path to people database JSON file
         embedding: Face embedding vector to ignore
         thumb: Optional thumbnail URL for reference
         
     Returns:
         True if successfully added
     """
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    if not _sqlite_db:
+        _LOGGER.error("SQLite database not initialized")
+        return False
     
-    def update_fn(data: dict[str, Any]) -> dict[str, Any]:
-        if "ignored_embeddings" not in data:
-            data["ignored_embeddings"] = []
-        
-        data["ignored_embeddings"].append({
-            "embedding": embedding,
-            "thumb": thumb,
-            "added_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
-        })
-        data["updated_utc"] = now_utc.strftime("%Y%m%d_%H%M%S")
-        return data
-    
-    await _update_people_db(path, update_fn)
-    return True
+    try:
+        result = _sqlite_db.add_ignored_embedding(embedding, reason="User ignored")
+        return result > 0
+    except Exception as e:
+        _LOGGER.error(f"Failed to add ignored embedding: {e}")
+        return False
 
 
-async def get_ignored_embeddings(path: str) -> list[list[float]]:
+async def get_ignored_embeddings() -> list[list[float]]:
     """Get all ignored embeddings.
     
-    Args:
-        path: Path to people database JSON file
-        
     Returns:
         List of embedding vectors that should be ignored
     """
-    data = await _load_people_db(path)
-    ignored = data.get("ignored_embeddings", [])
-    return [item.get("embedding") for item in ignored if item.get("embedding")]
+    if not _sqlite_db:
+        return []
+    
+    try:
+        return _sqlite_db.get_ignored_embeddings()
+    except Exception as e:
+        _LOGGER.error(f"Failed to get ignored embeddings: {e}")
+        return []
 
 
-async def get_ignored_count(path: str) -> int:
+async def get_ignored_count() -> int:
     """Get count of ignored embeddings.
     
-    Args:
-        path: Path to people database JSON file
-        
     Returns:
         Number of ignored embeddings
     """
-    data = await _load_people_db(path)
-    return len(data.get("ignored_embeddings", []))
+    if not _sqlite_db:
+        return 0
+    
+    try:
+        return len(_sqlite_db.get_ignored_embeddings())
+    except Exception:
+        return 0
 
 
-# ==================== SQLite Backend Functions ====================
+# ==================== SQLite Functions ====================
+
+async def _save_person_to_sqlite(person_id: str, name: str, embeddings: list = None) -> bool:
+    """Save a person to SQLite database.
+    
+    Args:
+        person_id: Unique person ID
+        name: Person name
+        embeddings: List of embedding dicts with 'vector' key
+        
+    Returns:
+        True if successful
+    """
+    if not _sqlite_db:
+        return False
+    
+    try:
+        _sqlite_db.add_person(person_id, name)
+        
+        if embeddings:
+            for emb in embeddings:
+                vector = emb.get("vector") if isinstance(emb, dict) else emb
+                if vector:
+                    _sqlite_db.add_embedding(person_id, vector)
+        
+        return True
+    except Exception as e:
+        _LOGGER.error(f"Failed to save person to SQLite: {e}")
+        return False
+
+
+async def _delete_person_from_sqlite(person_id: str) -> bool:
+    """Delete a person from SQLite database.
+    
+    Args:
+        person_id: Person ID to delete
+        
+    Returns:
+        True if successful
+    """
+    if not _sqlite_db:
+        return False
+    
+    try:
+        return _sqlite_db.delete_person(person_id, hard_delete=True)
+    except Exception as e:
+        _LOGGER.error(f"Failed to delete person from SQLite: {e}")
+        return False
+
+
+async def _rename_person_in_sqlite(person_id: str, new_name: str) -> bool:
+    """Rename a person in SQLite database.
+    
+    Args:
+        person_id: Person ID to rename
+        new_name: New name for the person
+        
+    Returns:
+        True if successful
+    """
+    if not _sqlite_db:
+        return False
+    
+    try:
+        return _sqlite_db.update_person(person_id, name=new_name)
+    except Exception as e:
+        _LOGGER.error(f"Failed to rename person in SQLite: {e}")
+        return False
+
+
+async def _add_embedding_to_sqlite(person_id: str, embedding: list, thumb: str = None) -> bool:
+    """Add an embedding to a person in SQLite.
+    
+    Args:
+        person_id: Person ID
+        embedding: Embedding vector
+        thumb: Optional thumbnail path
+        
+    Returns:
+        True if successful
+    """
+    if not _sqlite_db:
+        return False
+    
+    try:
+        result = _sqlite_db.add_embedding(person_id, embedding, source_image=thumb)
+        return result > 0
+    except Exception as e:
+        _LOGGER.error(f"Failed to add embedding to SQLite: {e}")
+        return False
+
 
 def enable_sqlite_backend(config_path: str = "/config") -> bool:
-    """Enable SQLite backend for improved performance.
-    
-    This will:
-    - Initialize the SQLite database
-    - Optionally migrate existing JSON data
-    - Enable SQLite for all future operations
+    """Initialize SQLite backend.
     
     Args:
         config_path: Home Assistant config path
@@ -366,15 +314,14 @@ def enable_sqlite_backend(config_path: str = "/config") -> bool:
     Returns:
         True if successfully enabled
     """
-    global _USE_SQLITE_BACKEND, _sqlite_db
+    global _sqlite_db
     
     try:
         from .database import get_database
         
         _sqlite_db = get_database(config_path)
         if _sqlite_db.initialize():
-            _USE_SQLITE_BACKEND = True
-            _LOGGER.info("SQLite backend enabled for people database")
+            _LOGGER.info("SQLite backend initialized for people database")
             return True
         else:
             _LOGGER.error("Failed to initialize SQLite database")
@@ -388,16 +335,15 @@ def enable_sqlite_backend(config_path: str = "/config") -> bool:
 
 
 def disable_sqlite_backend() -> None:
-    """Disable SQLite backend and use JSON files."""
-    global _USE_SQLITE_BACKEND, _sqlite_db
+    """Close SQLite database connection."""
+    global _sqlite_db
     
     if _sqlite_db:
         from .database import close_database
         close_database()
     
-    _USE_SQLITE_BACKEND = False
     _sqlite_db = None
-    _LOGGER.info("SQLite backend disabled, using JSON files")
+    _LOGGER.info("SQLite backend disabled")
 
 
 def is_sqlite_enabled() -> bool:
@@ -406,37 +352,7 @@ def is_sqlite_enabled() -> bool:
     Returns:
         True if SQLite is active
     """
-    return _USE_SQLITE_BACKEND and _sqlite_db is not None
-
-
-async def migrate_json_to_sqlite(json_path: str) -> tuple[bool, str]:
-    """Migrate existing JSON people database to SQLite.
-    
-    This should be called once when enabling SQLite for the first time.
-    The original JSON file is preserved as a backup.
-    
-    Args:
-        json_path: Path to people_db.json file
-        
-    Returns:
-        Tuple of (success, message)
-    """
-    if not _sqlite_db:
-        return False, "SQLite backend not enabled"
-    
-    if not os.path.exists(json_path):
-        return True, "No JSON file to migrate"
-    
-    try:
-        result = _sqlite_db.migrate_from_json(json_path)
-        if result[0]:
-            # Rename JSON file to indicate migration complete
-            backup_path = json_path + ".migrated"
-            os.rename(json_path, backup_path)
-            _LOGGER.info(f"JSON migrated to SQLite, backup at {backup_path}")
-        return result
-    except Exception as e:
-        return False, f"Migration failed: {e}"
+    return _sqlite_db is not None
 
 
 async def log_recognition_event(
@@ -451,8 +367,7 @@ async def log_recognition_event(
 ) -> int:
     """Log a face recognition event to the database.
     
-    Only works when SQLite backend is enabled.
-    Used for analytics and history tracking.
+    Used for analytics and movement profile tracking.
     
     Args:
         camera_name: Camera that detected the face
@@ -465,9 +380,9 @@ async def log_recognition_event(
         metadata: Additional data (bbox, landmarks)
         
     Returns:
-        History entry ID or -1 if not using SQLite
+        History entry ID or -1 if failed
     """
-    if not is_sqlite_enabled():
+    if not _sqlite_db:
         return -1
     
     return _sqlite_db.add_recognition(
@@ -485,15 +400,13 @@ async def log_recognition_event(
 async def get_recognition_stats(days: int = 7) -> dict:
     """Get face recognition statistics.
     
-    Only works when SQLite backend is enabled.
-    
     Args:
         days: Number of days to analyze
         
     Returns:
-        Statistics dict or empty dict if not using SQLite
+        Statistics dict
     """
-    if not is_sqlite_enabled():
+    if not _sqlite_db:
         return {}
     
     return _sqlite_db.get_recognition_stats(days)
@@ -502,16 +415,13 @@ async def get_recognition_stats(days: int = 7) -> dict:
 async def get_database_stats() -> dict:
     """Get database statistics.
     
-    Returns stats from SQLite if enabled, otherwise from JSON.
-    
     Returns:
         Dict with counts and sizes
     """
-    if is_sqlite_enabled():
+    if _sqlite_db:
         return _sqlite_db.get_db_stats()
     
-    # Fallback to JSON stats
     return {
-        "backend": "json",
-        "sqlite_available": False
+        "backend": "sqlite",
+        "initialized": False
     }

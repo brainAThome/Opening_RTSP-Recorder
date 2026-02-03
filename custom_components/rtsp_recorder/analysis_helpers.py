@@ -14,18 +14,21 @@ from typing import Any
 from .face_matching import _match_face_simple
 
 
-def _read_analysis_results(output_dir: str, limit: int = 50) -> list[dict[str, Any]]:
-    """Read analysis results from output directory.
+def _read_analysis_results(output_dir: str, limit: int = 50, page: int = 1, per_page: int = 0) -> dict[str, Any]:
+    """Read analysis results from output directory with pagination support.
     
     Args:
         output_dir: Directory containing analysis_* subdirectories
-        limit: Maximum number of results to return
+        limit: Maximum number of results to return (legacy, ignored if per_page > 0)
+        page: Page number (1-indexed)
+        per_page: Results per page (0 = no pagination, use limit)
         
     Returns:
-        List of analysis result dicts, sorted by date (newest first)
+        Dict with items, total, page, per_page, total_pages keys
     """
     if not os.path.exists(output_dir):
-        return []
+        return {"items": [], "total": 0, "page": 1, "per_page": per_page or limit, "total_pages": 0}
+    
     results = []
     for name in os.listdir(output_dir):
         if not name.startswith("analysis_"):
@@ -41,8 +44,47 @@ def _read_analysis_results(output_dir: str, limit: int = 50) -> list[dict[str, A
             results.append(data)
         except Exception:
             continue
+    
     results.sort(key=lambda r: r.get("created_utc", ""), reverse=True)
-    return results[:limit]
+    total = len(results)
+    
+    # Pagination mode
+    if per_page > 0:
+        total_pages = (total + per_page - 1) // per_page if per_page > 0 else 1
+        page = max(1, min(page, total_pages)) if total_pages > 0 else 1
+        start = (page - 1) * per_page
+        end = start + per_page
+        items = results[start:end]
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages
+        }
+    
+    # Legacy mode (backward compatible)
+    return {
+        "items": results[:limit],
+        "total": total,
+        "page": 1,
+        "per_page": limit,
+        "total_pages": 1
+    }
+
+
+def _read_analysis_results_legacy(output_dir: str, limit: int = 50) -> list[dict[str, Any]]:
+    """Legacy function for backward compatibility.
+    
+    Args:
+        output_dir: Directory containing analysis_* subdirectories
+        limit: Maximum number of results to return
+        
+    Returns:
+        List of analysis result dicts, sorted by date (newest first)
+    """
+    result = _read_analysis_results(output_dir, limit=limit)
+    return result.get("items", [])
 
 
 def _find_analysis_for_video(output_dir: str, video_path: str) -> dict[str, Any] | None:
@@ -55,7 +97,8 @@ def _find_analysis_for_video(output_dir: str, video_path: str) -> dict[str, Any]
     Returns:
         Analysis result dict or None if not found
     """
-    for item in _read_analysis_results(output_dir, limit=200):
+    result = _read_analysis_results(output_dir, limit=200)
+    for item in result.get("items", []):
         if item.get("video_path") == video_path:
             return item
     return None
@@ -71,7 +114,8 @@ def _build_analysis_index(output_dir: str) -> set[str]:
         Set of video file paths
     """
     existing = set()
-    for item in _read_analysis_results(output_dir, limit=10000):
+    result = _read_analysis_results(output_dir, limit=10000)
+    for item in result.get("items", []):
         path = item.get("video_path")
         if path:
             existing.add(path)

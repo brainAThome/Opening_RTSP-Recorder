@@ -43,7 +43,10 @@ def _get_analysis_semaphore() -> asyncio.Semaphore:
 class InferenceStatsTracker:
     """Track inference statistics for performance monitoring."""
     
-    def __init__(self, max_history: int = 100):
+    # v1.1.0: Erhöht von 100 auf 1000, damit bei intensiver Analyse
+    # alle Inferenzen der letzten 60s erfasst werden können.
+    # Bei 60fps Analyse = 60 Frames pro Video, 10 Videos = 600 Einträge
+    def __init__(self, max_history: int = 1000):
         self._lock = _threading.Lock()
         self._history = _deque(maxlen=max_history)
         self._total_inferences = 0
@@ -98,6 +101,30 @@ class InferenceStatsTracker:
             recent_coral = sum(1 for h in recent if h["device"] == "coral_usb")
             recent_coral_pct = round(100 * recent_coral / len(recent), 1) if recent else 0
             
+            # v1.1.0m: TPU Load calculation (actual chip busy time)
+            # 
+            # Berechnung: (Summe Coral-Inferenz-Zeit) / (Zeitfenster) × 100
+            #
+            # Beispiel: Bei 95ms Inferenz alle 2s = 95/2000 = 4.75% Last
+            # Bei kontinuierlicher Analyse: ~50-100ms pro Batch, alle 1-2s
+            #
+            # Nur Coral-Inferenzen zählen, nicht CPU-Inferenzen!
+            # v1.1.0m: 5s Fenster für reaktive Anzeige (schnelles Abklingen wenn Analyse stoppt)
+            TPU_WINDOW_SECONDS = 5
+            recent_coral_window = [h for h in self._history if now - h["timestamp"] < TPU_WINDOW_SECONDS and h["device"] == "coral_usb"]
+            # WICHTIG: duration_ms ist BEREITS die Gesamtzeit für den Batch, NICHT pro Frame!
+            coral_busy_ms = sum(h["duration_ms"] for h in recent_coral_window)
+            
+            # Zeitfenster = 5 Sekunden = 5000 ms (reaktive Anzeige)
+            # Aber wenn uptime < 5s, dann nur uptime verwenden
+            time_window_ms = min(float(TPU_WINDOW_SECONDS), uptime) * 1000.0
+            
+            tpu_load_pct = 0.0
+            if time_window_ms > 0 and coral_busy_ms > 0:
+                tpu_load_pct = round(100.0 * coral_busy_ms / time_window_ms, 2)
+                # Cap at 100% (theoretisch nicht möglich, aber sicherheitshalber)
+                tpu_load_pct = min(tpu_load_pct, 100.0)
+            
             return {
                 "uptime_seconds": round(uptime, 0),
                 "total_inferences": self._total_inferences,
@@ -109,6 +136,7 @@ class InferenceStatsTracker:
                 "last_inference_ms": round(last_ms, 1),
                 "coral_usage_pct": coral_pct,
                 "recent_coral_pct": recent_coral_pct,
+                "tpu_load_pct": tpu_load_pct,  # NEU: Echte TPU-Chip-Auslastung
             }
 
 
@@ -122,8 +150,17 @@ def get_inference_stats() -> InferenceStatsTracker:
 
 
 # ===== System Stats =====
+# v1.1.0m: Rolling average for smoother CPU readings
+# Mit 2s Polling: 10 Samples = 20 Sekunden Mittelung → glatte Anzeige ohne Spitzen
+_cpu_history: list[float] = []
+_ram_history: list[float] = []
+_CPU_HISTORY_SIZE = 10  # Average over last 10 readings (20s at 2s polling)
+
+
 def _get_system_stats_sync() -> dict[str, Any]:
     """Read system stats (Linux: /proc, other platforms: defaults)."""
+    global _cpu_history, _ram_history
+    
     stats = {
         "cpu_percent": 0.0,
         "memory_percent": 0.0,
@@ -147,13 +184,20 @@ def _get_system_stats_sync() -> dict[str, Any]:
             return idle, total
         
         idle1, total1 = read_cpu()
-        _time.sleep(0.1)  # Safe: runs in executor thread, not event loop
+        _time.sleep(0.3)  # v1.1.0: Increased from 0.1s to 0.3s for better accuracy
         idle2, total2 = read_cpu()
         
         idle_delta = idle2 - idle1
         total_delta = total2 - total1
         if total_delta > 0:
-            stats["cpu_percent"] = round(100.0 * (1.0 - idle_delta / total_delta), 1)
+            current_cpu = 100.0 * (1.0 - idle_delta / total_delta)
+            
+            # v1.1.0m: Rolling average for smoother, more accurate readings
+            _cpu_history.append(current_cpu)
+            if len(_cpu_history) > _CPU_HISTORY_SIZE:
+                _cpu_history.pop(0)
+            
+            stats["cpu_percent"] = round(sum(_cpu_history) / len(_cpu_history), 1)
         
         # Memory from /proc/meminfo
         with open("/proc/meminfo", "r") as f:
@@ -171,13 +215,17 @@ def _get_system_stats_sync() -> dict[str, Any]:
         stats["memory_total_mb"] = round(total_kb / 1024, 0)
         stats["memory_used_mb"] = round(used_kb / 1024, 0)
         if total_kb > 0:
-            stats["memory_percent"] = round(100.0 * used_kb / total_kb, 1)
+            current_ram = 100.0 * used_kb / total_kb
+            # v1.1.0m: Rolling average for RAM too
+            _ram_history.append(current_ram)
+            if len(_ram_history) > _CPU_HISTORY_SIZE:
+                _ram_history.pop(0)
+            stats["memory_percent"] = round(sum(_ram_history) / len(_ram_history), 1)
             
     except Exception:
         pass  # Return default stats on error
     
     return stats
-
 
 def get_system_stats() -> dict[str, Any]:
     """Get system stats (wrapper for sync contexts)."""

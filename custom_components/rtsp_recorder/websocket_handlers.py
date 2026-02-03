@@ -16,7 +16,16 @@ from homeassistant.components import websocket_api
 from .const import DOMAIN
 from .helpers import log_to_file, get_system_stats, get_inference_stats
 from .face_matching import _normalize_embedding_simple, _update_person_centroid, _cosine_similarity_simple
-from .people_db import _load_people_db, _save_people_db, _public_people_view, get_ignored_embeddings
+from .people_db import (
+    _load_people_db, 
+    _public_people_view, 
+    get_ignored_embeddings,
+    is_sqlite_enabled,
+    _save_person_to_sqlite,
+    _delete_person_from_sqlite,
+    _add_embedding_to_sqlite,
+    _rename_person_in_sqlite,
+)
 from .analysis_helpers import (
     _read_analysis_results,
     _find_analysis_for_video,
@@ -24,6 +33,7 @@ from .analysis_helpers import (
     _update_all_face_matches,
 )
 from .analysis import detect_available_devices
+from .services import get_batch_analysis_progress, get_single_analysis_progress, get_recording_progress
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +45,6 @@ def register_websocket_handlers(
     analysis_output_path: str,
     analysis_detector_url: str,
     analysis_face_match_threshold: float,
-    people_db_path: str,
     analysis_perf_cpu_entity: str | None,
     analysis_perf_igpu_entity: str | None,
     analysis_perf_coral_entity: str | None,
@@ -49,7 +58,6 @@ def register_websocket_handlers(
         analysis_output_path: Path to analysis output directory
         analysis_detector_url: URL of the detector service
         analysis_face_match_threshold: Face matching threshold
-        people_db_path: Path to people database
         analysis_perf_cpu_entity: CPU performance sensor entity ID
         analysis_perf_igpu_entity: iGPU performance sensor entity ID
         analysis_perf_coral_entity: Coral performance sensor entity ID
@@ -75,6 +83,9 @@ def register_websocket_handlers(
     analysis_face_confidence = float(config_data.get("analysis_face_confidence", 0.5))
     analysis_face_store_embeddings = bool(config_data.get("analysis_face_store_embeddings", True))
     person_entities_enabled = bool(config_data.get("person_entities_enabled", False))
+    # v1.1.0: Pfade für Frontend
+    storage_path = config_data.get("storage_path", "/media/rtsp_recorder")
+    snapshot_path_base = config_data.get("snapshot_path", "/media/rtsp_recorder/thumbnails")
 
     # Helper functions
     def _sensor_info(entity_id: str | None) -> dict | None:
@@ -138,26 +149,119 @@ def register_websocket_handlers(
     @websocket_api.websocket_command({
         vol.Required("type"): "rtsp_recorder/get_analysis_overview",
         vol.Optional("limit", default=20): int,
+        vol.Optional("page", default=1): int,
+        vol.Optional("per_page", default=0): int,
     })
     @websocket_api.async_response
     async def ws_get_analysis_overview(hass, connection, msg):
-        """Get analysis overview with stats."""
+        """Get analysis overview with stats and pagination support.
+        
+        If per_page > 0, uses pagination mode.
+        Otherwise uses legacy limit mode for backward compatibility.
+        """
         limit = msg.get("limit", 20)
-        items = await hass.async_add_executor_job(_read_analysis_results, analysis_output_path, limit)
+        page = msg.get("page", 1)
+        per_page = msg.get("per_page", 0)
+        
+        result = await hass.async_add_executor_job(
+            _read_analysis_results, analysis_output_path, limit, page, per_page
+        )
+        
+        items = result.get("items", [])
         stats = _summarize_analysis(items)
+        
         devices = []
         if analysis_detector_url:
             devices = await _fetch_remote_devices(analysis_detector_url)
         if not devices:
             devices = await hass.async_add_executor_job(detect_available_devices)
+        
         perf = {
             "cpu": _sensor_info(analysis_perf_cpu_entity),
             "igpu": _sensor_info(analysis_perf_igpu_entity),
             "coral": _sensor_info(analysis_perf_coral_entity),
         }
-        connection.send_result(msg["id"], {"items": items, "stats": stats, "perf": perf, "devices": devices})
+        
+        # Return paginated response
+        connection.send_result(msg["id"], {
+            "items": items,
+            "stats": stats,
+            "perf": perf,
+            "devices": devices,
+            # Pagination info
+            "total": result.get("total", len(items)),
+            "page": result.get("page", 1),
+            "per_page": result.get("per_page", limit),
+            "total_pages": result.get("total_pages", 1),
+        })
 
     websocket_api.async_register_command(hass, ws_get_analysis_overview)
+
+    # ======== GET BATCH ANALYSIS PROGRESS ========
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_analysis_progress",
+    })
+    @websocket_api.async_response
+    async def ws_get_analysis_progress(hass, connection, msg):
+        """Get current batch analysis progress."""
+        try:
+            progress = get_batch_analysis_progress()
+            connection.send_result(msg["id"], progress)
+        except Exception as e:
+            log_to_file(f"Error getting analysis progress: {e}")
+            connection.send_result(msg["id"], {
+                "running": False,
+                "total": 0,
+                "current": 0,
+                "current_file": "",
+                "started_at": None,
+            })
+
+    websocket_api.async_register_command(hass, ws_get_analysis_progress)
+
+    # ======== GET SINGLE ANALYSIS PROGRESS ========
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_single_analysis_progress",
+    })
+    @websocket_api.async_response
+    async def ws_get_single_analysis_progress(hass, connection, msg):
+        """Get current single video analysis progress."""
+        try:
+            progress = get_single_analysis_progress()
+            connection.send_result(msg["id"], progress)
+        except Exception as e:
+            log_to_file(f"Error getting single analysis progress: {e}")
+            connection.send_result(msg["id"], {
+                "running": False,
+                "media_id": "",
+                "video_path": "",
+                "started_at": None,
+                "completed": False,
+            })
+
+    websocket_api.async_register_command(hass, ws_get_single_analysis_progress)
+
+    # ======== GET RECORDING PROGRESS ========
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_recording_progress",
+    })
+    @websocket_api.async_response
+    async def ws_get_recording_progress(hass, connection, msg):
+        """Get current recording progress."""
+        try:
+            progress = get_recording_progress()
+            connection.send_result(msg["id"], progress)
+        except Exception as e:
+            log_to_file(f"Error getting recording progress: {e}")
+            connection.send_result(msg["id"], {
+                "running": False,
+                "camera": "",
+                "video_path": "",
+                "duration": 0,
+                "started_at": None,
+            })
+
+    websocket_api.async_register_command(hass, ws_get_recording_progress)
 
     @websocket_api.websocket_command({
         vol.Required("type"): "rtsp_recorder/get_analysis_result",
@@ -176,7 +280,7 @@ def register_websocket_handlers(
         if result:
             result.pop("frames", None)
             # Filter out ignored embeddings from face results using similarity matching
-            ignored_embs = await get_ignored_embeddings(people_db_path)
+            ignored_embs = await get_ignored_embeddings()
             if ignored_embs and "detections" in result:
                 # Use same threshold as face matching (0.85 = very high similarity)
                 IGNORE_THRESHOLD = 0.85
@@ -433,7 +537,6 @@ def register_websocket_handlers(
 
 def register_people_websocket_handlers(
     hass,
-    people_db_path: str,
     analysis_output_path: str,
     analysis_face_match_threshold: float,
     validate_person_name_func,
@@ -442,7 +545,6 @@ def register_people_websocket_handlers(
     
     Args:
         hass: Home Assistant instance
-        people_db_path: Path to people database
         analysis_output_path: Path to analysis output directory
         analysis_face_match_threshold: Face matching threshold
         validate_person_name_func: Function to validate person names
@@ -455,7 +557,7 @@ def register_people_websocket_handlers(
     @websocket_api.async_response
     async def ws_get_people(hass, connection, msg):
         """Get all people from database."""
-        data = await _load_people_db(people_db_path)
+        data = await _load_people_db()
         people_view = _public_people_view(data.get("people", []))
         log_to_file(f"WS get_people -> {people_view}")
         connection.send_result(msg["id"], {"people": people_view})
@@ -474,15 +576,18 @@ def register_people_websocket_handlers(
         if not is_valid:
             connection.send_error(msg["id"], "invalid_name", error_msg)
             return
-        data = await _load_people_db(people_db_path)
-        person = {
-            "id": uuid.uuid4().hex,
-            "name": name,
-            "created_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S"),
-            "embeddings": [],
-        }
-        data.setdefault("people", []).append(person)
-        await _save_people_db(people_db_path, data)
+        
+        person_id = uuid.uuid4().hex
+        created_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        
+        # v1.1.0: Use SQLite if enabled
+        if is_sqlite_enabled():
+            success = await _save_person_to_sqlite(person_id, name)
+            if not success:
+                connection.send_error(msg["id"], "db_error", "Fehler beim Speichern in SQLite")
+                return
+            person = {"id": person_id, "name": name, "created_utc": created_utc, "embeddings": []}
+        
         connection.send_result(msg["id"], {"person": _public_people_view([person])[0]})
 
     websocket_api.async_register_command(hass, ws_add_person)
@@ -501,19 +606,22 @@ def register_people_websocket_handlers(
         if not is_valid:
             connection.send_error(msg["id"], "invalid_name", error_msg)
             return
-        data = await _load_people_db(people_db_path)
-        people = data.get("people", [])
-        updated = None
-        for p in people:
-            if str(p.get("id")) == person_id:
-                p["name"] = name
-                updated = p
-                break
-        if not updated:
-            connection.send_error(msg["id"], "not_found", "Person nicht gefunden")
+        
+        # v1.1.0: Use SQLite if enabled
+        if is_sqlite_enabled():
+            success = await _rename_person_in_sqlite(person_id, name)
+            if not success:
+                connection.send_error(msg["id"], "not_found", "Person nicht gefunden")
+                return
+            # Reload to get updated view
+            data = await _load_people_db()
+            people = data.get("people", [])
+            updated = next((p for p in people if str(p.get("id")) == person_id), None)
+            if updated:
+                connection.send_result(msg["id"], {"person": _public_people_view([updated])[0]})
+            else:
+                connection.send_result(msg["id"], {"person": {"id": person_id, "name": name}})
             return
-        await _save_people_db(people_db_path, data)
-        connection.send_result(msg["id"], {"person": _public_people_view([updated])[0]})
 
     websocket_api.async_register_command(hass, ws_rename_person)
 
@@ -530,35 +638,15 @@ def register_people_websocket_handlers(
         person_id = str(msg.get("id"))
         name = (msg.get("name") or "").strip()
         created_utc = (msg.get("created_utc") or "").strip()
-        data = await _load_people_db(people_db_path)
-        people = data.get("people", [])
-        new_people = [p for p in people if str(p.get("id")) != person_id]
         
-        if len(new_people) == len(people):
-            if person_id.isdigit():
-                idx = int(person_id)
-                if 0 <= idx < len(people):
-                    new_people = [p for i, p in enumerate(people) if i != idx]
-                else:
-                    new_people = people
+        # v1.1.0: Use SQLite if enabled
+        if is_sqlite_enabled():
+            success = await _delete_person_from_sqlite(person_id)
+            if success:
+                connection.send_result(msg["id"], {"deleted": True})
             else:
-                new_people = people
-
-        if len(new_people) == len(people) and (name or created_utc):
-            def _match(p: dict) -> bool:
-                if created_utc and p.get("created_utc") == created_utc:
-                    return True
-                if name and p.get("name") == name:
-                    return True
-                return False
-            new_people = [p for p in people if not _match(p)]
-
-        if len(new_people) == len(people):
-            connection.send_error(msg["id"], "not_found", "Person nicht gefunden")
+                connection.send_error(msg["id"], "not_found", "Person nicht gefunden")
             return
-        data["people"] = new_people
-        await _save_people_db(people_db_path, data)
-        connection.send_result(msg["id"], {"deleted": True})
 
     websocket_api.async_register_command(hass, ws_delete_person)
 
@@ -590,54 +678,22 @@ def register_people_websocket_handlers(
             if not embedding:
                 connection.send_error(msg["id"], "invalid_embedding", "Embedding ungueltig")
                 return
-            data = await _load_people_db(people_db_path)
-            people = data.get("people", [])
-            updated = None
             
-            def _append_embedding(p: dict) -> None:
-                entry = {"vector": embedding, "source": msg.get("source")}
-                if thumb:
-                    entry["thumb"] = thumb
-                entry["created_utc"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
-                p.setdefault("embeddings", []).append(entry)
-
-            for p in people:
-                if str(p.get("id")) == person_id:
-                    _append_embedding(p)
-                    _update_person_centroid(p)
-                    updated = p
-                    break
-            if not updated and (name or created_utc):
-                for p in people:
-                    if created_utc and p.get("created_utc") == created_utc:
-                        _append_embedding(p)
-                        _update_person_centroid(p)
-                        updated = p
-                        break
-                    if name and p.get("name") == name:
-                        _append_embedding(p)
-                        _update_person_centroid(p)
-                        updated = p
-                        break
-            if not updated:
-                connection.send_error(msg["id"], "not_found", "Person nicht gefunden")
+            # v1.1.0: Use SQLite if enabled
+            if is_sqlite_enabled():
+                success = await _add_embedding_to_sqlite(person_id, embedding, thumb)
+                if success:
+                    # Reload to get updated view
+                    data = await _load_people_db()
+                    people = data.get("people", [])
+                    updated = next((p for p in people if str(p.get("id")) == person_id), None)
+                    if updated:
+                        connection.send_result(msg["id"], {"person": _public_people_view([updated])[0]})
+                    else:
+                        connection.send_result(msg["id"], {"person": {"id": person_id, "embeddings_count": 1}})
+                else:
+                    connection.send_error(msg["id"], "db_error", "Fehler beim Speichern in SQLite")
                 return
-            await _save_people_db(people_db_path, data)
-            
-            connection.send_result(msg["id"], {"person": _public_people_view([updated])[0]})
-            
-            async def _background_rematch():
-                try:
-                    updated_analyses = await _update_all_face_matches(
-                        analysis_output_path, 
-                        data.get("people", []), 
-                        analysis_face_match_threshold
-                    )
-                    log_to_file(f"INIT: Re-matched faces in {updated_analyses} analysis files after training")
-                except Exception as e:
-                    log_to_file(f"INIT: Background re-match error: {e}")
-            
-            hass.async_create_task(_background_rematch())
             
         except Exception as exc:
             log_to_file(f"INIT: add_person_embedding ERROR: {type(exc).__name__}: {exc}")
@@ -673,31 +729,24 @@ def register_people_websocket_handlers(
                 connection.send_error(msg["id"], "invalid_embedding", "Embedding ungueltig")
                 return
             
-            data = await _load_people_db(people_db_path)
-            people = data.get("people", [])
-            updated = None
-            
-            for p in people:
-                if str(p.get("id")) == person_id:
-                    entry = {
-                        "vector": embedding,
-                        "source": source,
-                        "created_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
-                    }
-                    if thumb:
-                        entry["thumb"] = thumb
-                    p.setdefault("negative_embeddings", []).append(entry)
-                    updated = p
-                    break
-            
-            if not updated:
-                connection.send_error(msg["id"], "not_found", "Person nicht gefunden")
+            # v1.1.0j: SQLite-only - use database directly
+            from .database import get_database
+            db = get_database()
+            if not db:
+                connection.send_error(msg["id"], "db_error", "Database not available")
                 return
             
-            await _save_people_db(people_db_path, data)
+            result = db.add_negative_embedding(person_id, embedding, source=source, thumb=thumb)
+            if result <= 0:
+                connection.send_error(msg["id"], "db_error", "Failed to add negative embedding")
+                return
             
-            neg_count = len(updated.get("negative_embeddings", []))
-            log_to_file(f"INIT: Added negative sample to {updated.get('name')} (total: {neg_count})")
+            neg_count = db.get_negative_count_for_person(person_id)
+            
+            # Get person name for logging
+            person = db.get_person(person_id)
+            person_name = person.get("name", "Unknown") if person else "Unknown"
+            log_to_file(f"INIT: Added negative sample to {person_name} (total: {neg_count})")
             
             connection.send_result(msg["id"], {
                 "success": True,
@@ -739,8 +788,8 @@ def register_people_websocket_handlers(
             # Import here to avoid circular imports
             from .people_db import add_ignored_embedding, get_ignored_count
             
-            await add_ignored_embedding(people_db_path, embedding, thumb)
-            ignored_count = await get_ignored_count(people_db_path)
+            await add_ignored_embedding(embedding, thumb)
+            ignored_count = await get_ignored_count()
             
             log_to_file(f"INIT: Added ignored embedding (total: {ignored_count})")
 
@@ -754,3 +803,94 @@ def register_people_websocket_handlers(
             connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
 
     websocket_api.async_register_command(hass, ws_add_ignored_embedding)
+    # ===== v1.1.0: Get Movement Profile (Recognition History) =====
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_movement_profile",
+        vol.Optional("person_name"): str,
+        vol.Optional("hours"): vol.Coerce(int),
+    })
+    @websocket_api.async_response
+    async def ws_get_movement_profile(hass, connection, msg):
+        """Get movement profile showing when/where a person was detected.
+        
+        Returns a timeline of detections with camera locations.
+        """
+        log_to_file("INIT: get_movement_profile called")
+        try:
+            person_name = msg.get("person_name")
+            hours = msg.get("hours", 24)  # Default: last 24 hours
+            
+            from .people_db import is_sqlite_enabled
+            from .database import DatabaseManager
+            
+            if not is_sqlite_enabled():
+                connection.send_result(msg["id"], {
+                    "success": False,
+                    "error": "SQLite backend not enabled",
+                    "movements": []
+                })
+                return
+            
+            # Query recognition_history
+            import datetime
+            from pathlib import Path
+            
+            db_path = Path(hass.config.path("rtsp_recorder")) / "rtsp_recorder.db"
+            db = DatabaseManager(str(db_path))
+            
+            # Get history entries
+            since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
+            
+            query = """
+                SELECT person_name, camera_name, recognized_at, confidence, recording_path
+                FROM recognition_history
+                WHERE recognized_at >= ?
+            """
+            params = [since.isoformat()]
+            
+            if person_name:
+                query += " AND person_name = ?"
+                params.append(person_name)
+            
+            query += " ORDER BY recognized_at DESC LIMIT 500"
+            
+            cursor = db.conn.execute(query, params)
+            rows = cursor.fetchall()
+            
+            movements = []
+            for row in rows:
+                movements.append({
+                    "person": row[0],
+                    "camera": row[1],
+                    "time": row[2],
+                    "confidence": row[3],
+                    "video": row[4]
+                })
+            
+            # Group by person for summary
+            summary = {}
+            for m in movements:
+                person = m["person"] or "Unbekannt"
+                if person not in summary:
+                    summary[person] = []
+                summary[person].append({
+                    "camera": m["camera"],
+                    "time": m["time"],
+                    "confidence": m["confidence"]
+                })
+            
+            connection.send_result(msg["id"], {
+                "success": True,
+                "movements": movements,
+                "summary": summary,
+                "total": len(movements),
+                "hours": hours
+            })
+            
+        except Exception as exc:
+            log_to_file(f"INIT: get_movement_profile ERROR: {type(exc).__name__}: {exc}")
+            connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
+
+    websocket_api.async_register_command(hass, ws_get_movement_profile)
+
+

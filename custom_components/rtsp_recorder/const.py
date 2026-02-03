@@ -19,7 +19,7 @@ PEOPLE_DB_DEFAULT_PATH = "/config/rtsp_recorder_people.json"
 # ===== SQLite Database (v1.0.9+) =====
 SQLITE_DB_DEFAULT_PATH = "/config/rtsp_recorder/rtsp_recorder.db"
 CONF_USE_SQLITE = "use_sqlite"
-DEFAULT_USE_SQLITE = False
+DEFAULT_USE_SQLITE = True
 
 # ===== Rate Limiting (MED-004 Fix) =====
 MAX_CONCURRENT_ANALYSES = 2

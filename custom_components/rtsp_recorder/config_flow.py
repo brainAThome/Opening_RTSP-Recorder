@@ -201,6 +201,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 self.config_cache["snapshot_path"] = snapshot_path
                 self.config_cache["retention_days"] = user_input.get("retention_days", 7)
                 self.config_cache["snapshot_retention_days"] = user_input.get("snapshot_retention_days", 7)
+                self.config_cache["cleanup_interval_hours"] = user_input.get("cleanup_interval_hours", 24)
                 
                 selected = user_input.get("camera_selection")
                 analysis_configure = user_input.get("analysis_configure", False)
@@ -222,6 +223,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         snapshot_path = self.config_cache.get("snapshot_path", "/config/www/thumbnails")
         vid_days = self.config_cache.get("retention_days", 7)
         snap_days = self.config_cache.get("snapshot_retention_days", 7)
+        cleanup_interval = self.config_cache.get("cleanup_interval_hours", 24)
         
         # Check allowlist status for description
         is_allowed = self._check_allowlist(storage)
@@ -258,6 +260,13 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                     min=1, max=365, step=1, 
                     mode=selector.NumberSelectorMode.SLIDER,
                     unit_of_measurement="Tage"
+                )
+            ),
+            vol.Required("cleanup_interval_hours", default=cleanup_interval): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1, max=24, step=1, 
+                    mode=selector.NumberSelectorMode.SLIDER,
+                    unit_of_measurement="Std"
                 )
             ),
             vol.Optional("camera_selection", default="__NONE__"): selector.SelectSelector(

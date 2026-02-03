@@ -1,0 +1,112 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "🎬 Configurer RTSP Recorder",
+                "description": "Bienvenue! Configurez l'emplacement de stockage pour vos enregistrements.",
+                "data": {
+                    "storage_path": "📁 Chemin de stockage",
+                    "snapshot_path": "📸 Chemin des miniatures",
+                    "retention_days": "📅 Rétention (Jours)",
+                    "retention_hours": "⏰ Heures supplémentaires"
+                },
+                "data_description": {
+                    "storage_path": "ex. /media/rtsp_recordings",
+                    "snapshot_path": "Par défaut: /config/www/thumbnails",
+                    "retention_days": "Durée de conservation des vidéos",
+                    "retention_hours": "Optionnel: Heures supplémentaires"
+                }
+            }
+        },
+        "error": {
+            "auth_error": "Erreur d'accès",
+            "invalid_path": "Chemin invalide - doit commencer par /",
+            "invalid_retention": "La rétention doit être d'au moins 1 jour",
+            "unknown": "Erreur inconnue"
+        },
+        "abort": {
+            "single_instance_allowed": "Déjà configuré. Utilisez 'Configurer' pour modifier."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "⚙️ Paramètres RTSP Recorder",
+                "description": "**{allowlist_status}**\n\nSi non autorisé, ajoutez ceci à `configuration.yaml`:\n```\nhomeassistant:\n  allowlist_external_dirs:\n    - /media\n```\n\nDurée de rétention globale et configuration des caméras.\n\n✅ = Caméra déjà configurée",
+                "data": {
+                    "storage_path": "📁 Chemin de stockage",
+                    "snapshot_path": "📸 Chemin des miniatures",
+                    "retention_days": "🎬 Rétention vidéo",
+                    "snapshot_retention_days": "📸 Rétention miniatures",
+                    "camera_selection": "📹 Configurer caméra",
+                    "analysis_configure": "🧠 Configurer analyse"
+                },
+                "data_description": {
+                    "storage_path": "Chemin pour les enregistrements (ex. /media/rtsp_recordings)",
+                    "snapshot_path": "Chemin pour les miniatures (Par défaut: /config/www/thumbnails)",
+                    "retention_days": "Les enregistrements sont supprimés après X jours",
+                    "snapshot_retention_days": "Les miniatures sont supprimées après X jours",
+                    "camera_selection": "Sélectionnez une caméra pour configurer le capteur de mouvement",
+                    "analysis_configure": "Ouvre les paramètres d'analyse avancés"
+                }
+            },
+            "analysis": {
+                "title": "🧠 Analyse hors ligne",
+                "description": "Analyse les vidéos stockées localement et enregistre les résultats.",
+                "data": {
+                    "analysis_enabled": "✅ Analyse active",
+                    "analysis_device": "🖥️ Matériel",
+                    "analysis_objects": "🎯 Objets",
+                    "analysis_output_path": "📂 Dossier d'analyse",
+                    "analysis_frame_interval": "⏱️ Intervalle d'images (Secondes)",
+                    "analysis_detector_url": "🔗 URL du détecteur",
+                    "analysis_detector_confidence": "📊 Seuil de détection",
+                    "analysis_face_enabled": "👤 Détection faciale active",
+                    "analysis_face_confidence": "👁️ Seuil de détection faciale",
+                    "analysis_face_match_threshold": "🎚️ Seuil de correspondance",
+                    "person_entities_enabled": "🏠 Créer entités personnes",
+                    "use_sqlite": "🗄️ Utiliser SQLite",
+                    "analysis_auto_enabled": "🔄 Automatisation active",
+                    "analysis_auto_mode": "📋 Mode",
+                    "analysis_auto_time": "🕐 Heure (HH:MM)",
+                    "analysis_auto_interval_hours": "⏰ Intervalle (Heures)",
+                    "analysis_auto_since_days": "📅 Période (Jours)",
+                    "analysis_auto_limit": "🔢 Limite par exécution",
+                    "analysis_auto_skip_existing": "⏭️ Nouveaux fichiers uniquement",
+                    "analysis_auto_new": "⚡ Analyser immédiatement",
+                    "analysis_perf_cpu_entity": "💻 Capteur CPU",
+                    "analysis_perf_igpu_entity": "🎮 Capteur iGPU",
+                    "analysis_perf_coral_entity": "🪸 Capteur Coral"
+                }
+            },
+            "camera": {
+                "title": "📹 Configuration caméra",
+                "data": {
+                    "camera_enabled": "✅ Enregistrement actif",
+                    "recording_duration": "⏱️ Durée d'enregistrement",
+                    "pre_record_buffer": "⏮️ Tampon pré-enregistrement",
+                    "snapshot_delay": "📸 Délai miniature",
+                    "detector_confidence": "📊 Seuil de confiance",
+                    "face_confidence": "👤 Confiance faciale",
+                    "face_match_threshold": "🎚️ Seuil de correspondance",
+                    "object_filter": "🎯 Filtre d'objets",
+                    "camera_retention": "📅 Rétention caméra"
+                }
+            }
+        }
+    },
+    "services": {
+        "record_camera": {
+            "name": "Enregistrer caméra",
+            "description": "Démarre un enregistrement sur la caméra spécifiée"
+        },
+        "analyze_video": {
+            "name": "Analyser vidéo",
+            "description": "Analyse une vidéo pour la détection d'objets et de visages"
+        },
+        "cleanup_recordings": {
+            "name": "Nettoyer enregistrements",
+            "description": "Supprime les enregistrements expirés"
+        }
+    }
+}

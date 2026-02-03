@@ -292,14 +292,19 @@ class DatabaseManager:
         """
         try:
             if hard_delete:
-                self.conn.execute("DELETE FROM people WHERE id = ?", (person_id,))
+                # First delete all embeddings for this person
+                self.conn.execute("DELETE FROM face_embeddings WHERE person_id = ?", (person_id,))
+                # Then delete the person
+                cursor = self.conn.execute("DELETE FROM people WHERE id = ?", (person_id,))
+                self.conn.commit()
+                return cursor.rowcount > 0
             else:
-                self.conn.execute(
+                cursor = self.conn.execute(
                     "UPDATE people SET is_active = 0, updated_at = ? WHERE id = ?",
                     (datetime.now().isoformat(), person_id)
                 )
-            self.conn.commit()
-            return True
+                self.conn.commit()
+                return cursor.rowcount > 0
         except Exception as e:
             _LOGGER.error(f"Failed to delete person {person_id}: {e}")
             return False
@@ -350,6 +355,24 @@ class DatabaseManager:
             (person_id,)
         )
         return [self._blob_to_embedding(row[0]) for row in cursor.fetchall()]
+    
+    def get_embeddings_with_thumbs_for_person(self, person_id: str) -> List[Dict[str, Any]]:
+        """Get all embeddings with thumbnails for a person.
+        
+        Args:
+            person_id: Person's unique identifier
+            
+        Returns:
+            List of dicts with 'vector' and 'thumb' keys
+        """
+        cursor = self.conn.execute(
+            "SELECT embedding, source_image FROM face_embeddings WHERE person_id = ? ORDER BY created_at DESC",
+            (person_id,)
+        )
+        return [
+            {"vector": self._blob_to_embedding(row[0]), "thumb": row[1]}
+            for row in cursor.fetchall()
+        ]
     
     def get_all_embeddings(self) -> Dict[str, List[List[float]]]:
         """Get all embeddings grouped by person.

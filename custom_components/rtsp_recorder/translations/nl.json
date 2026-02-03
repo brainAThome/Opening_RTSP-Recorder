@@ -1,0 +1,112 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "🎬 RTSP Recorder configureren",
+                "description": "Welkom! Configureer de opslaglocatie voor uw opnames.",
+                "data": {
+                    "storage_path": "📁 Opslagpad",
+                    "snapshot_path": "📸 Miniatuurpad",
+                    "retention_days": "📅 Bewaring (Dagen)",
+                    "retention_hours": "⏰ Extra uren"
+                },
+                "data_description": {
+                    "storage_path": "bijv. /media/rtsp_recordings",
+                    "snapshot_path": "Standaard: /config/www/thumbnails",
+                    "retention_days": "Hoe lang video's bewaard worden",
+                    "retention_hours": "Optioneel: Extra uren"
+                }
+            }
+        },
+        "error": {
+            "auth_error": "Toegangsfout",
+            "invalid_path": "Ongeldig pad - moet beginnen met /",
+            "invalid_retention": "Bewaring moet minimaal 1 dag zijn",
+            "unknown": "Onbekende fout"
+        },
+        "abort": {
+            "single_instance_allowed": "Al geconfigureerd. Gebruik 'Configureren' om te bewerken."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "⚙️ RTSP Recorder Instellingen",
+                "description": "**{allowlist_status}**\n\nIndien niet toegestaan, voeg dit toe aan `configuration.yaml`:\n```\nhomeassistant:\n  allowlist_external_dirs:\n    - /media\n```\n\nGlobale bewaartijd en cameraconfiguratie.\n\n✅ = Camera al geconfigureerd",
+                "data": {
+                    "storage_path": "📁 Opslagpad",
+                    "snapshot_path": "📸 Miniatuurpad",
+                    "retention_days": "🎬 Video bewaring",
+                    "snapshot_retention_days": "📸 Miniatuur bewaring",
+                    "camera_selection": "📹 Camera configureren",
+                    "analysis_configure": "🧠 Analyse configureren"
+                },
+                "data_description": {
+                    "storage_path": "Pad voor opnames (bijv. /media/rtsp_recordings)",
+                    "snapshot_path": "Pad voor miniaturen (Standaard: /config/www/thumbnails)",
+                    "retention_days": "Opnames worden na X dagen automatisch verwijderd",
+                    "snapshot_retention_days": "Miniaturen worden na X dagen verwijderd",
+                    "camera_selection": "Selecteer een camera om bewegingssensor te configureren",
+                    "analysis_configure": "Opent geavanceerde analyse-instellingen"
+                }
+            },
+            "analysis": {
+                "title": "🧠 Offline analyse",
+                "description": "Analyseert opgeslagen video's lokaal en slaat resultaten op.",
+                "data": {
+                    "analysis_enabled": "✅ Analyse actief",
+                    "analysis_device": "🖥️ Hardware",
+                    "analysis_objects": "🎯 Objecten",
+                    "analysis_output_path": "📂 Analysemap",
+                    "analysis_frame_interval": "⏱️ Frame-interval (Seconden)",
+                    "analysis_detector_url": "🔗 Detector URL",
+                    "analysis_detector_confidence": "📊 Detectiedrempel",
+                    "analysis_face_enabled": "👤 Gezichtsdetectie actief",
+                    "analysis_face_confidence": "👁️ Gezichtsdrempel",
+                    "analysis_face_match_threshold": "🎚️ Matchdrempel",
+                    "person_entities_enabled": "🏠 Persoon-entiteiten maken",
+                    "use_sqlite": "🗄️ SQLite gebruiken",
+                    "analysis_auto_enabled": "🔄 Automatisering actief",
+                    "analysis_auto_mode": "📋 Modus",
+                    "analysis_auto_time": "🕐 Tijd (UU:MM)",
+                    "analysis_auto_interval_hours": "⏰ Interval (Uren)",
+                    "analysis_auto_since_days": "📅 Periode (Dagen)",
+                    "analysis_auto_limit": "🔢 Limiet per run",
+                    "analysis_auto_skip_existing": "⏭️ Alleen nieuwe bestanden",
+                    "analysis_auto_new": "⚡ Direct analyseren",
+                    "analysis_perf_cpu_entity": "💻 CPU Sensor",
+                    "analysis_perf_igpu_entity": "🎮 iGPU Sensor",
+                    "analysis_perf_coral_entity": "🪸 Coral Sensor"
+                }
+            },
+            "camera": {
+                "title": "📹 Cameraconfiguratie",
+                "data": {
+                    "camera_enabled": "✅ Opname actief",
+                    "recording_duration": "⏱️ Opnameduur",
+                    "pre_record_buffer": "⏮️ Pre-opnamebuffer",
+                    "snapshot_delay": "📸 Miniatuurvertraging",
+                    "detector_confidence": "📊 Betrouwbaarheidsdrempel",
+                    "face_confidence": "👤 Gezichtsbetrouwbaarheid",
+                    "face_match_threshold": "🎚️ Matchdrempel",
+                    "object_filter": "🎯 Objectfilter",
+                    "camera_retention": "📅 Camerabewaring"
+                }
+            }
+        }
+    },
+    "services": {
+        "record_camera": {
+            "name": "Camera opnemen",
+            "description": "Start een opname op de opgegeven camera"
+        },
+        "analyze_video": {
+            "name": "Video analyseren",
+            "description": "Analyseert een video op object- en gezichtsdetectie"
+        },
+        "cleanup_recordings": {
+            "name": "Opnames opschonen",
+            "description": "Verwijdert verlopen opnames"
+        }
+    }
+}

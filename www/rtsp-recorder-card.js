@@ -1,4 +1,5 @@
-// ===== RTSP Recorder Card v1.0.9 STABLE =====
+// ===== RTSP Recorder Card v1.1.0m BETA (Pure event-driven recording + analysis) =====
+console.log("[RTSP-Recorder] Card Version: 1.1.0h (Robust status restore)");
 // MED-008 Fix: Debug logging behind feature flag
 const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
 const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
@@ -7,7 +8,7 @@ const rtspWarn = (...args) => console.warn('[RTSP]', ...args);  // Warnings alwa
 const rtspError = (...args) => console.error('[RTSP]', ...args);  // Errors always shown
 
 if (RTSP_DEBUG) {
-    console.info("%c RTSP RECORDER CARD \\n%c v1.0.9 STABLE (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #27ae60;");
+    console.info("%c RTSP RECORDER CARD \\n%c v1.1.0 BETA (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #27ae60;");
 }
 
 class RtspRecorderCard extends HTMLElement {
@@ -35,12 +36,23 @@ class RtspRecorderCard extends HTMLElement {
         this._analysisOverview = { items: [], stats: {} };
         this._analysisOverviewLoaded = false;
         this._analysisLoading = false;
+        // Pagination state
+        this._analysisPage = 1;
+        this._analysisPerPage = 50;
+        this._analysisTotalPages = 1;
+        this._analysisTotal = 0;
         this._perfSensors = { cpu: null, igpu: null, coral: null };
         this._analysisDeviceOptions = null;
         this._overlayEnabled = false;
         this._analysisDetections = null;
         this._analysisInterval = 2;
         this._analysisFrameSize = null;
+        this._lastOverlayKey = null;  // v1.1.0h: Throttle overlay redraws
+        this._overlayRAF = null;  // v1.1.0k: requestAnimationFrame ID for smooth overlay
+        this._overlayDebounce = null;  // v1.1.0k: Debounce timer for overlay updates
+        this._runningAnalyses = new Map();  // v1.1.0L: Map of video_path -> {camera, started_at} - pure event-driven
+        this._runningRecordings = new Map();  // v1.1.0m: Map of video_path -> {camera, duration, started_at} - pure event-driven
+        this._lastOverlaySize = null;  // v1.1.0h: Track size changes
         this._showPerfTab = true;
         this._showPerfPanel = false;
         this._showFooter = true;
@@ -48,6 +60,7 @@ class RtspRecorderCard extends HTMLElement {
         this._peopleLoaded = false;
         this._selectedPersonId = null;
         this._analysisFaceSamples = [];
+        this._cameraObjectsMap = {};  // v1.1.0: Kamera-spezifische Objekteinstellungen
         this._settingsKey = 'rtsp_recorder_settings';
         this.loadLocalSettings();
         this._detectorStats = null;
@@ -62,6 +75,7 @@ class RtspRecorderCard extends HTMLElement {
         this._liveStats = {};
         this._statsHistory = [];
         this._maxHistoryPoints = 60;
+        this._analysisProgress = null;  // v1.1.0: Analyse-Fortschritt
         const now = new Date();
         this._calYear = now.getFullYear();
         this._calMonth = now.getMonth();
@@ -73,6 +87,24 @@ class RtspRecorderCard extends HTMLElement {
         this._thumbBase = '/api/rtsp_recorder/thumbnail'; // v1.0.9: Default auf API-Endpoint
     }
 
+
+    // v1.1.0 Security: HTML escape helper to prevent XSS
+    _escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        const str = String(text);
+        const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return str.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    // v1.1.0: Called when element is added to DOM (e.g., tab switch back)
+    connectedCallback() {
+        super.connectedCallback && super.connectedCallback();
+        // Check if analysis is running when we become visible again
+        if (this._hass && this._renderDone) {
+            setTimeout(() => this._checkAndRestoreProgress(), 500);
+        }
+    }
+
     set hass(hass) {
         this._hass = hass;
         if (!this._renderDone) {
@@ -80,6 +112,9 @@ class RtspRecorderCard extends HTMLElement {
             this._renderDone = true;
             this.initializeCard(); // v1.0.9: Async initialization
             this.renderCalendar();
+        } else {
+            // v1.1.0: Check progress on every hass update (for tab switches)
+            this._checkAndRestoreProgress();
         }
     }
 
@@ -87,6 +122,652 @@ class RtspRecorderCard extends HTMLElement {
     async initializeCard() {
         await this.loadAnalysisConfig();
         this.loadData();
+        // v1.1.0: Check if batch analysis is running and restore progress UI
+        this._checkAndRestoreProgress();
+        // v1.1.0m: Subscribe to push events FIRST (before sync)
+        this._subscribeToEvents();
+        // v1.1.0m: Initialize status tracking (pure event-driven - no polling)
+        this._initStatusTracking();
+    }
+    
+    // v1.1.0f: Subscribe to Home Assistant events for real-time updates (PUSH)
+    _subscribeToEvents() {
+        if (this._eventSubscriptions) return; // Already subscribed
+        
+        console.log('[RTSP-Recorder] Subscribing to push events');
+        this._eventSubscriptions = [];
+        
+        // v1.1.0m: Subscribe to recording events - PURE EVENT-DRIVEN (no polling)
+        this._subscribeToEvent('rtsp_recorder_recording_started', (event) => {
+            console.log('[RTSP-Recorder] PUSH: Recording started', event.data);
+            const { camera, video_path, duration } = event.data;
+            if (video_path) {
+                // Add to running recordings Map
+                this._runningRecordings.set(video_path, { 
+                    camera, 
+                    duration: duration || 0,
+                    started_at: new Date().toISOString()
+                });
+                console.log(`[RTSP-Recorder] Running recordings: ${this._runningRecordings.size}`);
+                // Update UI immediately
+                this._updateRecordingUI();
+            }
+        });
+        
+        // v1.1.0m: recording_saved fires AFTER video+snapshot are ready
+        this._subscribeToEvent('rtsp_recorder_recording_saved', async (event) => {
+            console.log('[RTSP-Recorder] PUSH: Recording saved (video + thumbnail ready)', event.data);
+            const { video_path, camera } = event.data;
+            if (video_path) {
+                // Remove from running recordings Map
+                this._runningRecordings.delete(video_path);
+                console.log(`[RTSP-Recorder] Running recordings: ${this._runningRecordings.size}`);
+                // Update UI immediately
+                this._updateRecordingUI();
+            }
+            
+            // v1.1.0i: Add video directly to timeline WITHOUT waiting for Media Source API
+            // This ensures perfect sync between analysis status and timeline visibility
+            const videoPath = event.data?.video_path;
+            const thumbPath = event.data?.thumbnail_path;
+            if (videoPath) {
+                const added = this._addVideoToTimeline(videoPath, thumbPath);
+                if (added) {
+                    console.log('[RTSP-Recorder] PUSH: Video added directly to timeline');
+                } else {
+                    // Fallback to loadData if direct add failed
+                    console.log('[RTSP-Recorder] PUSH: Direct add failed, falling back to loadData');
+                    await this.loadData();
+                }
+            } else {
+                await this.loadData();
+            }
+            
+            // v1.1.0h: Now that timeline is updated, refresh analysis status from Map
+            this._updateAnalysisUI();
+        });
+        
+        // v1.1.0L: Subscribe to analysis events - PURE EVENT-DRIVEN (no polling)
+        this._subscribeToEvent('rtsp_recorder_analysis_started', (event) => {
+            console.log('[RTSP-Recorder] PUSH: Analysis started', event.data);
+            const { video_path, camera, started_at } = event.data;
+            if (video_path) {
+                // Add to running analyses Map
+                this._runningAnalyses.set(video_path, { camera, started_at });
+                console.log(`[RTSP-Recorder] Running analyses: ${this._runningAnalyses.size}`);
+                // Update UI immediately
+                this._updateAnalysisUI();
+            }
+        });
+        
+        this._subscribeToEvent('rtsp_recorder_analysis_completed', (event) => {
+            console.log('[RTSP-Recorder] PUSH: Analysis completed', event.data);
+            const { video_path } = event.data;
+            if (video_path) {
+                // Remove from running analyses Map
+                this._runningAnalyses.delete(video_path);
+                console.log(`[RTSP-Recorder] Running analyses: ${this._runningAnalyses.size}`);
+                // Update UI immediately
+                this._updateAnalysisUI();
+            }
+        });
+    }
+    
+    // v1.1.0f: Helper to subscribe to a Home Assistant event
+    _subscribeToEvent(eventType, callback) {
+        if (!this._hass?.connection) {
+            console.warn('[RTSP-Recorder] Cannot subscribe to events - no connection');
+            return;
+        }
+        
+        this._hass.connection.subscribeEvents(callback, eventType)
+            .then(unsub => {
+                this._eventSubscriptions.push(unsub);
+                console.log(`[RTSP-Recorder] Subscribed to ${eventType}`);
+            })
+            .catch(err => {
+                console.error(`[RTSP-Recorder] Failed to subscribe to ${eventType}:`, err);
+            });
+    }
+    
+    // v1.1.0f: Unsubscribe from events (cleanup)
+    _unsubscribeFromEvents() {
+        if (this._eventSubscriptions) {
+            this._eventSubscriptions.forEach(unsub => {
+                if (typeof unsub === 'function') unsub();
+            });
+            this._eventSubscriptions = null;
+            console.log('[RTSP-Recorder] Unsubscribed from all events');
+        }
+    }
+    
+    // v1.1.0f: Cleanup when card is removed
+    disconnectedCallback() {
+        super.disconnectedCallback && super.disconnectedCallback();
+        this._unsubscribeFromEvents();
+    }
+    
+    // v1.1.0m: Initialize recording and analysis status (pure event-driven - no polling)
+    _initStatusTracking() {
+        console.log('[RTSP-Recorder] Initializing status tracking (event-driven, no polling)');
+        
+        // Sync once from backend (in case page loads while recording/analysis is running)
+        this._syncRunningRecordingsOnce();
+        this._syncRunningAnalysesOnce();
+    }
+    
+    // v1.1.0m: Sync running recordings from backend on page load (one-time, not polling)
+    async _syncRunningRecordingsOnce() {
+        try {
+            const progress = await this._hass.callWS({ type: 'rtsp_recorder/get_recording_progress' });
+            if (progress?.running && progress?.recordings?.length > 0) {
+                // Recordings are already running - add to Map if not already there
+                progress.recordings.forEach(rec => {
+                    const videoPath = rec.video_path || `recording_${rec.camera}`;
+                    if (!this._runningRecordings.has(videoPath)) {
+                        this._runningRecordings.set(videoPath, {
+                            camera: rec.camera,
+                            duration: rec.duration || 0,
+                            started_at: rec.started_at || new Date().toISOString()
+                        });
+                    }
+                });
+                console.log('[RTSP-Recorder] Synced running recordings from backend:', this._runningRecordings.size);
+                this._updateRecordingUI();
+            }
+        } catch (e) {
+            console.warn('[RTSP-Recorder] Failed to sync running recordings:', e);
+        }
+    }
+    
+    // v1.1.0m: Update recording UI from _runningRecordings Map (pure event-driven)
+    _updateRecordingUI() {
+        const root = this.shadowRoot;
+        if (!root) return;
+        
+        const statusEl = root.querySelector('#footer-recording-status');
+        if (!statusEl) return;
+        
+        const count = this._runningRecordings.size;
+        console.log(`[RTSP-Recorder] _updateRecordingUI: ${count} running recordings`);
+        
+        if (count > 0) {
+            // Build list of all recording cameras
+            const entries = Array.from(this._runningRecordings.entries());
+            const cameraList = entries.map(([_, rec]) => {
+                const cam = rec.camera ? rec.camera.replace(/_/g, ' ') : 'Unbekannt';
+                const dur = rec.duration || 0;
+                return `${cam} (${dur}s)`;
+            }).join(', ');
+            
+            statusEl.innerHTML = `<span style="color: #f44336;">● Aufnahme: ${cameraList}</span>`;
+            statusEl.style.display = 'block';
+        } else {
+            statusEl.style.display = 'none';
+        }
+    }
+    
+    // v1.1.0L: Update analysis UI from _runningAnalyses Map (pure event-driven)
+    _updateAnalysisUI() {
+        const root = this.shadowRoot;
+        if (!root) return;
+        
+        const statusEl = root.querySelector('#footer-analysis-status');
+        const textEl = root.querySelector('#analysis-status-text');
+        
+        // Clear all existing markers first
+        this._clearTimelineAnalysisMarkers();
+        
+        const count = this._runningAnalyses.size;
+        console.log(`[RTSP-Recorder] _updateAnalysisUI: ${count} running analyses`);
+        
+        if (count > 0) {
+            // Build display text
+            let displayText = '';
+            const entries = Array.from(this._runningAnalyses.entries());
+            
+            if (count === 1) {
+                const [videoPath, info] = entries[0];
+                const parsed = this._parseVideoFilename(videoPath);
+                const elapsed = this._formatElapsed(info.started_at);
+                displayText = `${parsed.camera} (${parsed.time})${elapsed}`;
+            } else {
+                const cameras = [...new Set(entries.map(([_, info]) => info.camera))];
+                displayText = `${count}x: ${cameras.slice(0, 2).join(', ')}${cameras.length > 2 ? '...' : ''}`;
+            }
+            
+            // Show footer
+            if (statusEl) {
+                if (textEl) textEl.textContent = displayText;
+                statusEl.style.display = 'block';
+            }
+            
+            // Mark timeline items
+            entries.forEach(([videoPath, _]) => {
+                this._updateTimelineAnalysisMarkers(videoPath);
+            });
+        } else {
+            // No analyses running - hide footer
+            if (statusEl) statusEl.style.display = 'none';
+        }
+    }
+    
+    // v1.1.0L: Sync running analyses from backend on page load (one-time, not polling)
+    // This handles the case where the page is loaded while an analysis is already running
+    async _syncRunningAnalysesOnce() {
+        try {
+            const progress = await this._hass.callWS({ type: 'rtsp_recorder/get_single_analysis_progress' });
+            if (progress?.running && progress?.video_path) {
+                // An analysis is already running - add to Map if not already there
+                if (!this._runningAnalyses.has(progress.video_path)) {
+                    this._runningAnalyses.set(progress.video_path, {
+                        camera: this._parseVideoFilename(progress.video_path).camera,
+                        started_at: progress.started_at
+                    });
+                    console.log('[RTSP-Recorder] Synced running analysis from backend:', progress.video_path);
+                    this._updateAnalysisUI();
+                }
+            }
+        } catch (e) {
+            console.warn('[RTSP-Recorder] Failed to sync running analyses:', e);
+        }
+    }
+    
+    // v1.1.0: Stop polling recording progress - NOT USED ANYMORE (always poll)
+    _stopRecordingPolling() {
+        // Keep polling always - low overhead, reliable detection
+    }
+    
+    // v1.1.0: Update ONLY the recording status in footer (no timeline refresh = no zapping)
+    _updateRecordingStatusOnly() {
+        const root = this.shadowRoot;
+        if (!root) return;
+        
+        const recordingStatusEl = root.querySelector('#footer-recording-status');
+        if (!recordingStatusEl) return;
+        
+        const rp = this._recordingProgress;
+        if (rp && rp.running && rp.recordings && rp.recordings.length > 0) {
+            // Build list of all recording cameras
+            const cameraList = rp.recordings.map(r => {
+                const cam = r.camera ? r.camera.replace(/_/g, ' ') : 'Unbekannt';
+                const dur = r.duration || 0;
+                return `${cam} (${dur}s)`;
+            }).join(', ');
+            
+            const count = rp.count > 1 ? `(${rp.count}) ` : '';
+            recordingStatusEl.textContent = '🔴 Aufnahme ' + count + ': ' + cameraList;
+            recordingStatusEl.style.color = '#f44336';
+            recordingStatusEl.style.fontSize = '0.75em';
+            recordingStatusEl.style.display = 'block';
+        } else {
+            recordingStatusEl.style.display = 'none';
+        }
+    }
+    
+    // v1.1.0: Fetch current recording progress from backend
+    async _fetchRecordingProgress() {
+        try {
+            const progress = await this._hass.callWS({
+                type: 'rtsp_recorder/get_recording_progress'
+            });
+            
+            // DEBUG: Log every poll result
+            console.log('[RTSP-Recorder] Recording poll result:', progress);
+            
+            const prevCount = this._prevRecordingCount || 0;
+            const currentCount = progress.count || 0;
+            
+            this._recordingProgress = progress;
+            this._prevRecordingCount = currentCount;
+            
+            // DEBUG: Log status changes
+            if (currentCount > 0) {
+                console.log('[RTSP-Recorder] Recording ACTIVE:', progress.recordings);
+            }
+            
+            // Update ONLY the footer status - NOT the whole view (prevents zapping)
+            this._updateRecordingStatusOnly();
+            
+            // v1.1.0L: Analysis status is now pure event-driven - just update UI from Map
+            this._updateAnalysisUI();
+            
+            // Detect recording end: count decreased -> at least one recording finished
+            if (prevCount > currentCount) {
+                console.log(`[RTSP-Recorder] Recording count decreased (${prevCount} -> ${currentCount}), scheduling timeline refresh`);
+                // v1.1.0f FIX: Debounce with sliding window - refresh 3s after LAST recording end
+                // This batches multiple ending recordings into one refresh
+                if (this._pendingTimelineRefresh) {
+                    clearTimeout(this._pendingTimelineRefresh);
+                }
+                this._pendingTimelineRefresh = setTimeout(async () => {
+                    console.log('[RTSP-Recorder] Delayed timeline refresh executing NOW');
+                    await this.loadData();
+                    this.updatePerfFooter();
+                    // v1.1.0h: Status restoration now happens automatically in updateView()
+                    // No need to manually re-apply markers here anymore
+                    this._pendingTimelineRefresh = null;
+                    
+                    // v1.1.0h: If still analyzing videos not in timeline, schedule another refresh
+                    if (this._analysisProgress?.single?.running) {
+                        const analyses = this._analysisProgress?.single?.analyses || [];
+                        const needsAnotherRefresh = analyses.some(a => {
+                            const filename = a.video_path?.split('/').pop()?.replace('.mp4', '');
+                            if (!filename) return false;
+                            const found = this.shadowRoot?.querySelector(`[src*="${filename}"]`);
+                            return !found;
+                        });
+                        if (needsAnotherRefresh && !this._analysisRefreshScheduled) {
+                            this._analysisRefreshScheduled = true;
+                            setTimeout(async () => {
+                                console.log('[RTSP-Recorder] Additional refresh for missing analysis videos');
+                                await this.loadData();
+                                // v1.1.0h: updateView() handles status restoration
+                                this._analysisRefreshScheduled = false;
+                            }, 2000);
+                        }
+                    }
+                }, 3000);
+            }
+        } catch (e) {
+            console.error('[RTSP-Recorder] Error fetching recording progress:', e);
+        }
+    }
+    
+    // v1.1.0f: Update analysis status indicator in footer AND timeline markers (supports parallel analyses)
+    async _updateAnalysisStatusOnly() {
+        const root = this.shadowRoot;
+        if (!root) return;
+        
+        const statusEl = root.querySelector('#footer-analysis-status');
+        const textEl = root.querySelector('#analysis-status-text');
+        
+        try {
+            const progress = await this._hass.callWS({ type: 'rtsp_recorder/get_single_analysis_progress' });
+            
+            // v1.1.0e: Store progress for timeline marking (independent of Performance Panel)
+            const wasRunning = this._analysisProgress?.single?.running;
+            const isRunning = progress?.running;
+            
+            // v1.1.0j: FIX - Backend returns single object, not array
+            // Convert single progress object to array format for consistent handling
+            let analyses = [];
+            let analysisCount = 0;
+            if (progress?.running && progress?.video_path) {
+                // Single analysis running - wrap in array
+                analyses = [progress];
+                analysisCount = 1;
+            } else if (progress?.analyses) {
+                // Future: Backend might return array format
+                analyses = progress.analyses;
+                analysisCount = progress.count || analyses.length;
+            }
+            
+            this._analysisProgress = { single: progress, batch: null };
+            
+            console.log('[RTSP-Recorder] Analysis progress:', { running: isRunning, count: analysisCount, videoPath: progress?.video_path, analyses: analyses.map(a => a.video_path) });
+            
+            if (isRunning && analysisCount > 0) {
+                // v1.1.0k: ROBUST FIX - Always show analysis status while running
+                // Don't check if video is in timeline - analysis status should ALWAYS show
+                
+                // Clear any pending hide timer - analysis is still running
+                if (this._analysisHideTimer) {
+                    clearTimeout(this._analysisHideTimer);
+                    this._analysisHideTimer = null;
+                }
+                
+                // Track last seen analysis for grace period
+                this._lastAnalysisSeen = Date.now();
+                
+                // v1.1.0k: Build display text showing CAMERA + TIME for ALL running analyses
+                let displayText = '';
+                if (analysisCount === 1) {
+                    const parsed = this._parseVideoFilename(analyses[0].video_path);
+                    const elapsed = this._formatElapsed(analyses[0].started_at);
+                    displayText = `${parsed.camera} (${parsed.time})${elapsed}`;
+                } else {
+                    // Multiple analyses - show count and cameras
+                    const cameras = [...new Set(analyses.map(a => this._parseVideoFilename(a.video_path).camera))];
+                    displayText = `${analysisCount}x: ${cameras.slice(0, 2).join(', ')}${cameras.length > 2 ? '...' : ''}`;
+                }
+                
+                // Update footer indicator - ALWAYS show while analysis is running
+                if (statusEl) {
+                    if (textEl) textEl.textContent = displayText;
+                    statusEl.style.display = 'block';
+                }
+                
+                // v1.1.0k: Mark timeline items - check visibility for markers only
+                this._clearTimelineAnalysisMarkers();
+                analyses.forEach(a => {
+                    const filename = a.video_path?.split('/').pop()?.replace('.mp4', '');
+                    if (filename) {
+                        // Only add marker if video exists in timeline (otherwise no element to mark)
+                        const found = root.querySelector(`[src*="${filename}"]`) || 
+                                      root.querySelector(`.fm-item[data-filename*="${filename}"]`);
+                        if (found) {
+                            this._updateTimelineAnalysisMarkers(a.video_path);
+                        }
+                    }
+                });
+            } else {
+                // v1.1.0f: Use grace period to avoid flicker during rapid poll cycles
+                // Only hide if no analysis was seen in the last 3 seconds
+                const timeSinceLastAnalysis = this._lastAnalysisSeen ? Date.now() - this._lastAnalysisSeen : Infinity;
+                
+                if (timeSinceLastAnalysis > 3000) {
+                    // Grace period expired - hide immediately
+                    if (statusEl) statusEl.style.display = 'none';
+                    this._clearTimelineAnalysisMarkers();
+                } else if (!this._analysisHideTimer) {
+                    // Start hide timer - will hide after grace period if no new analysis
+                    this._analysisHideTimer = setTimeout(() => {
+                        if (statusEl) statusEl.style.display = 'none';
+                        this._clearTimelineAnalysisMarkers();
+                        this._analysisHideTimer = null;
+                    }, 3000 - timeSinceLastAnalysis);
+                }
+            }
+        } catch (e) {
+            // On error, don't immediately hide - use same grace period logic
+            const timeSinceLastAnalysis = this._lastAnalysisSeen ? Date.now() - this._lastAnalysisSeen : Infinity;
+            if (timeSinceLastAnalysis > 3000) {
+                if (statusEl) statusEl.style.display = 'none';
+            }
+        }
+    }
+    
+    // v1.1.0d: Helper to format elapsed time
+    _formatElapsed(startedAt) {
+        if (!startedAt) return '';
+        const startTime = new Date(startedAt);
+        const now = new Date();
+        const diffSec = Math.floor((now - startTime) / 1000);
+        return diffSec < 60 ? ` (${diffSec}s)` : ` (${Math.floor(diffSec/60)}m ${diffSec%60}s)`;
+    }
+    
+    // v1.1.0h: Parse video filename to extract camera name and time
+    // Format: CameraName_YYYYMMDD_HHMMSS.mp4
+    _parseVideoFilename(videoPath) {
+        const filename = videoPath?.split('/').pop()?.replace('.mp4', '') || '';
+        // Try to extract camera name and timestamp
+        // Pattern: CameraName_20260202_181559
+        const match = filename.match(/^(.+?)_(\d{8})_(\d{6})$/);
+        if (match) {
+            const camera = match[1].replace(/_/g, ' ');
+            const timeStr = match[3]; // HHMMSS
+            const time = `${timeStr.substring(0,2)}:${timeStr.substring(2,4)}`;
+            return { camera, time };
+        }
+        // Fallback: just use filename
+        return { camera: filename.substring(0, 15), time: '?' };
+    }
+    
+    // v1.1.0i: Add video directly to timeline when recording_saved event is received
+    // This bypasses the Media Source API delay and ensures perfect sync
+    _addVideoToTimeline(videoPath, thumbPath) {
+        try {
+            // Extract info from video path: /media/rtsp_recordings/CameraName/CameraName_20260202_181559.mp4
+            const pathParts = videoPath.split('/');
+            const filename = pathParts.pop(); // CameraName_20260202_181559.mp4
+            const camera = pathParts.pop();   // CameraName (folder name)
+            
+            // Parse timestamp from filename
+            const match = filename.match(/(\d{8})_(\d{6})/);
+            if (!match) {
+                console.warn('[RTSP-Recorder] Cannot parse timestamp from', filename);
+                return false;
+            }
+            
+            const d = match[1]; // YYYYMMDD
+            const t = match[2]; // HHMMSS
+            const dt = new Date(`${d.substr(0, 4)}-${d.substr(4, 2)}-${d.substr(6, 2)}T${t.substr(0, 2)}:${t.substr(2, 2)}:${t.substr(4, 2)}`);
+            const iso = `${d.substr(0, 4)}-${d.substr(4, 2)}-${d.substr(6, 2)}`;
+            
+            // Build media_content_id like Media Source API would
+            const basePath = this._basePath?.replace(/^\/media\//, '') || 'rtsp_recordings';
+            const mediaContentId = `media-source://media_source/local/${basePath}/${camera}/${filename}`;
+            
+            // Check if already exists in _events
+            const exists = this._events?.some(e => e.id === mediaContentId);
+            if (exists) {
+                console.log('[RTSP-Recorder] Video already in timeline:', filename);
+                return true; // Already there, consider it success
+            }
+            
+            // v1.1.0i: Use the thumbnail path from event if provided, otherwise construct it
+            // Convert /media/rtsp_recordings/thumbs/... to /local/rtsp_recordings/thumbs/...
+            let thumbUrl;
+            if (thumbPath) {
+                // Event provides: /media/rtsp_recordings/thumbs/Camera/filename.jpg
+                // We need: /local/rtsp_recordings/thumbs/Camera/filename.jpg
+                thumbUrl = thumbPath.replace(/^\/media\//, '/local/');
+                console.log('[RTSP-Recorder] Using thumbnail from event:', thumbUrl);
+            } else {
+                // Fallback: construct from thumbBase
+                const thumbBase = this._thumbBase || `/local/rtsp_recordings/thumbs`;
+                const thumbFilename = filename.replace(/\.mp4$/i, '.jpg');
+                thumbUrl = `${thumbBase}/${camera}/${thumbFilename}`;
+                console.log('[RTSP-Recorder] Constructed thumbnail path:', thumbUrl);
+            }
+            
+            const newEvent = {
+                id: mediaContentId,
+                date: dt,
+                cam: camera,
+                iso: iso,
+                thumb: thumbUrl
+            };
+            
+            // Add to beginning (newest first) and re-sort
+            if (!this._events) this._events = [];
+            this._events.unshift(newEvent);
+            this._events.sort((a, b) => b.date - a.date);
+            
+            console.log('[RTSP-Recorder] Added video directly to timeline:', filename, 'thumb:', thumbUrl, 'Total events:', this._events.length);
+            
+            // Update the view
+            this.updateView();
+            
+            return true;
+        } catch (e) {
+            console.error('[RTSP-Recorder] Failed to add video to timeline:', e);
+            return false;
+        }
+    }
+    
+    // v1.1.0e: Mark timeline item that is being analyzed (green border + badge)
+    _updateTimelineAnalysisMarkers(videoPath) {
+        if (!videoPath) return;
+        const root = this.shadowRoot;
+        const list = root.querySelector('#list');
+        if (!list) return;
+        
+        const videoFilename = videoPath.split('/').pop();
+        const videoBasename = videoFilename.replace('.mp4', '');
+        const items = list.querySelectorAll('.fm-item');
+        let foundVideo = false;
+        
+        items.forEach(item => {
+            // Check if this item's thumbnail matches the analyzing video
+            const img = item.querySelector('.fm-thumb-img');
+            if (!img) return;
+            
+            const thumbSrc = img.src || '';
+            // Also check data attributes if available
+            const itemFilename = item.dataset?.filename || '';
+            
+            // Match by thumbnail URL OR by data-filename attribute
+            const isThisVideo = thumbSrc.includes(videoBasename) || 
+                                itemFilename.includes(videoBasename) ||
+                                thumbSrc.includes(encodeURIComponent(videoBasename));
+            
+            if (isThisVideo) {
+                foundVideo = true;
+                if (!item.classList.contains('analyzing')) {
+                    item.classList.add('analyzing');
+                    // Add badge if not present
+                    const wrap = item.querySelector('.fm-thumb-wrap');
+                    if (wrap && !wrap.querySelector('.fm-badge-analyzing')) {
+                        const badge = document.createElement('div');
+                        badge.className = 'fm-badge-analyzing';
+                        badge.innerHTML = '🔄 Analyse';
+                        wrap.appendChild(badge);
+                    }
+                    console.log('[RTSP-Recorder] Marked timeline item as analyzing:', videoFilename);
+                }
+            }
+        });
+        
+        // v1.1.0f: Don't trigger refreshes for missing videos - let normal recording-end refresh handle it
+        // This prevents timeline zapping during analysis
+    }
+    
+    // v1.1.0f: REMOVED automatic refresh for missing analysis videos - causes timeline zapping
+    // Videos will appear when recording ends and triggers the normal 3-second delayed refresh
+    _scheduleAnalysisRefreshIfNeeded() {
+        // Intentionally disabled to prevent timeline zapping
+        // The recording-end detection already handles timeline refresh
+    }
+    
+    // v1.1.0f: Clear all analysis markers from timeline
+    _clearTimelineAnalysisMarkers() {
+        const root = this.shadowRoot;
+        const list = root.querySelector('#list');
+        if (!list) return;
+        
+        const items = list.querySelectorAll('.fm-item.analyzing');
+        items.forEach(item => {
+            item.classList.remove('analyzing');
+            const badge = item.querySelector('.fm-badge-analyzing');
+            if (badge) badge.remove();
+        });
+    }
+    
+    // v1.1.0: Check if batch analysis is running and restore progress bar
+    async _checkAndRestoreProgress() {
+        // Don't check if already polling
+        if (this._progressPollingInterval) {
+            return;
+        }
+        
+        try {
+            const progress = await this._hass.callWS({
+                type: 'rtsp_recorder/get_analysis_progress'
+            });
+            
+            if (progress.running) {
+                const root = this.shadowRoot;
+                const btnEl = root.querySelector('#btn-analyze-all');
+                const originalText = 'Alle Aufnahmen analysieren';
+                
+                // Start polling to continue showing progress
+                this._startProgressPolling(btnEl, originalText);
+            }
+        } catch (e) {
+            // Silently ignore - analysis progress check is optional
+        }
     }
 
     // v1.0.6: Laedt globale Analyse-Konfiguration aus der Integration
@@ -112,6 +793,10 @@ class RtspRecorderCard extends HTMLElement {
                 if (deviceSelect) {
                     deviceSelect.value = this._analysisDevice;
                 }
+            }
+            // v1.1.0: Kamera-spezifische Objekteinstellungen speichern
+            if (config && config.camera_objects_map) {
+                this._cameraObjectsMap = config.camera_objects_map;
             }
             // v1.0.9: Lade Speicherpfade aus der Integration
             if (config && config.storage_path) {
@@ -155,6 +840,64 @@ class RtspRecorderCard extends HTMLElement {
                 .fm-thumb-img { width: 100%; height: 100%; object-fit: cover; opacity: 0.8; }
                 /* REMOVED UPPERCASE HERE */
                 .fm-badge-cam { position: absolute; bottom: 12px; left: 12px; background: rgba(0,0,0,0.7); padding: 4px 10px; border-radius: 4px; font-size: 0.7em; color: #fff; font-weight: 700; letter-spacing: 0.5px; text-transform: capitalize; }
+                
+                /* v1.1.0: Analyse-Badge für Timeline Items */
+                .fm-item.analyzing { border: 2px solid #4caf50; }
+                .fm-item.analyzing .fm-thumb-wrap::after {
+                    content: '';
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(76,175,80,0.05) 100%);
+                    pointer-events: none;
+                }
+                .fm-badge-analyzing {
+                    position: absolute;
+                    top: 10px;
+                    left: 10px;
+                    background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+                    color: #fff;
+                    padding: 4px 10px;
+                    border-radius: 4px;
+                    font-size: 0.7em;
+                    font-weight: 600;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    animation: analyzePulse 1.5s ease-in-out infinite;
+                }
+                @keyframes analyzePulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.7; }
+                }
+                
+                /* v1.1.0: Recording Badge für Timeline Items */
+                .fm-item.recording { border: 2px solid #f44336; }
+                .fm-item.recording .fm-thumb-wrap::after {
+                    content: '';
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: linear-gradient(135deg, rgba(244,67,54,0.2) 0%, rgba(244,67,54,0.05) 100%);
+                    pointer-events: none;
+                }
+                .fm-badge-recording {
+                    position: absolute;
+                    top: 10px;
+                    left: 10px;
+                    background: linear-gradient(135deg, #f44336 0%, #c62828 100%);
+                    color: #fff;
+                    padding: 4px 10px;
+                    border-radius: 4px;
+                    font-size: 0.7em;
+                    font-weight: 600;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    animation: recordPulse 1s ease-in-out infinite;
+                }
+                @keyframes recordPulse {
+                    0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(244,67,54,0.5); }
+                    50% { opacity: 0.8; box-shadow: 0 0 16px rgba(244,67,54,0.8); }
+                }
                 
                 /* RULER RESTORED */
                 .fm-ruler { width: 75px; flex-shrink: 0; background: #141414; border-right: 1px solid #222; position: relative; }
@@ -296,15 +1039,16 @@ class RtspRecorderCard extends HTMLElement {
                 }
                 .fm-footer-left {
                     display: flex;
-                    gap: 14px;
+                    gap: 8px;
                     align-items: center;
                     flex-wrap: wrap;
                 }
                 .fm-footer-right {
                     display: flex;
-                    gap: 8px;
+                    gap: 3px;
                     align-items: center;
-                    flex-wrap: wrap;
+                    flex-wrap: nowrap;
+                    flex-shrink: 0;
                 }
                 .fm-toggle {
                     display: flex;
@@ -316,18 +1060,22 @@ class RtspRecorderCard extends HTMLElement {
                 .fm-perf-card {
                     background: #1b1b1b;
                     border: 1px solid #2a2a2a;
-                    border-radius: 6px;
-                    padding: 6px 10px;
-                    min-width: 110px;
+                    border-radius: 4px;
+                    padding: 6px 5px;
+                    min-width: 44px;
+                    text-align: center;
+                    flex-shrink: 0;
                 }
                 .fm-perf-label {
-                    font-size: 0.75em;
-                    color: #888;
+                    font-size: 0.62em;
+                    color: #999;
+                    line-height: 1.2;
                 }
                 .fm-perf-value {
-                    font-size: 0.95em;
+                    font-size: 0.85em;
                     font-weight: 600;
                     color: var(--primary-color);
+                    line-height: 1.3;
                 }
                 .fm-ctrl-btn {
                     background: rgba(0,0,0,0.7);
@@ -440,7 +1188,7 @@ class RtspRecorderCard extends HTMLElement {
             
             <div class="fm-container animated" id="container" role="application" aria-label="RTSP Recorder Kamera Archiv">
                 <div class="fm-header" role="banner">
-                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">STABLE v1.0.9</span></div>
+                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.1.0</span></div>
                     <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
                         <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>
@@ -451,7 +1199,7 @@ class RtspRecorderCard extends HTMLElement {
                     <div class="fm-player-col">
                         <div class="fm-player-body">
                             <div class="fm-overlay-tl" id="txt-cam" aria-live="polite">Waehle Aufnahme</div>
-                            <div class="fm-overlay-tr" id="txt-date">STABLE VERSION</div>
+                            <div class="fm-overlay-tr" id="txt-date">BETA VERSION</div>
                             <video id="main-video" controls autoplay muted playsinline aria-label="Aufnahme Videoplayer"></video>
                             <canvas id="overlay-canvas" aria-hidden="true"></canvas>
                         
@@ -485,6 +1233,14 @@ class RtspRecorderCard extends HTMLElement {
                                     <input id="footer-perf" type="checkbox" ${this._showPerfPanel ? 'checked' : ''} aria-describedby="perf-desc" />
                                     <span id="perf-desc">Leistung anzeigen</span>
                                 </label>
+                                <!-- Recording status indicator -->
+                                <div id="footer-recording-status" style="display:none; margin-left:10px; padding:2px 8px; background:rgba(255,0,0,0.2); border:1px solid #f44336; border-radius:4px; animation:recordPulse 1.5s ease-in-out infinite;">
+                                    <span style="color:#f44336; font-size:0.75em;">🔴 Aufnahme läuft...</span>
+                                </div>
+                                <!-- Analysis status indicator (always visible when running) -->
+                                <div id="footer-analysis-status" style="display:none; margin-left:10px; padding:2px 8px; background:rgba(76,175,80,0.2); border:1px solid #4caf50; border-radius:4px;">
+                                    <span style="color:#4caf50; font-size:0.75em;">🔄 <span id="analysis-status-text">Analyse läuft...</span></span>
+                                </div>
                             </div>
                             <div class="fm-footer-right" id="footer-perf-panel"></div>
                         </div>
@@ -514,6 +1270,7 @@ class RtspRecorderCard extends HTMLElement {
                             <div class="fm-tab" data-tab="storage" role="tab" aria-selected="false" tabindex="-1">Speicher</div>
                             <div class="fm-tab" data-tab="analysis" role="tab" aria-selected="false" tabindex="-1">Analyse</div>
                             <div class="fm-tab" data-tab="people" role="tab" aria-selected="false" tabindex="-1">Personen</div>
+                            <div class="fm-tab" data-tab="movement" role="tab" aria-selected="false" tabindex="-1">Bewegung</div>
                             <div class="fm-tab ${this._showPerfTab ? '' : 'hidden'}" data-tab="performance" role="tab" aria-selected="false" tabindex="-1">Leistung</div>
                         </div>
                         <div class="fm-menu-content" id="menu-content" role="tabpanel"></div>
@@ -585,6 +1342,12 @@ class RtspRecorderCard extends HTMLElement {
                 if (this._activeTab === "analysis" || this._activeTab === "performance") {
                     this.startStatsPolling();
                     this.refreshAnalysisOverview();
+                    // v1.1.0: Check if batch analysis is running when switching to analysis tab
+                    // Delay to ensure DOM is updated after renderMenuContent
+                    setTimeout(() => {
+                        this._checkAndRestoreProgress();
+                        this._checkAndRestoreSingleProgress();
+                    }, 100);
                 }
             }
         });
@@ -597,8 +1360,11 @@ class RtspRecorderCard extends HTMLElement {
 
         const video = root.querySelector('#main-video');
         if (video) {
-            video.addEventListener('timeupdate', () => this.drawOverlay());
+            // v1.1.0k: Use debounced overlay update for smoother rendering
+            video.addEventListener('timeupdate', () => this._scheduleOverlayUpdate());
             video.addEventListener('loadedmetadata', () => this.resizeOverlay());
+            // v1.1.0k: Also update on seeking for immediate feedback
+            video.addEventListener('seeked', () => this.drawOverlay());
         }
 
         const footerOverlay = root.querySelector('#footer-overlay');
@@ -643,7 +1409,7 @@ class RtspRecorderCard extends HTMLElement {
 
             container.innerHTML = cams.map(c => {
                 const displayName = c === 'Alle' ? 'Alle' : c.replace(/_/g, ' ');
-                return `<div class="fm-popup-item ${this._selectedCam === c ? 'active' : ''}" id="cam-${c}">${displayName}</div>`;
+                return `<div class="fm-popup-item ${this._selectedCam === c ? 'active' : ''}" id="cam-${this._escapeHtml(c)}">${this._escapeHtml(displayName)}</div>`;
             }).join('');
 
             cams.forEach(c => {
@@ -727,6 +1493,9 @@ class RtspRecorderCard extends HTMLElement {
         } else if (this._activeTab === 'people') {
             // People Tab
             this.renderPeopleTab(container);
+        } else if (this._activeTab === 'movement') {
+            // Movement Profile Tab
+            this.renderMovementTab(container);
         } else if (this._activeTab === 'performance') {
             this.renderPerformanceTab(container);
         } else {
@@ -861,6 +1630,12 @@ class RtspRecorderCard extends HTMLElement {
                                     ${coralDisplay}
                                 </div>
                             </div>
+                            <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:16px; min-width:160px; flex:1;" title="Wie viel der TPU-Zeit ist mit Inferenzen belegt (60s Fenster)">
+                                <div style="font-size:0.85em; color:#888; margin-bottom:8px;">TPU Last</div>
+                                <div style="font-size:1.8em; font-weight:600; color:${(tracker.tpu_load_pct ?? 0) > 25 ? '#f44336' : (tracker.tpu_load_pct ?? 0) > 5 ? '#ff9800' : '#4caf50'};">
+                                    ${hasInf ? (tracker.tpu_load_pct ?? 0) + '%' : '-'}
+                                </div>
+                            </div>
                         ` : ''}
                         <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:16px; min-width:160px; flex:1;">
                             <div style="font-size:0.85em; color:#888; margin-bottom:8px;">Inferenzzeit</div>
@@ -902,8 +1677,9 @@ class RtspRecorderCard extends HTMLElement {
 
                 <!-- Info -->
                 <div style="margin-top:20px; padding:12px; background:#222; border-radius:8px; color:#888; font-size:0.85em;">
-                    <strong>Hinweis:</strong> Die Statistiken werden alle 5 Sekunden aktualisiert. 
-                    Die Coral-Nutzung zeigt den Anteil der Inferenzen, die auf dem Coral USB Accelerator ausgefuehrt wurden.
+                    <strong>Hinweis:</strong> Die Statistiken werden alle 5 Sekunden aktualisiert.<br>
+                    <strong>Coral Nutzung:</strong> Anteil der Inferenzen auf Coral vs CPU.<br>
+                    <strong>TPU Last:</strong> Berechnet aus (Inferenz-Zeit / 60s) - zeigt wie viel der TPU-Kapazitaet genutzt wird.
                 </div>
             </div>
         `;
@@ -927,26 +1703,71 @@ class RtspRecorderCard extends HTMLElement {
             const result = await this._hass.callWS({ type: 'rtsp_recorder/test_inference' });
             console.log('[RTSP-Recorder] Test Inference Result:', result);
             if (result.success) {
-                if (status) status.innerHTML = `<span style="color:#4caf50;">✓ ${result.device} (${result.duration_ms}ms)</span>`;
+                if (status) { status.textContent = '✓ ' + result.device + ' (' + result.duration_ms + 'ms)'; status.style.color = '#4caf50'; }
                 // Refresh stats after successful test
                 await this.fetchDetectorStats();
             } else {
-                if (status) status.innerHTML = `<span style="color:#f44336;">Fehler: ${result.message}</span>`;
+                if (status) { status.textContent = 'Fehler: ' + result.message; status.style.color = '#f44336'; }
             }
         } catch (e) {
             console.error('[RTSP-Recorder] Test inference failed:', e);
-            if (status) status.innerHTML = `<span style="color:#f44336;">Fehler: ${e.message || e}</span>`;
+            if (status) { status.textContent = 'Fehler: ' + (e.message || e); status.style.color = '#f44336'; }
         }
         
         if (btn) btn.disabled = false;
     }
 
     renderAnalysisTab(container) {
-        const deviceOptions = (this._analysisDeviceOptions && this._analysisDeviceOptions.length)
+        // v1.1.0 Fix: Also use devices from detector stats if available
+        let deviceOptions = (this._analysisDeviceOptions && this._analysisDeviceOptions.length)
             ? this._analysisDeviceOptions
-            : [
-                { value: 'cpu', label: 'CPU' }
-            ];
+            : null;
+        
+        // Fallback to detector stats devices
+        if (!deviceOptions && this._detectorStats && this._detectorStats.devices && this._detectorStats.devices.length) {
+            deviceOptions = this._detectorStats.devices.map(d => ({ 
+                value: d, 
+                label: d === 'coral_usb' ? 'Coral USB' : d.toUpperCase() 
+            }));
+        }
+        
+        // Final fallback to CPU only
+        if (!deviceOptions || !deviceOptions.length) {
+            deviceOptions = [{ value: 'cpu', label: 'CPU' }];
+        }
+
+        // Standard-Profile fuer schnelle Auswahl
+        const standardProfiles = [
+            { name: 'Alle', objects: this._analysisObjects, isCamera: false },
+            { name: 'Personen', objects: ['person', 'face'], isCamera: false },
+            { name: 'Tiere', objects: ['cat', 'dog', 'bird', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe'], isCamera: false },
+            { name: 'Fahrzeuge', objects: ['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'boat', 'airplane', 'train'], isCamera: false },
+            { name: 'Pakete', objects: ['package', 'suitcase', 'backpack', 'handbag'], isCamera: false },
+        ];
+
+        // v1.1.0: Kamera-spezifische Profile aus den Einstellungen
+        const cameraProfiles = [];
+        if (this._cameraObjectsMap && Object.keys(this._cameraObjectsMap).length > 0) {
+            for (const [camName, objects] of Object.entries(this._cameraObjectsMap)) {
+                if (objects && objects.length > 0) {
+                    // Kameraname lesbar machen (Unterstriche durch Leerzeichen ersetzen)
+                    const displayName = camName.replace(/_/g, ' ');
+                    cameraProfiles.push({ name: displayName, objects: objects, isCamera: true });
+                }
+            }
+        }
+
+        // Alle Profile kombinieren
+        const allProfiles = [...standardProfiles, ...cameraProfiles];
+
+        const profileButtons = allProfiles.map(p => {
+            const available = p.objects.filter(o => this._analysisObjects.includes(o));
+            if (available.length === 0) return '';
+            const bgColor = p.isCamera ? '#1a3a4a' : '#333';
+            const borderColor = p.isCamera ? '#2980b9' : '#444';
+            const icon = p.isCamera ? '📷 ' : '';
+            return `<button class="fm-profile-btn" data-objects="${available.join(',')}" style="padding:6px 12px; background:${bgColor}; color:#eee; border:1px solid ${borderColor}; border-radius:6px; cursor:pointer; font-size:0.85em;">${icon}${p.name}</button>`;
+        }).filter(Boolean).join('');
 
         const objectCheckboxes = this._analysisObjects.map(obj => {
             const checked = this._analysisSelected.has(obj) ? 'checked' : '';
@@ -978,28 +1799,29 @@ class RtspRecorderCard extends HTMLElement {
                     }
                     const value = sensor.state ?? 'n/a';
                     const unit = sensor.unit ? ` ${sensor.unit}` : '';
-                    const name = sensor.name || label;
+                    const name = this._escapeHtml(sensor.name || label);
                     return `
                         <div style="background:#222; padding:10px 12px; border-radius:8px; min-width:140px;">
                             <div style="font-size:0.8em; color:#888;">${name}</div>
-                            <div style="font-size:1.1em; font-weight:600; color:var(--primary-color);">${value}${unit}</div>
+                            <div style="font-size:1.1em; font-weight:600; color:var(--primary-color);">${this._escapeHtml(value)}${this._escapeHtml(unit)}</div>
                         </div>
                     `;
                 };
         const byDevice = stats.by_device || {};
+        const self = this; // Reference for escapeHtml in map
         const deviceBreakdown = Object.entries(byDevice)
             .sort((a, b) => b[1] - a[1])
             .map(([dev, count]) => `
                 <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #333;">
-                    <span>${dev}</span>
+                    <span>${self._escapeHtml(dev)}</span>
                     <span style="color:var(--primary-color);font-weight:500;">${count}</span>
                 </div>
             `).join('');
 
-        const itemsHtml = items.slice(0, 10).map(item => {
-            const name = (item.video_path || '').split('/').pop() || 'unknown';
-            const created = item.created_utc || '';
-            const device = item.device || 'cpu';
+        const itemsHtml = items.map(item => {
+            const name = this._escapeHtml((item.video_path || '').split('/').pop() || 'unknown');
+            const created = this._escapeHtml(item.created_utc || '');
+            const device = this._escapeHtml(item.device || 'cpu');
             const duration = item.duration_sec ? `${item.duration_sec}s` : '';
             return `
                 <div style="padding:8px 0;border-bottom:1px solid #333;">
@@ -1008,6 +1830,62 @@ class RtspRecorderCard extends HTMLElement {
                 </div>
             `;
         }).join('');
+
+        // Pagination UI
+        const totalPages = this._analysisTotalPages || 1;
+        const currentPage = this._analysisPage || 1;
+        const totalItems = this._analysisTotal || 0;
+        
+        const buildPaginationButtons = () => {
+            if (totalPages <= 1) return '';
+            
+            let buttons = [];
+            
+            // Previous button
+            buttons.push(`<button class="pagination-btn" data-page="${currentPage - 1}" ${currentPage <= 1 ? 'disabled' : ''} style="padding:6px 10px; background:#333; color:${currentPage <= 1 ? '#666' : '#eee'}; border:1px solid #444; border-radius:4px; cursor:${currentPage <= 1 ? 'not-allowed' : 'pointer'};">◀</button>`);
+            
+            // Page numbers
+            const maxVisible = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+            
+            if (endPage - startPage < maxVisible - 1) {
+                startPage = Math.max(1, endPage - maxVisible + 1);
+            }
+            
+            if (startPage > 1) {
+                buttons.push(`<button class="pagination-btn" data-page="1" style="padding:6px 10px; background:#333; color:#eee; border:1px solid #444; border-radius:4px; cursor:pointer;">1</button>`);
+                if (startPage > 2) {
+                    buttons.push(`<span style="color:#666;">...</span>`);
+                }
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const isActive = i === currentPage;
+                buttons.push(`<button class="pagination-btn" data-page="${i}" style="padding:6px 10px; background:${isActive ? 'var(--primary-color)' : '#333'}; color:${isActive ? '#000' : '#eee'}; border:1px solid ${isActive ? 'var(--primary-color)' : '#444'}; border-radius:4px; cursor:pointer; font-weight:${isActive ? '600' : '400'};">${i}</button>`);
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    buttons.push(`<span style="color:#666;">...</span>`);
+                }
+                buttons.push(`<button class="pagination-btn" data-page="${totalPages}" style="padding:6px 10px; background:#333; color:#eee; border:1px solid #444; border-radius:4px; cursor:pointer;">${totalPages}</button>`);
+            }
+            
+            // Next button
+            buttons.push(`<button class="pagination-btn" data-page="${currentPage + 1}" ${currentPage >= totalPages ? 'disabled' : ''} style="padding:6px 10px; background:#333; color:${currentPage >= totalPages ? '#666' : '#eee'}; border:1px solid #444; border-radius:4px; cursor:${currentPage >= totalPages ? 'not-allowed' : 'pointer'};">▶</button>`);
+            
+            return buttons.join('');
+        };
+        
+        const paginationHtml = totalPages > 1 ? `
+            <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top:12px; flex-wrap:wrap;">
+                ${buildPaginationButtons()}
+            </div>
+            <div style="text-align:center; margin-top:8px; font-size:0.8em; color:#888;">
+                Seite ${currentPage} von ${totalPages} (${totalItems} Analysen gesamt)
+            </div>
+        ` : (totalItems > 0 ? `<div style="text-align:center; margin-top:8px; font-size:0.8em; color:#888;">${totalItems} Analysen</div>` : '');
 
         const historyHtml = items.slice(0, 20).map(item => {
             const created = item.created_utc || '';
@@ -1035,7 +1913,11 @@ class RtspRecorderCard extends HTMLElement {
 
         container.innerHTML = `
             <div style="padding:10px;">
-                <div style="margin-bottom:15px; font-weight:500;">Objekte auswaehlen</div>
+                <div style="margin-bottom:10px; font-weight:500;">Objekte auswaehlen</div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+                    ${profileButtons}
+                    <button id="btn-select-none" style="padding:6px 12px; background:#222; color:#888; border:1px solid #333; border-radius:6px; cursor:pointer; font-size:0.85em;">Keine</button>
+                </div>
                 <div style="max-height:180px; overflow:auto; border:1px solid #333; border-radius:8px; padding:10px;">
                     ${objectCheckboxes}
                 </div>
@@ -1048,6 +1930,16 @@ class RtspRecorderCard extends HTMLElement {
                 <button class="fm-btn" id="btn-analyze" style="margin-top:20px; width:100%; justify-content:center;">
                     🔍 Analyse aktuelle Aufnahme
                 </button>
+                <!-- Single Video Progress Container -->
+                <div id="single-analysis-progress" style="display:none; margin-top:8px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div class="loading-spinner" style="width:16px; height:16px; border:2px solid #333; border-top-color:#2196f3; border-radius:50%; animation:spin 1s linear infinite;"></div>
+                        <span id="single-analysis-text" style="font-size:0.85em; color:#aaa;">Analyse läuft...</span>
+                    </div>
+                </div>
+                <style>
+                    @keyframes spin { to { transform: rotate(360deg); } }
+                </style>
                 <label style="display:flex;align-items:center;gap:8px;margin-top:12px;">
                     <input id="analysis-overlay" type="checkbox" ${this._overlayEnabled ? 'checked' : ''} />
                     <span>Objekte im Video anzeigen</span>
@@ -1071,10 +1963,20 @@ class RtspRecorderCard extends HTMLElement {
                     <button class="fm-btn" id="btn-analyze-all" style="margin-top:12px; width:100%; justify-content:center;">
                         Alle Aufnahmen analysieren
                     </button>
+                    <!-- Progress Bar Container -->
+                    <div id="analysis-progress-container" style="display:none; margin-top:12px;">
+                        <div style="background:#333; border-radius:6px; overflow:hidden; height:20px;">
+                            <div id="analysis-progress-bar" style="background:#2196f3; height:100%; width:0%; transition:width 0.3s ease;"></div>
+                        </div>
+                        <div id="analysis-progress-text" style="font-size:0.85em; color:#aaa; margin-top:6px; text-align:center;">
+                            Fortschritt wird geladen...
+                        </div>
+                    </div>
                 </div>
                 <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
                     <div style="font-weight:500; margin-bottom:10px;">Analyseuebersicht</div>
                     ${overviewHtml}
+                    ${paginationHtml}
                 </div>
                 <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
                     <div style="font-weight:500; margin-bottom:10px;">Verlauf (Geraet & Leistung)</div>
@@ -1109,11 +2011,49 @@ class RtspRecorderCard extends HTMLElement {
             </div>
         `;
 
+        // Profil-Buttons Handler
+        container.querySelectorAll('.fm-profile-btn').forEach(btn => {
+            btn.onclick = () => {
+                const objects = btn.getAttribute('data-objects').split(',');
+                this._analysisSelected = new Set(objects);
+                container.querySelectorAll('.fm-obj').forEach(cb => {
+                    cb.checked = this._analysisSelected.has(cb.value);
+                });
+                // Highlight active button
+                container.querySelectorAll('.fm-profile-btn').forEach(b => {
+                    b.style.background = '#333';
+                    b.style.borderColor = '#444';
+                });
+                btn.style.background = 'var(--primary-color)';
+                btn.style.borderColor = 'var(--primary-color)';
+            };
+        });
+
+        // "Keine" Button
+        const selectNoneBtn = container.querySelector('#btn-select-none');
+        if (selectNoneBtn) {
+            selectNoneBtn.onclick = () => {
+                this._analysisSelected.clear();
+                container.querySelectorAll('.fm-obj').forEach(cb => {
+                    cb.checked = false;
+                });
+                container.querySelectorAll('.fm-profile-btn').forEach(b => {
+                    b.style.background = '#333';
+                    b.style.borderColor = '#444';
+                });
+            };
+        }
+
         container.querySelectorAll('.fm-obj').forEach(cb => {
             cb.onchange = () => {
                 const value = cb.value;
                 if (cb.checked) this._analysisSelected.add(value);
                 else this._analysisSelected.delete(value);
+                // Reset profile button highlights when manually changing
+                container.querySelectorAll('.fm-profile-btn').forEach(b => {
+                    b.style.background = '#333';
+                    b.style.borderColor = '#444';
+                });
             };
         });
 
@@ -1141,11 +2081,329 @@ class RtspRecorderCard extends HTMLElement {
         container.querySelector('#btn-analyze-all').onclick = () => {
             this.analyzeAllRecordings();
         };
+        
+        // Pagination event handlers
+        container.querySelectorAll('.pagination-btn').forEach(btn => {
+            btn.onclick = () => {
+                const page = parseInt(btn.dataset.page, 10);
+                if (page && !btn.disabled) {
+                    this.goToAnalysisPage(page);
+                }
+            };
+        });
     }
 
-    renderPeopleTab(container) {
+    renderMovementTab(container) {
+        container.innerHTML = `
+            <div style="padding:20px;">
+                <h3 style="margin:0 0 20px 0; color:var(--primary-text-color);">Bewegungsprofil</h3>
+                <div style="margin-bottom:20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <select id="movement-hours" style="padding:8px 12px; border-radius:8px; border:1px solid var(--divider-color); background:var(--card-background-color); color:var(--primary-text-color);">
+                        <option value="1">Letzte Stunde</option>
+                        <option value="6">Letzte 6 Stunden</option>
+                        <option value="24" selected>Letzte 24 Stunden</option>
+                        <option value="168">Letzte 7 Tage</option>
+                    </select>
+                    <select id="movement-view" style="padding:8px 12px; border-radius:8px; border:1px solid var(--divider-color); background:var(--card-background-color); color:var(--primary-text-color);">
+                        <option value="timeline" selected>Timeline</option>
+                        <option value="chart">Diagramm</option>
+                        <option value="list">Liste</option>
+                    </select>
+                    <button id="movement-refresh" style="padding:8px 16px; border-radius:8px; border:none; background:var(--primary-color); color:white; cursor:pointer;">⟳</button>
+                </div>
+                <div id="movement-content" style="color:#888;">Lade Bewegungsprofil...</div>
+            </div>
+        `;
+        
+        const hoursSelect = container.querySelector('#movement-hours');
+        const viewSelect = container.querySelector('#movement-view');
+        const refreshBtn = container.querySelector('#movement-refresh');
+        const contentDiv = container.querySelector('#movement-content');
+        
+        const loadProfile = () => this._loadMovementProfile(contentDiv, parseInt(hoursSelect.value), viewSelect.value);
+        
+        hoursSelect.addEventListener('change', loadProfile);
+        viewSelect.addEventListener('change', loadProfile);
+        refreshBtn.addEventListener('click', loadProfile);
+        
+        loadProfile();
+    }
+    
+    async _loadMovementProfile(container, hours, viewMode = 'timeline') {
+        container.textContent = 'Lade...';
+        
+        try {
+            const result = await this._hass.callWS({
+                type: 'rtsp_recorder/get_movement_profile',
+                hours: hours
+            });
+            
+            if (!result.movements || result.movements.length === 0) {
+                container.innerHTML = '<div style="padding:40px; color:#888; text-align:center;"><div style="font-size:48px; margin-bottom:16px;">📭</div>Keine Bewegungen im ausgewählten Zeitraum gefunden.</div>';
+                return;
+            }
+            
+            // Group by person (field name from backend is "person")
+            const byPerson = {};
+            const byCamera = {};
+            const byHour = {};
+            const byHourPerCamera = {};
+            const byHourPerPerson = {};
+            
+            result.movements.forEach(m => {
+                const personName = m.person || 'Unbekannt';
+                const cameraName = m.camera || 'Unbekannt';
+                
+                if (!byPerson[personName]) byPerson[personName] = [];
+                byPerson[personName].push(m);
+                
+                if (!byCamera[cameraName]) byCamera[cameraName] = 0;
+                byCamera[cameraName]++;
+                
+                // Parse time (field name from backend is "time")
+                const date = new Date(m.time);
+                if (!isNaN(date.getTime())) {
+                    const hourKey = date.getHours();
+                    if (!byHour[hourKey]) byHour[hourKey] = 0;
+                    byHour[hourKey]++;
+                    
+                    // Per camera hourly
+                    if (!byHourPerCamera[cameraName]) byHourPerCamera[cameraName] = {};
+                    if (!byHourPerCamera[cameraName][hourKey]) byHourPerCamera[cameraName][hourKey] = 0;
+                    byHourPerCamera[cameraName][hourKey]++;
+                    
+                    // Per person hourly
+                    if (!byHourPerPerson[personName]) byHourPerPerson[personName] = {};
+                    if (!byHourPerPerson[personName][hourKey]) byHourPerPerson[personName][hourKey] = 0;
+                    byHourPerPerson[personName][hourKey]++;
+                }
+            });
+            
+            if (viewMode === 'chart') {
+                this._renderMovementChart(container, byPerson, byCamera, byHour, byHourPerCamera, byHourPerPerson, result.total);
+            } else if (viewMode === 'list') {
+                this._renderMovementList(container, byPerson);
+            } else {
+                this._renderMovementTimeline(container, byPerson, result.movements);
+            }
+            
+        } catch (e) {
+            container.innerHTML = '<div style="padding:20px; color:#f44336; text-align:center;">Fehler beim Laden: ' + this._escapeHtml(e.message || String(e)) + '</div>';
+        }
+    }
+    
+    _renderMovementChart(container, byPerson, byCamera, byHour, byHourPerCamera, byHourPerPerson, total) {
+        const maxCameraCount = Math.max(...Object.values(byCamera), 1);
+        const maxHourCount = Math.max(...Object.values(byHour), 1);
+        
+        // Camera bar chart
+        let cameraHtml = '<div style="margin-bottom:30px;"><h4 style="margin:0 0 16px 0; color:var(--primary-text-color);">📷 Erkennungen pro Kamera</h4>';
+        for (const [camera, count] of Object.entries(byCamera).sort((a, b) => b[1] - a[1])) {
+            const pct = (count / maxCameraCount) * 100;
+            cameraHtml += `
+                <div style="margin-bottom:8px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span style="color:var(--primary-text-color);">${this._escapeHtml(camera)}</span>
+                        <span style="color:#888;">${count}x</span>
+                    </div>
+                    <div style="background:var(--divider-color); border-radius:4px; height:24px; overflow:hidden;">
+                        <div style="background:linear-gradient(90deg, #03a9f4, #00bcd4); width:${pct}%; height:100%; border-radius:4px; transition:width 0.5s;"></div>
+                    </div>
+                </div>
+            `;
+        }
+        cameraHtml += '</div>';
+
+        // Person bar chart
+        const personCounts = {};
+        for (const [name, movements] of Object.entries(byPerson)) {
+            personCounts[name] = movements.length;
+        }
+        const maxPersonCount = Math.max(...Object.values(personCounts), 1);
+        
+        let personHtml = '<div style="margin-bottom:30px;"><h4 style="margin:0 0 16px 0; color:var(--primary-text-color);">👤 Erkennungen pro Person</h4>';
+        for (const [person, count] of Object.entries(personCounts).sort((a, b) => b[1] - a[1])) {
+            const pct = (count / maxPersonCount) * 100;
+            personHtml += `
+                <div style="margin-bottom:8px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span style="color:var(--primary-text-color);">${this._escapeHtml(person)}</span>
+                        <span style="color:#888;">${count}x</span>
+                    </div>
+                    <div style="background:var(--divider-color); border-radius:4px; height:24px; overflow:hidden;">
+                        <div style="background:linear-gradient(90deg, #9c27b0, #e91e63); width:${pct}%; height:100%; border-radius:4px; transition:width 0.5s;"></div>
+                    </div>
+                </div>
+            `;
+        }
+        personHtml += '</div>';
+        
+        // Hourly activity per Camera
+        let hourCameraHtml = '<div style="margin-bottom:30px;"><h4 style="margin:0 0 16px 0; color:var(--primary-text-color);">📷 Aktivität pro Kamera (24h)</h4>';
+        for (const [camera, hourData] of Object.entries(byHourPerCamera)) {
+            const maxH = Math.max(...Object.values(hourData), 1);
+            hourCameraHtml += `<div style="margin-bottom:16px;"><div style="color:var(--primary-text-color); margin-bottom:8px; font-size:13px;">${this._escapeHtml(camera)}</div>`;
+            hourCameraHtml += '<div style="display:flex; align-items:flex-end; gap:2px; height:60px;">';
+            for (let h = 0; h < 24; h++) {
+                const count = hourData[h] || 0;
+                const pct = maxH > 0 ? (count / maxH) * 100 : 0;
+                const barColor = count > 0 ? 'linear-gradient(180deg, #03a9f4, #00bcd4)' : 'var(--divider-color)';
+                hourCameraHtml += `<div style="flex:1; background:${barColor}; height:${Math.max(pct, 3)}%; border-radius:2px 2px 0 0; min-height:3px;" title="${camera}: ${count}x um ${h}:00"></div>`;
+            }
+            hourCameraHtml += '</div>';
+            hourCameraHtml += '<div style="display:flex; justify-content:space-between; font-size:8px; color:#666; margin-top:2px;"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div></div>';
+        }
+        hourCameraHtml += '</div>';
+
+        // Hourly activity per Person
+        let hourPersonHtml = '<div style="margin-bottom:30px;"><h4 style="margin:0 0 16px 0; color:var(--primary-text-color);">👤 Aktivität pro Person (24h)</h4>';
+        for (const [person, hourData] of Object.entries(byHourPerPerson)) {
+            const maxH = Math.max(...Object.values(hourData), 1);
+            hourPersonHtml += `<div style="margin-bottom:16px;"><div style="color:var(--primary-text-color); margin-bottom:8px; font-size:13px;">${this._escapeHtml(person)}</div>`;
+            hourPersonHtml += '<div style="display:flex; align-items:flex-end; gap:2px; height:60px;">';
+            for (let h = 0; h < 24; h++) {
+                const count = hourData[h] || 0;
+                const pct = maxH > 0 ? (count / maxH) * 100 : 0;
+                const barColor = count > 0 ? 'linear-gradient(180deg, #9c27b0, #e91e63)' : 'var(--divider-color)';
+                hourPersonHtml += `<div style="flex:1; background:${barColor}; height:${Math.max(pct, 3)}%; border-radius:2px 2px 0 0; min-height:3px;" title="${person}: ${count}x um ${h}:00"></div>`;
+            }
+            hourPersonHtml += '</div>';
+            hourPersonHtml += '<div style="display:flex; justify-content:space-between; font-size:8px; color:#666; margin-top:2px;"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div></div>';
+        }
+        hourPersonHtml += '</div>';
+
+        // Combined hourly overview
+        let hourHtml = '<div><h4 style="margin:0 0 16px 0; color:var(--primary-text-color);">🕐 Gesamt-Aktivität (24h)</h4>';
+        hourHtml += '<div style="display:flex; align-items:flex-end; gap:4px; height:80px; padding:10px 0;">';
+        for (let h = 0; h < 24; h++) {
+            const count = byHour[h] || 0;
+            const pct = maxHourCount > 0 ? (count / maxHourCount) * 100 : 0;
+            const barColor = count > 0 ? 'linear-gradient(180deg, #4caf50, #8bc34a)' : 'var(--divider-color)';
+            hourHtml += `
+                <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">
+                    <div style="width:100%; background:${barColor}; height:${Math.max(pct, 3)}%; border-radius:2px 2px 0 0; min-height:3px;" title="${count} Erkennungen um ${h}:00"></div>
+                    <span style="font-size:8px; color:#888;">${h}</span>
+                </div>
+            `;
+        }
+        hourHtml += '</div></div>';
+        
+        // Summary stats
+        const statsHtml = `
+            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:24px;">
+                <div style="background:var(--card-background-color); border-radius:12px; padding:16px; text-align:center; border:1px solid var(--divider-color);">
+                    <div style="font-size:28px; font-weight:bold; color:var(--primary-color);">${total}</div>
+                    <div style="color:#888; font-size:11px;">Gesamt</div>
+                </div>
+                <div style="background:var(--card-background-color); border-radius:12px; padding:16px; text-align:center; border:1px solid var(--divider-color);">
+                    <div style="font-size:28px; font-weight:bold; color:#9c27b0;">${Object.keys(byPerson).length}</div>
+                    <div style="color:#888; font-size:11px;">Personen</div>
+                </div>
+                <div style="background:var(--card-background-color); border-radius:12px; padding:16px; text-align:center; border:1px solid var(--divider-color);">
+                    <div style="font-size:28px; font-weight:bold; color:#4caf50;">${Object.keys(byCamera).length}</div>
+                    <div style="color:#888; font-size:11px;">Kameras</div>
+                </div>
+                <div style="background:var(--card-background-color); border-radius:12px; padding:16px; text-align:center; border:1px solid var(--divider-color);">
+                    <div style="font-size:28px; font-weight:bold; color:#ff9800;">${Object.keys(byHour).length}</div>
+                    <div style="color:#888; font-size:11px;">Aktive Std.</div>
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = statsHtml + personHtml + cameraHtml + hourPersonHtml + hourCameraHtml + hourHtml;
+    }
+    
+    _renderMovementTimeline(container, byPerson, movements) {
+        let html = '<div style="display:flex; flex-direction:column; gap:24px;">';
+        
+        for (const [name, personMovements] of Object.entries(byPerson)) {
+            const cameras = [...new Set(personMovements.map(m => m.camera))];
+            const lastSeen = personMovements[0];
+            const lastTime = new Date(lastSeen.time);
+            const lastTimeStr = !isNaN(lastTime.getTime()) ? lastTime.toLocaleString('de-DE') : 'Unbekannt';
+            
+            html += `
+                <div style="background:var(--card-background-color); border-radius:12px; padding:16px; border:1px solid var(--divider-color);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <h4 style="margin:0; color:var(--primary-color); display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:24px;">👤</span>
+                            ${this._escapeHtml(name)}
+                        </h4>
+                        <span style="color:#888; font-size:12px;">${personMovements.length} Erkennungen</span>
+                    </div>
+                    
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;">
+                        ${cameras.map(c => `<span style="background:var(--primary-color); color:white; padding:4px 12px; border-radius:16px; font-size:12px;">📷 ${this._escapeHtml(c)}</span>`).join('')}
+                    </div>
+                    
+                    <div style="position:relative; padding-left:20px; border-left:2px solid var(--divider-color);">
+            `;
+            
+            personMovements.slice(0, 10).forEach((m, i) => {
+                const time = new Date(m.time);
+                const timeStr = !isNaN(time.getTime()) ? time.toLocaleString('de-DE') : 'Unbekannt';
+                const confidence = m.confidence ? Math.round(m.confidence * 100) : 0;
+                const isRecent = i === 0;
+                
+                html += `
+                    <div style="position:relative; padding:8px 0 8px 16px; ${isRecent ? 'opacity:1;' : 'opacity:0.7;'}">
+                        <div style="position:absolute; left:-7px; top:12px; width:12px; height:12px; border-radius:50%; background:${isRecent ? '#4caf50' : 'var(--divider-color)'}; border:2px solid var(--card-background-color);"></div>
+                        <div style="font-weight:${isRecent ? '600' : '400'}; color:var(--primary-text-color);">${this._escapeHtml(m.camera)}</div>
+                        <div style="font-size:12px; color:#888;">${timeStr} • ${confidence}%</div>
+                    </div>
+                `;
+            });
+            
+            if (personMovements.length > 10) {
+                html += `<div style="padding:8px 0 0 16px; color:#888; font-size:12px;">... und ${personMovements.length - 10} weitere</div>`;
+            }
+            
+            html += '</div></div>';
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    _renderMovementList(container, byPerson) {
+        let html = '<div style="display:flex; flex-direction:column; gap:16px;">';
+        
+        for (const [name, movements] of Object.entries(byPerson)) {
+            html += `
+                <div style="background:var(--card-background-color); border-radius:12px; padding:16px; border:1px solid var(--divider-color);">
+                    <h4 style="margin:0 0 12px 0; color:var(--primary-color);">👤 ${this._escapeHtml(name)}</h4>
+                    <div style="display:flex; flex-direction:column; gap:8px; max-height:300px; overflow-y:auto;">
+            `;
+            
+            movements.slice(0, 30).forEach(m => {
+                const time = new Date(m.time);
+                const timeStr = !isNaN(time.getTime()) ? time.toLocaleString('de-DE') : 'Unbekannt';
+                const confidence = m.confidence ? Math.round(m.confidence * 100) : 0;
+                html += `
+                    <div style="display:flex; align-items:center; gap:12px; padding:10px; background:var(--secondary-background-color); border-radius:8px;">
+                        <span style="font-size:20px;">📍</span>
+                        <div style="flex:1;">
+                            <div style="font-weight:500; color:var(--primary-text-color);">${this._escapeHtml(m.camera)}</div>
+                            <div style="font-size:12px; color:#888;">${timeStr} • ${confidence}%</div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            if (movements.length > 30) {
+                html += `<div style="text-align:center; color:#888; padding:8px;">... und ${movements.length - 30} weitere</div>`;
+            }
+            
+            html += '</div></div>';
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+        renderPeopleTab(container) {
         if (!this._peopleLoaded) {
-            container.innerHTML = `<div style="color:#888; padding:20px;">Lade Personen...</div>`;
+            container.innerHTML = '<div style="color:#888; padding:20px;">Lade Personen...</div>';
             this.refreshPeople().then(() => {
                 if (this._activeTab === 'people') {
                     this.renderPeopleTab(container);
@@ -1408,20 +2666,20 @@ class RtspRecorderCard extends HTMLElement {
                 popup.innerHTML = `
                     <div style="background:#222; border-radius:16px; padding:20px; max-width:400px; width:90%;">
                         <div style="text-align:center; margin-bottom:15px;">
-                            ${sample.thumb ? `<img src="${sample.thumb}" style="width:100px; height:100px; object-fit:cover; border-radius:12px; border:3px solid var(--primary-color);" />` : ''}
+                            ${sample.thumb ? `<img src="${this._escapeHtml(sample.thumb)}" style="width:100px; height:100px; object-fit:cover; border-radius:12px; border:3px solid var(--primary-color);" />` : ''}
                             <div style="margin-top:10px; font-weight:500;">${isAlreadyEnrolled ? 'Person korrigieren' : 'Person zuweisen'}</div>
                         </div>
                         <div style="display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto;">
                             ${people.map(p => `
                                 <div style="display:flex; gap:4px;">
-                                    <button class="quick-assign-btn" data-person-id="${p.id}" style="flex:1; padding:10px; background:#333; border:none; border-radius:8px 0 0 8px; color:#fff; cursor:pointer; text-align:left; display:flex; align-items:center; gap:10px;">
-                                        ${p.recent_thumbs && p.recent_thumbs[0] ? `<img src="${p.recent_thumbs[0]}" style="width:36px; height:36px; object-fit:cover; border-radius:6px;" />` : '<div style="width:36px; height:36px; background:#444; border-radius:6px; display:flex; align-items:center; justify-content:center;">👤</div>'}
+                                    <button class="quick-assign-btn" data-person-id="${this._escapeHtml(p.id)}" style="flex:1; padding:10px; background:#333; border:none; border-radius:8px 0 0 8px; color:#fff; cursor:pointer; text-align:left; display:flex; align-items:center; gap:10px;">
+                                        ${p.recent_thumbs && p.recent_thumbs[0] ? `<img src="${this._escapeHtml(p.recent_thumbs[0])}" style="width:36px; height:36px; object-fit:cover; border-radius:6px;" />` : '<div style="width:36px; height:36px; background:#444; border-radius:6px; display:flex; align-items:center; justify-content:center;">👤</div>'}
                                         <div>
-                                            <div style="font-weight:500;">${p.name}</div>
+                                            <div style="font-weight:500;">${this._escapeHtml(p.name)}</div>
                                             <div style="font-size:0.75em; color:#888;">${p.embeddings_count} Samples</div>
                                         </div>
                                     </button>
-                                    <button class="negative-sample-btn" data-person-id="${p.id}" data-person-name="${p.name}" style="padding:10px 12px; background:#663333; border:none; border-radius:0 8px 8px 0; color:#fff; cursor:pointer; font-size:0.9em;" title="Das ist NICHT ${p.name}">
+                                    <button class="negative-sample-btn" data-person-id="${this._escapeHtml(p.id)}" data-person-name="${this._escapeHtml(p.name)}" style="padding:10px 12px; background:#663333; border:none; border-radius:0 8px 8px 0; color:#fff; cursor:pointer; font-size:0.9em;" title="Das ist NICHT ${this._escapeHtml(p.name)}">
                                         ❌
                                     </button>
                                 </div>
@@ -1725,15 +2983,168 @@ class RtspRecorderCard extends HTMLElement {
             return;
         }
 
-        try {
-            await this._hass.callService('rtsp_recorder', 'analyze_recording', {
-                media_id: this._currentEvent.id,
-                objects,
-                device: this._analysisDevice
-            });
-            this.showToast('Analyse gestartet', 'success');
-        } catch (e) {
+        const root = this.shadowRoot;
+        const btnEl = root.querySelector('#btn-analyze');
+        const originalText = btnEl ? btnEl.innerHTML : '';
+
+        // Show loading state
+        if (btnEl) {
+            btnEl.disabled = true;
+            btnEl.innerHTML = '⏳ Analyse wird gestartet...';
+            btnEl.style.opacity = '0.7';
+        }
+
+        // Fire-and-forget: Don't await since analysis takes time
+        this._hass.callService('rtsp_recorder', 'analyze_recording', {
+            media_id: this._currentEvent.id,
+            objects,
+            device: this._analysisDevice
+        }).catch(e => {
             this.showToast('Analyse fehlgeschlagen: ' + e.message, 'error');
+            this._restoreSingleAnalysisButton(btnEl, originalText);
+        });
+
+        this.showToast('✅ Analyse gestartet!', 'success');
+        
+        // Start progress polling
+        this._startSingleProgressPolling(btnEl, originalText);
+    }
+
+    _startSingleProgressPolling(btnEl, originalText) {
+        // Clear any existing polling
+        if (this._singleProgressPollingInterval) {
+            clearInterval(this._singleProgressPollingInterval);
+        }
+        
+        const root = this.shadowRoot;
+        const progressContainer = root.querySelector('#single-analysis-progress');
+        
+        // Show progress container
+        if (progressContainer) {
+            progressContainer.style.display = 'block';
+        }
+        
+        let startTime = Date.now();
+        
+        // Poll every 2 seconds
+        this._singleProgressPollingInterval = setInterval(async () => {
+            try {
+                const progress = await this._hass.callWS({
+                    type: 'rtsp_recorder/get_single_analysis_progress'
+                });
+                
+                this._updateSingleProgressUI(progress, btnEl, originalText, startTime);
+                
+                // Stop polling when done
+                if (!progress.running && progress.completed) {
+                    this._stopSingleProgressPolling(btnEl, originalText, true);
+                } else if (!progress.running && !progress.completed && progress.media_id) {
+                    // Failed
+                    this._stopSingleProgressPolling(btnEl, originalText, false);
+                }
+            } catch (e) {
+                console.error('Single progress polling error:', e);
+            }
+        }, 2000);
+        
+        // Safety timeout - stop after 5 minutes
+        setTimeout(() => {
+            if (this._singleProgressPollingInterval) {
+                this._stopSingleProgressPolling(btnEl, originalText, false);
+            }
+        }, 5 * 60 * 1000);
+    }
+    
+    _updateSingleProgressUI(progress, btnEl, originalText, startTime) {
+        const root = this.shadowRoot;
+        const progressContainer = root.querySelector('#single-analysis-progress');
+        const progressText = root.querySelector('#single-analysis-text');
+        const currentBtn = root.querySelector('#btn-analyze');
+        
+        // Show progress container if found and analysis is running
+        if (progressContainer && progress.running) {
+            progressContainer.style.display = 'block';
+        }
+        
+        if (progress.running) {
+            const elapsed = Math.round((Date.now() - startTime) / 1000);
+            
+            // Update button
+            const btn = currentBtn || btnEl;
+            if (btn) {
+                btn.innerHTML = `🔄 Analyse laeuft... (${elapsed}s)`;
+                btn.style.background = '#2e7d32';
+                btn.disabled = true;
+            }
+            
+            // Update progress text
+            if (progressText) {
+                const filename = progress.video_path ? progress.video_path.split('/').pop() : 'Video';
+                progressText.textContent = `Analysiere: ${filename} (${elapsed}s)`;
+            }
+        }
+    }
+    
+    _stopSingleProgressPolling(btnEl, originalText, success) {
+        if (this._singleProgressPollingInterval) {
+            clearInterval(this._singleProgressPollingInterval);
+            this._singleProgressPollingInterval = null;
+        }
+        
+        // Show completion message
+        if (success) {
+            this.showToast('✅ Analyse abgeschlossen!', 'success');
+            // Refresh overview
+            this.refreshAnalysisOverview();
+            // Load detections if overlay enabled
+            if (this._overlayEnabled) {
+                this.loadDetectionsForCurrentVideo();
+            }
+        }
+        
+        this._restoreSingleAnalysisButton(btnEl, originalText);
+    }
+    
+    // v1.1.0: Check and restore single analysis progress on tab switch
+    async _checkAndRestoreSingleProgress() {
+        // Don't check if already polling
+        if (this._singleProgressPollingInterval) {
+            return;
+        }
+        
+        try {
+            const progress = await this._hass.callWS({
+                type: 'rtsp_recorder/get_single_analysis_progress'
+            });
+            
+            if (progress.running) {
+                const root = this.shadowRoot;
+                const btnEl = root.querySelector('#btn-analyze');
+                const originalText = '🔍 Analyse aktuelle Aufnahme';
+                
+                // Start polling to continue showing progress
+                this._startSingleProgressPolling(btnEl, originalText);
+            }
+        } catch (e) {
+            // Silently ignore - progress check is optional
+        }
+    }
+
+    _restoreSingleAnalysisButton(btnEl, originalText) {
+        const root = this.shadowRoot;
+        const currentBtn = root.querySelector('#btn-analyze');
+        const currentProgress = root.querySelector('#single-analysis-progress');
+        
+        const btn = currentBtn || btnEl;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText || '🔍 Analyse aktuelle Aufnahme';
+            btn.style.opacity = '1';
+            btn.style.background = '';
+        }
+        
+        if (currentProgress) {
+            currentProgress.style.display = 'none';
         }
     }
 
@@ -1742,6 +3153,8 @@ class RtspRecorderCard extends HTMLElement {
         const daysEl = root.querySelector('#analysis-days');
         const limitEl = root.querySelector('#analysis-limit');
         const skipEl = root.querySelector('#analysis-skip');
+        const btnEl = root.querySelector('#btn-analyze-all');
+        const progressContainer = root.querySelector('#analysis-progress-container');
 
         const since_days = daysEl ? parseInt(daysEl.value || '0', 10) : 0;
         const limit = limitEl ? parseInt(limitEl.value || '0', 10) : 0;
@@ -1753,29 +3166,206 @@ class RtspRecorderCard extends HTMLElement {
             return;
         }
 
-        try {
-            await this._hass.callService('rtsp_recorder', 'analyze_all_recordings', {
-                since_days,
-                limit,
-                skip_existing,
-                objects,
-                device: this._analysisDevice
-            });
-            this.showToast('Analyse fuer alle Aufnahmen gestartet', 'success');
-        } catch (e) {
-            this.showToast('Analyse fehlgeschlagen: ' + e.message, 'error');
+        // Visual feedback - disable button and show loading
+        const originalText = btnEl ? btnEl.innerHTML : '';
+        if (btnEl) {
+            btnEl.disabled = true;
+            btnEl.innerHTML = '⏳ Analyse wird gestartet...';
+            btnEl.style.opacity = '0.7';
         }
+
+        // Fire-and-forget: Don't await the service call since it's long-running
+        this._hass.callService('rtsp_recorder', 'analyze_all_recordings', {
+            since_days,
+            limit,
+            skip_existing,
+            objects,
+            device: this._analysisDevice
+        }).catch(e => {
+            console.error('[RTSP] Service call failed:', e);
+            this.showToast('❌ Analyse fehlgeschlagen: ' + e.message, 'error');
+            if (btnEl) {
+                btnEl.disabled = false;
+                btnEl.innerHTML = originalText || 'Alle Aufnahmen analysieren';
+                btnEl.style.opacity = '1';
+            }
+        });
+        
+        this.showToast('✅ Analyse gestartet!', 'success');
+        
+        // Start progress polling immediately
+        this._startProgressPolling(btnEl, originalText);
     }
 
-    async refreshAnalysisOverview() {
+    _startProgressPolling(btnEl, originalText) {
+        // Clear any existing polling
+        if (this._progressPollingInterval) {
+            clearInterval(this._progressPollingInterval);
+        }
+        
+        const root = this.shadowRoot;
+        const progressContainer = root.querySelector('#analysis-progress-container');
+        
+        // Show progress container
+        if (progressContainer) {
+            progressContainer.style.display = 'block';
+        }
+        
+        // Track polling attempts to handle startup delay
+        let pollAttempts = 0;
+        const maxStartupAttempts = 10; // Wait up to 20 seconds for analysis to start
+        
+        // Poll every 2 seconds
+        this._progressPollingInterval = setInterval(async () => {
+            try {
+                const progress = await this._hass.callWS({
+                    type: 'rtsp_recorder/get_analysis_progress'
+                });
+                
+                pollAttempts++;
+                
+                // If analysis is running, update UI
+                if (progress.running) {
+                    this._updateProgressUI(progress, btnEl, originalText, progressContainer);
+                    pollAttempts = maxStartupAttempts; // Reset - analysis started
+                }
+                // If analysis finished (was running, now done)
+                else if (progress.total > 0 && progress.current >= progress.total) {
+                    this._updateProgressUI(progress, btnEl, originalText, progressContainer);
+                    this._stopProgressPolling(btnEl, originalText, progressContainer, progress);
+                }
+                // If not yet started, wait a bit
+                else if (pollAttempts < maxStartupAttempts) {
+                    // Still waiting for analysis to start
+                    const progressText = root.querySelector('#analysis-progress-text');
+                    if (progressText) {
+                        progressText.textContent = 'Analyse wird vorbereitet...';
+                    }
+                }
+                // Timeout - analysis never started (maybe nothing to analyze)
+                else {
+                    this._stopProgressPolling(btnEl, originalText, progressContainer, progress);
+                }
+            } catch (e) {
+                console.error('Progress polling error:', e);
+            }
+        }, 2000);
+        
+        // Safety timeout - stop after 30 minutes
+        setTimeout(() => {
+            if (this._progressPollingInterval) {
+                this._stopProgressPolling(btnEl, originalText, progressContainer, null);
+            }
+        }, 30 * 60 * 1000);
+    }
+    
+    _updateProgressUI(progress, btnEl, originalText, progressContainerParam) {
+        const root = this.shadowRoot;
+        // Always re-query DOM elements in case tab was re-rendered
+        const progressContainer = root.querySelector('#analysis-progress-container');
+        const progressBar = root.querySelector('#analysis-progress-bar');
+        const progressText = root.querySelector('#analysis-progress-text');
+        const currentBtn = root.querySelector('#btn-analyze-all');
+        
+        // Show progress container if found and analysis is running
+        if (progressContainer && progress.running) {
+            progressContainer.style.display = 'block';
+        }
+        
+        if (progress.running && progress.total > 0) {
+            const percent = Math.round((progress.current / progress.total) * 100);
+            
+            // Update button (use current button from DOM if available)
+            const btn = currentBtn || btnEl;
+            if (btn) {
+                btn.innerHTML = `🔄 Analyse laeuft... (${progress.current}/${progress.total})`;
+                btn.style.background = '#2e7d32';
+                btn.disabled = true;
+            }
+            
+            // Update progress bar
+            if (progressBar) {
+                progressBar.style.width = percent + '%';
+            }
+            if (progressText) {
+                const fileInfo = progress.current_file ? ` - ${progress.current_file}` : '';
+                progressText.textContent = `${progress.current} von ${progress.total} analysiert (${percent}%)${fileInfo}`;
+            }
+        } else if (!progress.running && progress.current > 0) {
+            // Completed
+            if (progressBar) {
+                progressBar.style.width = '100%';
+                progressBar.style.background = '#4caf50';
+            }
+            if (progressText) {
+                progressText.textContent = `✅ Fertig: ${progress.current} Aufnahmen analysiert`;
+            }
+        }
+    }
+    
+    _stopProgressPolling(btnEl, originalText, progressContainerParam, progress) {
+        if (this._progressPollingInterval) {
+            clearInterval(this._progressPollingInterval);
+            this._progressPollingInterval = null;
+        }
+        
+        // Show completion message
+        if (progress && progress.current > 0) {
+            this.showToast(`✅ Analyse abgeschlossen: ${progress.current} Aufnahmen`, 'success');
+        }
+        
+        const root = this.shadowRoot;
+        // Always re-query DOM elements
+        const currentBtn = root.querySelector('#btn-analyze-all');
+        const progressContainer = root.querySelector('#analysis-progress-container');
+        
+        // Restore button (use current button from DOM if available)
+        const btn = currentBtn || btnEl;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText || 'Alle Aufnahmen analysieren';
+            btn.style.opacity = '1';
+            btn.style.background = '';
+        }
+        
+        // Hide progress after delay
+        setTimeout(() => {
+            const pc = this.shadowRoot.querySelector('#analysis-progress-container');
+            if (pc) {
+                pc.style.display = 'none';
+            }
+            // Reset progress bar
+            const progressBar = this.shadowRoot.querySelector('#analysis-progress-bar');
+            if (progressBar) {
+                progressBar.style.width = '0%';
+                progressBar.style.background = '#2196f3';
+            }
+        }, 3000);
+        
+        // Refresh overview to show new analyses
+        this.refreshAnalysisOverview();
+    }
+
+    async refreshAnalysisOverview(page = null) {
         if (this._analysisLoading) return;
         this._analysisLoading = true;
+        
+        // Use specified page or current page
+        const targetPage = page !== null ? page : this._analysisPage;
+        
         try {
             const data = await this._hass.callWS({
                 type: 'rtsp_recorder/get_analysis_overview',
-                limit: 20
+                page: targetPage,
+                per_page: this._analysisPerPage
             });
             this._analysisOverview = data || { items: [], stats: {} };
+            
+            // Update pagination state
+            this._analysisPage = data.page || 1;
+            this._analysisTotalPages = data.total_pages || 1;
+            this._analysisTotal = data.total || 0;
+            
             this._perfSensors = (data && data.perf) ? data.perf : { cpu: null, igpu: null, coral: null };
             this.updatePerfFooter();
             this._analysisDeviceOptions = (data && data.devices)
@@ -1799,9 +3389,17 @@ class RtspRecorderCard extends HTMLElement {
             }
         }
     }
+    
+    async goToAnalysisPage(page) {
+        if (page < 1 || page > this._analysisTotalPages) return;
+        await this.refreshAnalysisOverview(page);
+    }
 
     async loadDetectionsForCurrentVideo() {
         if (!this._currentEvent || !this._overlayEnabled) return;
+        // v1.1.0h: Reset overlay cache when loading new video
+        this._lastOverlayKey = null;
+        this._lastOverlaySize = null;
         try {
             const data = await this._hass.callWS({
                 type: 'rtsp_recorder/get_analysis_result',
@@ -1882,6 +3480,42 @@ class RtspRecorderCard extends HTMLElement {
                 }
             }
             
+            // v1.1.0: Fetch analysis progress for live status
+            try {
+                const singleProgress = await this._hass.callWS({ type: 'rtsp_recorder/get_single_analysis_progress' });
+                const batchProgress = await this._hass.callWS({ type: 'rtsp_recorder/get_analysis_progress' });
+                const oldRunning = this._analysisProgress?.single?.running;
+                const newRunning = singleProgress?.running;
+                
+                this._analysisProgress = {
+                    single: singleProgress,
+                    batch: batchProgress
+                };
+                console.log('[RTSP-Recorder] Analysis Progress:', JSON.stringify(this._analysisProgress));
+                
+                // v1.1.0: DON'T call updateView() here - it disrupts the progress display
+                // The progress is shown in updatePerfFooter() which is called after this
+            } catch (e) {
+                console.warn('[RTSP-Recorder] Failed to fetch analysis progress:', e);
+                this._analysisProgress = null;
+            }
+            
+            // v1.1.0: Fetch recording progress for live status
+            try {
+                const recordingProgress = await this._hass.callWS({ type: 'rtsp_recorder/get_recording_progress' });
+                const oldRecording = this._recordingProgress?.running;
+                const newRecording = recordingProgress?.running;
+                
+                this._recordingProgress = recordingProgress;
+                
+                // Update timeline if recording status changed
+                if (oldRecording !== newRecording) {
+                    this.updateView();
+                }
+            } catch (e) {
+                this._recordingProgress = null;
+            }
+            
             this.updatePerfFooter();
             
             // Update performance tab if open
@@ -1896,7 +3530,8 @@ class RtspRecorderCard extends HTMLElement {
     startStatsPolling() {
         if (this._statsPolling) return;
         this.fetchDetectorStats();
-        this._statsPolling = setInterval(() => this.fetchDetectorStats(), 5000);
+        // v1.1.0m: Reduced from 5s to 2s for faster TPU load response
+        this._statsPolling = setInterval(() => this.fetchDetectorStats(), 2000);
     }
 
     stopStatsPolling() {
@@ -1957,6 +3592,20 @@ class RtspRecorderCard extends HTMLElement {
                     : coralPct > 0
                         ? '#ff9800'
                         : '#666';
+            
+            // v1.1.0: TPU Load - berechnete Chip-Auslastung
+            // Formel: (Summe Coral-Inferenz-Zeit / Zeitfenster) × 100
+            const tpuLoad = tracker.tpu_load_pct ?? 0;
+            const tpuLoadDisplay = hasInf ? `${tpuLoad}%` : '-';
+            // Farbkodierung: <5% grün, 5-25% orange, >25% rot
+            const tpuLoadColor = !hasInf
+                ? '#666'
+                : tpuLoad > 25
+                    ? '#f44336'
+                    : tpuLoad > 5
+                        ? '#ff9800'
+                        : '#4caf50';
+            
             coralHtml = `
                 <div class="fm-perf-card">
                     <div class="fm-perf-label">Coral USB</div>
@@ -1964,10 +3613,16 @@ class RtspRecorderCard extends HTMLElement {
                         ${coralActive ? 'Aktiv' : 'Bereit'}
                     </div>
                 </div>
-                <div class="fm-perf-card">
+                <div class="fm-perf-card" title="Coral Anteil: Prozent der Inferenzen auf Coral (vs CPU)">
                     <div class="fm-perf-label">Coral Anteil</div>
                     <div class="fm-perf-value" style="color: ${coralColor}">
                         ${coralDisplay}
+                    </div>
+                </div>
+                <div class="fm-perf-card" title="TPU Last: Wie viel der TPU-Zeit ist mit Inferenzen belegt (60s Fenster)">
+                    <div class="fm-perf-label">TPU Last</div>
+                    <div class="fm-perf-value" style="color: ${tpuLoadColor}">
+                        ${tpuLoadDisplay}
                     </div>
                 </div>
             `;
@@ -1982,7 +3637,7 @@ class RtspRecorderCard extends HTMLElement {
 
         // Inference stats
         let inferenceHtml = '';
-        let inferenceHint = '';
+        // v1.1.0m: Coral stats shown inline, no hint needed
         if (tracker.total_inferences > 0) {
             inferenceHtml = `
                 <div class="fm-perf-card">
@@ -1994,13 +3649,11 @@ class RtspRecorderCard extends HTMLElement {
                     <div class="fm-perf-value">${tracker.total_inferences}</div>
                 </div>
             `;
-        } else {
-            inferenceHint = `
-                <div style="flex-basis:100%; font-size:0.85em; color:#888; margin-top:6px;">
-                    Coral-Nutzung wird nur bei aktiver Live-Erkennung oder neuer Videoanalyse gezaehlt.
-                </div>
-            `;
         }
+        // v1.1.0m: Removed inferenceHint - unnecessary, stats only show when active anyway
+
+        // v1.1.0c: Analysis progress moved to footer-analysis-status (always visible)
+        // Removed from here to avoid duplicate display
 
         panel.innerHTML = `
             <div class="fm-perf-card">
@@ -2013,8 +3666,16 @@ class RtspRecorderCard extends HTMLElement {
             </div>
             ${coralHtml}
             ${inferenceHtml}
-            ${inferenceHint}
         `;
+    }
+
+    // v1.1.0L: Schedule overlay update - immediate via requestAnimationFrame (no debounce = responsive)
+    _scheduleOverlayUpdate() {
+        // Use requestAnimationFrame for smooth, immediate updates synced to display refresh
+        if (this._overlayRAF) {
+            cancelAnimationFrame(this._overlayRAF);
+        }
+        this._overlayRAF = requestAnimationFrame(() => this.drawOverlay());
     }
 
     drawOverlay() {
@@ -2022,6 +3683,19 @@ class RtspRecorderCard extends HTMLElement {
         const canvas = this.shadowRoot.querySelector('#overlay-canvas');
         const video = this.shadowRoot.querySelector('#main-video');
         if (!canvas || !video || !video.videoWidth) return;
+
+        // v1.1.0h: Throttle overlay drawing - only redraw when frame changes
+        const t = video.currentTime;
+        // v1.1.0k: Use floor and round to nearest interval for stable frame matching
+        const key = Math.floor(t / this._analysisInterval) * this._analysisInterval;
+        const sizeKey = `${video.clientWidth}x${video.clientHeight}`;
+        
+        // v1.1.0k: Skip if same frame AND same size (prevents redundant redraws)
+        if (this._lastOverlayKey === key && this._lastOverlaySize === sizeKey) {
+            return; // Same frame, no need to redraw
+        }
+        this._lastOverlayKey = key;
+        this._lastOverlaySize = sizeKey;
 
         this.resizeOverlay();
 
@@ -2053,8 +3727,6 @@ class RtspRecorderCard extends HTMLElement {
         const scaleX = drawW / fw;
         const scaleY = drawH / fh;
 
-        const t = video.currentTime;
-        const key = Math.round(t / this._analysisInterval) * this._analysisInterval;
         const frame = this._analysisDetections.find(d => d.time_s === key);
         if (!frame || (!frame.objects && !frame.faces)) return;
 
@@ -2096,7 +3768,7 @@ class RtspRecorderCard extends HTMLElement {
     }
 
     async renderStorageTab(container) {
-        container.innerHTML = `<div style="text-align:center;color:#888;padding:40px;">Lade Speicherinfo...</div>`;
+        container.innerHTML = '<div style="text-align:center;color:#888;padding:40px;">Lade Speicherinfo...</div>';
         
         // Calculate from events
         const totalEvents = this._events ? this._events.length : 0;
@@ -2295,10 +3967,11 @@ class RtspRecorderCard extends HTMLElement {
     }
 
     async loadData() {
+        console.log('[RTSP-Recorder] loadData() called at', new Date().toISOString());
         const hass = this._hass;
         const path = this._toMediaSourcePath(this._basePath);
         if (!path) {
-            this.shadowRoot.querySelector('#list').innerHTML = `<div style="padding:20px;color:red;">Fehler: Base-Pfad muss mit /media/ beginnen. (base_path: ${this._basePath})</div>`;
+            this.shadowRoot.querySelector('#list').innerHTML = `<div style="padding:20px;color:red;">Fehler: Base-Pfad muss mit /media/ beginnen. (base_path: ${this._escapeHtml(this._basePath)})</div>`;
             return;
         }
         try {
@@ -2328,6 +4001,7 @@ class RtspRecorderCard extends HTMLElement {
                 }
             }
             this._events = events.sort((a, b) => b.date - a.date);
+            console.log('[RTSP-Recorder] loadData() completed with', events.length, 'events at', new Date().toISOString());
             this.updateView();
         } catch (e) {
             // MED-010 Fix: Detailed error messages with troubleshooting hints
@@ -2345,7 +4019,7 @@ class RtspRecorderCard extends HTMLElement {
             }
             
             rtspError('loadData failed:', e);
-            this.shadowRoot.querySelector('#list').innerHTML = `<div style="padding:20px;color:red;">Fehler beim Laden: ${errorDetail}${hint}<br><small style="color:#666;">Pfad: ${this._basePath}</small></div>`;
+            this.shadowRoot.querySelector('#list').innerHTML = `<div style="padding:20px;color:red;">Fehler beim Laden: ${this._escapeHtml(errorDetail)}${hint}<br><small style="color:#666;">Pfad: ${this._escapeHtml(this._basePath)}</small></div>`;
         }
     }
 
@@ -2356,12 +4030,20 @@ class RtspRecorderCard extends HTMLElement {
         if (!list || !ruler) return;
         list.innerHTML = ''; ruler.innerHTML = '';
 
+        // v1.1.0: Recording status is now updated separately via _updateRecordingStatusOnly()
+        // This prevents timeline from "zapping" during recording progress polls
+
         let filtered = this._events || [];
         if (this._selectedDate) filtered = filtered.filter(e => e.iso === this._selectedDate);
         else filtered = filtered.filter(e => e.date > new Date(Date.now() - 24 * 60 * 60 * 1000));
         if (this._selectedCam !== 'Alle') filtered = filtered.filter(e => e.cam === this._selectedCam);
 
         if (filtered.length === 0) { list.innerHTML = `<div style="padding:20px;color:#888;text-align:center;">Keine Aufnahmen.</div>`; return; }
+
+        // v1.1.0g: Get ALL currently analyzing video paths for marking (supports parallel analyses)
+        const progress = this._analysisProgress;
+        const analyses = (progress && progress.single && progress.single.analyses) || [];
+        const analyzingPaths = analyses.filter(a => a.running).map(a => a.video_path);
 
         let index = 0;
         filtered.forEach(ev => {
@@ -2375,22 +4057,31 @@ class RtspRecorderCard extends HTMLElement {
             tick.innerHTML = `<span class="fm-tick-label">${time}</span>`;
             ruler.appendChild(tick);
 
+            // v1.1.0g: Check if this item is being analyzed (supports multiple parallel analyses)
+            const videoFilename = ev.id.split('/').pop(); // Get filename from media_content_id
+            const isAnalyzing = analyzingPaths.some(path => path && path.includes(videoFilename));
+
             // Render Item with staggered animation
-            const item = document.createElement('div'); item.className = 'fm-item';
+            const item = document.createElement('div'); 
+            item.className = isAnalyzing ? 'fm-item analyzing' : 'fm-item';
             if (this._animationsEnabled) {
                 item.style.animationDelay = `${index * 0.05}s`;
             }
             const displayName = ev.cam.replace(/_/g, ' ');
 
+            // v1.1.0: Add status badge for analyzing videos
+            const statusBadge = isAnalyzing ? `<div class="fm-badge-analyzing">🔄 Analyse</div>` : '';
+
             item.innerHTML = `
                 <div class="fm-thumb-wrap">
-                    <img src="${ev.thumb}" class="fm-thumb-img" onerror="this.style.display='none'">
-                    <div class="fm-badge-cam">${displayName}</div>
-                    <div style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.5);padding:2px 6px;border-radius:4px;font-size:0.7em;">${time}</div>
+                    <img src="${this._escapeHtml(ev.thumb)}" class="fm-thumb-img" onerror="this.style.display='none'">
+                    ${statusBadge}
+                    <div class="fm-badge-cam">${this._escapeHtml(displayName)}</div>
+                    <div style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.5);padding:2px 6px;border-radius:4px;font-size:0.7em;">${this._escapeHtml(time)}</div>
                 </div>
             `;
             item.onclick = async () => {
-                root.querySelectorAll('.fm-item').forEach(x => x.classList.remove('selected')); 
+                root.querySelectorAll('.fm-item').forEach(x => x.classList.remove('selected'));
                 item.classList.add('selected');
                 
                 // Store current event for download/delete
@@ -2420,6 +4111,38 @@ class RtspRecorderCard extends HTMLElement {
             list.appendChild(item);
             index++;
         });
+        
+        // v1.1.0h: Robuster: Nach Timeline-Rebuild immer Status wiederherstellen
+        this._restoreStatusIndicators();
+    }
+    
+    // v1.1.0h: Zentrale Methode zum Wiederherstellen aller Status-Anzeigen nach Timeline-Updates
+    _restoreStatusIndicators() {
+        // 1. Footer-Sichtbarkeit
+        this.updateFooterVisibility();
+        
+        // 2. Recording-Status aus gecachtem State wiederherstellen
+        this._updateRecordingStatusOnly();
+        
+        // 3. Analyse-Status: Erst cached State, dann async refresh
+        const progress = this._analysisProgress;
+        const analyses = (progress && progress.single && progress.single.analyses) || [];
+        const isRunning = progress?.single?.running;
+        
+        // Sofort aus Cache wiederherstellen (verhindert Flicker)
+        const statusEl = this.shadowRoot?.querySelector('#footer-analysis-status');
+        const textEl = this.shadowRoot?.querySelector('#analysis-status-text');
+        if (statusEl && isRunning && analyses.length > 0) {
+            statusEl.style.display = 'block';
+            // Kurzer Text für Footer
+            if (textEl) {
+                const count = analyses.filter(a => a.running).length;
+                textEl.textContent = count > 1 ? `${count} Analysen laufen...` : 'Analyse läuft...';
+            }
+        }
+        
+        // 4. v1.1.0L: Update analysis UI from Map (event-driven, no backend call needed)
+        setTimeout(() => this._updateAnalysisUI(), 100);
     }
 
     renderCalendar() {
@@ -2599,5 +4322,7 @@ class RtspRecorderCard extends HTMLElement {
     }
 }
 
-// REGISTER STANDARD CARD
-customElements.define('rtsp-recorder-card', RtspRecorderCard);
+// REGISTER STANDARD CARD (only if not already registered)
+if (!customElements.get('rtsp-recorder-card')) {
+    customElements.define('rtsp-recorder-card', RtspRecorderCard);
+}

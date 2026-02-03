@@ -2,6 +2,119 @@
 
 All notable changes to RTSP Recorder will be documented in this file.
 
+## [1.1.0k BETA] - 2026-02-03
+
+### 🗄️ SQLite-Only Backend
+- **Removed JSON Database**: Complete migration to SQLite-only backend
+  - All person data now stored exclusively in SQLite
+  - Automatic one-time migration from JSON on first start
+  - Removed `people_db_path` and `migrate_from_json` config options
+  - Cleaner codebase without dual-backend complexity
+
+### 🧹 Storage Management
+- **Analysis Folder Cleanup**: Automatic cleanup of `_analysis` folders
+  - `cleanup_analysis_data()`: Removes analysis for expired/deleted videos
+  - `delete_analysis_for_video()`: Cleans up when video is manually deleted
+  - Respects per-camera retention settings
+- **Configurable Cleanup Interval**: New slider in settings (1-24 hours)
+  - Ideal for short retention times (e.g., 2 hour cameras)
+  - Default: 24 hours for normal usage
+
+### 📊 Movement Profile
+- **Recognition History**: Fixed `log_recognition_event` (was disabled on server)
+  - Tracks who was seen when/where
+  - Visible in "Bewegung" (Movement) tab in UI
+  - Stores camera, person, confidence, timestamp
+
+### 🔧 Bug Fixes
+- **Issue #35**: Analysis folders growing unbounded (1.7GB for 91 analyses)
+- **Issue #36**: Analysis not deleted when video deleted via service
+- **Issue #37**: Cleanup interval was hardcoded (now configurable)
+- **Issue #38**: Movement profile showing no data (log_recognition_event was commented out)
+
+### 🌐 Translations
+- Added "🧹 Aufräum-Intervall" / "Cleanup Interval" to all languages
+- Updated German descriptions for new settings
+
+---
+
+## [1.1.0 BETA] - 2026-02-02
+
+### 🚀 Performance Optimizations
+- **Parallel Snapshots**: Thumbnail is now captured DURING recording (after configurable `snapshot_delay`)
+  - Saves 3-5 seconds per recording compared to sequential approach
+  - Snapshot runs as parallel async task while recording continues
+- **Callback-based Recording**: RTSP recordings use event-based completion instead of polling
+  - Uses `asyncio.Event()` for instant notification when FFmpeg finishes
+  - Eliminates busy-waiting loops
+- **Faster Timeline Updates**: Recordings appear in timeline immediately when started
+  - New event `rtsp_recorder_recording_started` fires at recording start
+  - Timeline shows recording badge with countdown timer
+
+### 🔒 Security & Reliability (NEW)
+- **Rate Limiter Module** (`rate_limiter.py`): Token Bucket algorithm for DoS protection
+  - Configurable rate limits per operation type
+  - Async-compatible with decorator support
+  - Automatic cleanup of expired tokens
+- **Custom Exceptions** (`exceptions.py`): 20+ specific exception types
+  - Structured error hierarchy for better debugging
+  - Categorized by domain (Recording, Analysis, Database, etc.)
+- **Performance Monitor** (`performance.py`): Operations metrics tracking
+  - Dataclass-based metrics with timing decorators
+  - Statistical analysis of operation durations
+  - Async-compatible measurement utilities
+- **Database Migrations** (`migrations.py`): Schema versioning system
+  - Automatic migration on startup
+  - Version tracking and rollback support
+  - Safe schema evolution
+
+### 📊 Metrics System
+- **Performance Metrics Logging**: Structured metrics for performance analysis
+  - Format: `METRIC|camera|metric_name|elapsed_time`
+  - `recording_to_saved`: Time from trigger to file saved
+  - `analysis_duration`: Time for video analysis
+  - `total_pipeline_time`: Complete flow from motion to analysis complete
+- **Easy Analysis**: `grep METRIC /config/rtsp_debug.log | tail -20`
+
+### 🎛️ TPU Load Display
+- **Calculated TPU Load**: Shows actual Coral EdgeTPU utilization percentage
+  - Formula: (Coral inference time / 60s window) × 100
+  - Displayed in footer performance cards
+  - Color coded: green (<5%), orange (5-25%), red (>25%)
+- **Increased History Buffer**: From 100 to 1000 entries for accurate load calculation
+
+### 🎨 UI Improvements
+- **Recording Progress**: Footer shows active recording with camera name and duration
+- **Performance Cards**: Redesigned footer with consistent card sizing
+- **Beta Badge**: Player shows "BETA VERSION" indicator
+
+### 🌐 Internationalization
+- **5 Languages**: German (DE), English (EN), Spanish (ES), French (FR), Dutch (NL)
+- **Complete UI Coverage**: All config flow and options translated
+- **Auto Language Selection**: Based on Home Assistant locale
+
+### 🧪 Quality Assurance
+- **Professional Audit Score**: 84.4% (B+ Grade)
+- **Test Framework**: pytest-based unit tests with 8 test files
+- **Memory Management Test**: 100% pass rate
+- **27 Python Modules**: 11,832 LOC with 74% type hint coverage
+
+### 🔧 Technical Improvements
+- Increased inference stats history from 100 to 1000 entries
+- Better CPU reading accuracy with 0.3s sampling and rolling average
+- Improved file stability check (1s intervals, 2 checks)
+- Reduced HA camera recording wait time (+1s instead of +2s)
+
+### Technical
+- Integration version: 1.1.0
+- Dashboard card version: 1.1.0 BETA
+- Detector add-on version: 1.0.9
+- Python modules: 27
+- Total LOC: 11,832
+- Test files: 8
+
+---
+
 ## [1.0.9 STABLE] - 2026-02-01
 
 ### 🏆 Release Status

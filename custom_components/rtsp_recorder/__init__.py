@@ -29,15 +29,12 @@ from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.event import async_track_state_change_event
 
 # Internal modules
-from .retention import cleanup_recordings
+from .retention import cleanup_recordings, cleanup_analysis_data
 from .analysis import detect_available_devices
 
 # Modularized Imports
 from .const import (
     DOMAIN,
-    PEOPLE_DB_DEFAULT_PATH,
-    CONF_USE_SQLITE,
-    DEFAULT_USE_SQLITE,
 )
 from .helpers import (
     log_to_file,
@@ -49,7 +46,7 @@ from .people_db import (
     enable_sqlite_backend,
     disable_sqlite_backend,
     is_sqlite_enabled,
-    migrate_json_to_sqlite,
+    log_recognition_event,  # v1.1.0: Movement profile
 )
 from .analysis_helpers import _find_analysis_for_video
 
@@ -80,9 +77,12 @@ class ThumbnailView(HomeAssistantView):
         # Build full path
         file_path = os.path.join(self._snapshot_path, camera, filename)
         
-        # Check if file exists
-        if not os.path.isfile(file_path):
-            return web.Response(status=404, text="Not found")
+        # Read file in executor to avoid blocking the event loop
+        def _read_file():
+            if not os.path.isfile(file_path):
+                return None
+            with open(file_path, "rb") as f:
+                return f.read()
         
         # Determine content type
         content_type = "image/jpeg"
@@ -91,10 +91,11 @@ class ThumbnailView(HomeAssistantView):
         elif filename.lower().endswith(".webp"):
             content_type = "image/webp"
         
-        # Read and return file
         try:
-            with open(file_path, "rb") as f:
-                data = f.read()
+            loop = asyncio.get_event_loop()
+            data = await loop.run_in_executor(None, _read_file)
+            if data is None:
+                return web.Response(status=404, text="Not found")
             return web.Response(body=data, content_type=content_type)
         except Exception as e:
             _LOGGER.error(f"Error reading thumbnail {file_path}: {e}")
@@ -119,6 +120,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
     retention_days = config_data.get("retention_days", 7)
     snapshot_retention_days = config_data.get("snapshot_retention_days", 7)
     retention_hours = config_data.get("retention_hours", 0)
+    cleanup_interval_hours = int(config_data.get("cleanup_interval_hours", 24))
     analysis_enabled = config_data.get("analysis_enabled", True)
     analysis_device = config_data.get("analysis_device", "cpu")
     analysis_objects = config_data.get("analysis_objects", ["person"])
@@ -130,7 +132,6 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
     analysis_face_confidence = float(config_data.get("analysis_face_confidence", 0.2))
     analysis_face_match_threshold = float(config_data.get("analysis_face_match_threshold", 0.35))
     analysis_face_store_embeddings = bool(config_data.get("analysis_face_store_embeddings", True))
-    people_db_path = config_data.get("people_db_path", PEOPLE_DB_DEFAULT_PATH)
     analysis_auto_enabled = config_data.get("analysis_auto_enabled", False)
     analysis_auto_mode = config_data.get("analysis_auto_mode", "daily")
     analysis_auto_time = config_data.get("analysis_auto_time", "03:00")
@@ -152,7 +153,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         "analysis_objects", "analysis_output_path", "analysis_frame_interval",
         "analysis_detector_url", "analysis_detector_confidence", "analysis_face_enabled",
         "analysis_face_confidence", "analysis_face_match_threshold",
-        "analysis_face_store_embeddings", "people_db_path", "analysis_auto_enabled",
+        "analysis_face_store_embeddings", "analysis_auto_enabled",
         "analysis_auto_mode", "analysis_auto_time", "analysis_auto_interval_hours",
         "analysis_auto_since_days", "analysis_auto_limit", "analysis_auto_skip_existing",
         "analysis_auto_new", "analysis_auto_force_coral", "person_entities_enabled",
@@ -167,9 +168,6 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             camera_name = key.replace("retention_hours_", "")
             if isinstance(value, (int, float)) and value > 0:
                 override_map[camera_name] = value
-    
-    # SQLite backend configuration (v1.0.9+)
-    use_sqlite = bool(config_data.get(CONF_USE_SQLITE, DEFAULT_USE_SQLITE))
             
     log_to_file(f"Config: Path={storage_path}, Video={retention_days}d, Snap={snapshot_retention_days}d")
     if override_map:
@@ -192,20 +190,15 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         hass.http.register_view(ThumbnailView(snapshot_path_base))
         log_to_file(f"Registered thumbnail endpoint: /api/rtsp_recorder/thumbnail/")
 
-        # 3. Initialize database backend (v1.0.9+)
-        if use_sqlite:
-            log_to_file("Enabling SQLite backend for people database...")
-            if enable_sqlite_backend("/config"):
-                # Migrate existing JSON data if present
-                if os.path.exists(people_db_path):
-                    success, msg = await migrate_json_to_sqlite(people_db_path)
-                    log_to_file(f"SQLite migration: {msg}")
-                log_to_file("SQLite backend enabled successfully")
-            else:
-                log_to_file("SQLite backend initialization failed, using JSON fallback")
+        # 3. Initialize SQLite database backend (v1.1.0j: SQLite-only)
+        log_to_file("Enabling SQLite backend for people database...")
+        if enable_sqlite_backend("/config"):
+            log_to_file("SQLite backend enabled successfully")
+        else:
+            log_to_file("ERROR: SQLite backend initialization failed!")
         
-        # People DB sicherstellen (JSON fallback or initial load)
-        await _load_people_db(people_db_path)
+        # Load people database from SQLite
+        await _load_people_db()
 
         # ===== Helper functions needed by services =====
         
@@ -262,13 +255,23 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             slug = re.sub(r"_+", "_", slug).strip("_")
             return f"binary_sensor.rtsp_recorder_person_{slug or 'unknown'}"
 
+        def _extract_camera_from_path(video_path: str | None) -> str | None:
+            """Extract camera name from video path. v1.1.0: For person entity attributes."""
+            if not video_path:
+                return None
+            parts = video_path.replace("\\", "/").split("/")
+            if len(parts) >= 2:
+                camera = parts[-2] if parts[-2] else parts[-1]
+                return camera.replace("_", " ") if camera else None
+            return None
+
         def _set_person_entity(name: str, similarity: float | None, video_path: str | None, camera: str | None):
             """Set person entity state."""
             if not person_entities_enabled:
                 return
             entity_id = _person_entity_id(name)
             attrs = {
-                "friendly_name": f"RTSP Person {name}",
+                "friendly_name": f"RTSP Person {name}" + (f" ({camera})" if camera else ""),  # v1.1.0: Show camera in history
                 "person_name": name,
                 "similarity": similarity,
                 "camera": camera,
@@ -276,13 +279,27 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 "last_seen": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
             hass.states.async_set(entity_id, "on", attrs)
+            
+            # v1.1.0k: Log to recognition_history for movement profile
+            try:
+                hass.async_create_task(log_recognition_event(
+                    camera_name=camera or "Unknown",
+                    person_name=name,
+                    confidence=similarity,
+                    recording_path=video_path,
+                    metadata={"source": "person_entity"}
+                ))
+                log_to_file(f"Logged recognition event: {name} at {camera}")
+            except Exception as e:
+                log_to_file(f"Failed to log recognition event: {e}")
+            
             timers = hass.data.setdefault(DOMAIN, {}).setdefault("person_entity_timers", {})
             if entity_id in timers:
                 try:
                     timers[entity_id].cancel()
                 except Exception:
                     pass
-            timers[entity_id] = hass.loop.call_later(30, lambda: hass.states.async_set(entity_id, "off", attrs))
+            timers[entity_id] = hass.loop.call_later(10, lambda: hass.states.async_set(entity_id, "off", attrs))  # v1.1.0: Reduced from 30s
 
         def _extract_person_matches(result: dict) -> dict[str, dict[str, Any]]:
             """Extract person matches from analysis result."""
@@ -316,22 +333,24 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             return matches
 
         def _update_person_entities_from_result(result: dict) -> bool:
-            """Update person entities from analysis result."""
+            """Update person entities from analysis result. v1.1.0: Now includes camera info."""
             if not person_entities_enabled:
                 return False
             matches = _extract_person_matches(result)
             if not matches:
                 return False
+            video_path = result.get("video_path")
+            camera = _extract_camera_from_path(video_path)
             for name, info in matches.items():
-                _set_person_entity(name, info.get("similarity"), result.get("video_path"), None)
+                _set_person_entity(name, info.get("similarity"), video_path, camera)
             return True
 
-        def _update_person_entities_for_video(video_path: str | None):
+        async def _update_person_entities_for_video(video_path: str | None):
             """Update person entities for a video."""
             if not person_entities_enabled or not video_path:
                 return
             try:
-                result = _find_analysis_for_video(analysis_output_path, video_path)
+                result = await hass.async_add_executor_job(_find_analysis_for_video, analysis_output_path, video_path)
                 if result:
                     _update_person_entities_from_result(result)
             except Exception:
@@ -357,7 +376,6 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             analysis_face_confidence=analysis_face_confidence,
             analysis_face_match_threshold=analysis_face_match_threshold,
             analysis_face_store_embeddings=analysis_face_store_embeddings,
-            people_db_path=people_db_path,
             person_entities_enabled=person_entities_enabled,
             get_sensor_snapshot_func=_sensor_snapshot,
             resolve_auto_device_func=_resolve_auto_device,
@@ -414,6 +432,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             """Run scheduled retention cleanup."""
             log_to_file("Running scheduled retention cleanup...")
             
+            # Cleanup old recordings
             await hass.async_add_executor_job(
                 cleanup_recordings, 
                 storage_path, 
@@ -422,6 +441,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 override_map
             )
             
+            # Cleanup old snapshots
             await hass.async_add_executor_job(
                 cleanup_recordings, 
                 snapshot_path_base, 
@@ -429,12 +449,21 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 0,
                 override_map
             )
+            
+            # v1.1.0k: Cleanup old analysis data (same retention as videos)
+            await hass.async_add_executor_job(
+                cleanup_analysis_data,
+                storage_path,
+                retention_days,
+                retention_hours,
+            )
 
         # Run once on startup (after 30s delay)
         hass.loop.call_later(30, lambda: hass.async_create_task(run_cleanup()))
         
-        # Run daily
-        unsub_cleanup = async_track_time_interval(hass, run_cleanup, timedelta(hours=24))
+        # v1.1.0k: Configurable cleanup interval (default: 24h, min: 1h for short retentions)
+        log_to_file(f"Cleanup interval: {cleanup_interval_hours}h")
+        unsub_cleanup = async_track_time_interval(hass, run_cleanup, timedelta(hours=cleanup_interval_hours))
         entry.async_on_unload(unsub_cleanup)
 
         # ===== Auto Analysis Scheduler =====
@@ -475,9 +504,24 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         camera_last_recording: dict[str, datetime.datetime] = {}
         camera_expected_activity: dict[str, bool] = {}  # Track if camera should be recording
         
+        def _get_newest_recording(cam_folder: str) -> str | None:
+            """Get newest recording file from camera folder (runs in executor)."""
+            if not os.path.exists(cam_folder):
+                return None
+            try:
+                files = [f for f in os.listdir(cam_folder) if f.endswith('.mp4')]
+                if files:
+                    files.sort(reverse=True)
+                    return files[0]
+            except Exception:
+                pass
+            return None
+        
         async def check_camera_health(now=None):
             """Check if cameras are recording as expected."""
             try:
+                loop = asyncio.get_event_loop()
+                
                 # Get all configured cameras from motion sensors
                 for key, value in config_data.items():
                     if not key.startswith("sensor_"):
@@ -487,15 +531,10 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                     motion_entity = value
                     cam_folder = os.path.join(storage_path, camera_name)
                     
-                    if not os.path.exists(cam_folder):
-                        continue
-                    
-                    # Find newest recording
+                    # Find newest recording (run in executor to avoid blocking)
                     try:
-                        files = [f for f in os.listdir(cam_folder) if f.endswith('.mp4')]
-                        if files:
-                            files.sort(reverse=True)
-                            newest = files[0]
+                        newest = await loop.run_in_executor(None, _get_newest_recording, cam_folder)
+                        if newest:
                             # Parse timestamp from filename: CameraName_YYYYMMDD_HHMMSS.mp4
                             parts = newest.replace('.mp4', '').split('_')
                             if len(parts) >= 3:
@@ -546,7 +585,6 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             analysis_output_path=analysis_output_path,
             analysis_detector_url=analysis_detector_url,
             analysis_face_match_threshold=analysis_face_match_threshold,
-            people_db_path=people_db_path,
             analysis_perf_cpu_entity=analysis_perf_cpu_entity,
             analysis_perf_igpu_entity=analysis_perf_igpu_entity,
             analysis_perf_coral_entity=analysis_perf_coral_entity,
@@ -554,7 +592,6 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         
         register_people_websocket_handlers(
             hass=hass,
-            people_db_path=people_db_path,
             analysis_output_path=analysis_output_path,
             analysis_face_match_threshold=analysis_face_match_threshold,
             validate_person_name_func=_validate_person_name,
