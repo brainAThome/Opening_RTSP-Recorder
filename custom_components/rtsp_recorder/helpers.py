@@ -46,7 +46,7 @@ class InferenceStatsTracker:
     # v1.1.0: Erhöht von 100 auf 1000, damit bei intensiver Analyse
     # alle Inferenzen der letzten 60s erfasst werden können.
     # Bei 60fps Analyse = 60 Frames pro Video, 10 Videos = 600 Einträge
-    def __init__(self, max_history: int = 1000):
+    def __init__(self, max_history: int = 1000) -> None:
         self._lock = _threading.Lock()
         self._history = _deque(maxlen=max_history)
         self._total_inferences = 0
@@ -55,7 +55,7 @@ class InferenceStatsTracker:
         self._last_device = "none"
         self._start_time = _time.time()
     
-    def record(self, device: str, duration_ms: float, frame_count: int = 1):
+    def record(self, device: str, duration_ms: float, frame_count: int = 1) -> None:
         """Record an inference event."""
         with self._lock:
             now = _time.time()
@@ -249,7 +249,7 @@ def _rotate_log_if_needed() -> None:
                 if os.path.exists(_LOG_BACKUP_PATH):
                     os.remove(_LOG_BACKUP_PATH)
                 os.rename(_LOG_FILE_PATH, _LOG_BACKUP_PATH)
-    except Exception:
+    except OSError:
         pass  # Rotation failure should not break logging
 
 
@@ -347,7 +347,7 @@ def _parse_hhmm(value: str) -> tuple[int, int] | None:
         if hour < 0 or hour > 23 or minute < 0 or minute > 59:
             return None
         return hour, minute
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 
@@ -366,3 +366,89 @@ def _list_video_files(storage_path: str, camera: str | None = None) -> list[str]
             if fname.lower().endswith(".mp4"):
                 results.append(os.path.join(root, fname))
     return results
+
+
+# ===== Database Backup (SEC-005 Fix) =====
+import shutil
+from datetime import datetime
+
+_BACKUP_DIR = "/config/rtsp_recorder/backups"
+_MAX_BACKUPS = 7  # Keep last 7 backups
+
+
+def backup_database(db_path: str = "/config/rtsp_recorder/rtsp_recorder.db") -> bool:
+    """Create a backup of the SQLite database.
+
+    Implements SEC-005: Automatic database backups to prevent data loss.
+    Keeps the last 7 backups and rotates older ones.
+
+    Args:
+        db_path: Path to the SQLite database file
+
+    Returns:
+        True if backup was successful, False otherwise
+    """
+    try:
+        if not os.path.exists(db_path):
+            log_to_file(f"Backup skipped: DB not found at {db_path}")
+            return False
+
+        # Create backup directory if needed
+        if not os.path.exists(_BACKUP_DIR):
+            os.makedirs(_BACKUP_DIR)
+
+        # Generate backup filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_name = f"rtsp_recorder_{timestamp}.db"
+        backup_path = os.path.join(_BACKUP_DIR, backup_name)
+
+        # Copy database file
+        shutil.copy2(db_path, backup_path)
+
+        # Also copy WAL file if it exists
+        wal_path = db_path + "-wal"
+        if os.path.exists(wal_path):
+            shutil.copy2(wal_path, backup_path + "-wal")
+
+        log_to_file(f"Database backup created: {backup_name}")
+
+        # Rotate old backups (keep only MAX_BACKUPS)
+        _rotate_backups()
+
+        return True
+
+    except Exception as e:
+        log_to_file(f"Database backup failed: {e}")
+        return False
+
+
+def _rotate_backups() -> None:
+    """Remove old backups, keeping only the most recent ones."""
+    try:
+        if not os.path.exists(_BACKUP_DIR):
+            return
+
+        # Get all backup files sorted by modification time
+        backups = []
+        for f in os.listdir(_BACKUP_DIR):
+            if f.startswith("rtsp_recorder_") and f.endswith(".db"):
+                path = os.path.join(_BACKUP_DIR, f)
+                backups.append((os.path.getmtime(path), path))
+
+        # Sort by time (newest first)
+        backups.sort(reverse=True)
+
+        # Remove backups beyond MAX_BACKUPS
+        for _, path in backups[_MAX_BACKUPS:]:
+            try:
+                os.remove(path)
+                # Also remove WAL if exists
+                wal = path + "-wal"
+                if os.path.exists(wal):
+                    os.remove(wal)
+                log_to_file(f"Removed old backup: {os.path.basename(path)}")
+            except OSError:
+                pass
+
+    except Exception as e:
+        log_to_file(f"Backup rotation failed: {e}")

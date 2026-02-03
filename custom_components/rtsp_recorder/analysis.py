@@ -19,12 +19,16 @@ Memory Management:
 - MAX_THUMB_SIZE: Constrains thumbnail dimensions
 - THUMB_JPEG_QUALITY: Controls compression level
 
-Version: 1.1.0 BETA
+Version: 1.1.1
+Changes in 1.1.1:
+- Fixed blocking I/O calls (os.listdir, shutil.rmtree) with run_in_executor
+- Moved shutil import to module level
 """
 import asyncio
 import json
 import logging
 import os
+import shutil
 import time
 import urllib.request
 import aiohttp
@@ -54,7 +58,7 @@ FACE_RETRY_CONFIDENCE_MULTIPLIER = 0.6
 # ===== End Memory Management Constants =====
 
 # Lazy access to stats tracker from helpers module
-def _get_inference_stats():
+def _get_inference_stats() -> Any:
     """Get the inference stats tracker from helpers module."""
     try:
         from .helpers import get_inference_stats
@@ -85,8 +89,17 @@ def _safe_mkdir(path: str) -> None:
 
 
 def _write_json(path: str, data: dict) -> None:
+    """Synchronous JSON write - use _write_json_async in async contexts."""
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+async def _write_json_async(path: str, data: dict) -> None:
+    """v1.1.1: Async JSON write to avoid blocking event loop."""
+    def _write() -> None:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    await asyncio.get_event_loop().run_in_executor(None, _write)
 
 
 def _safe_float_list(values: list[Any]) -> list[float]:
@@ -94,7 +107,7 @@ def _safe_float_list(values: list[Any]) -> list[float]:
     for v in values:
         try:
             out.append(float(v))
-        except Exception:
+        except (ValueError, TypeError):
             continue
     return out
 
@@ -339,13 +352,13 @@ def _ensure_models(output_root: str, device: str) -> tuple[str, dict[int, str]]:
                 label = line.strip()
                 if label:
                     labels[i] = label
-    except Exception:
+    except OSError:
         labels = {}
 
     return model_path, labels
 
 
-def _build_interpreter(model_path: str, device: str):
+def _build_interpreter(model_path: str, device: str) -> Any:
     if tflite is None:
         raise RuntimeError("tflite-runtime not available")
     if device == "coral_usb":
@@ -369,7 +382,7 @@ def _parse_outputs(output_details: list[dict[str, Any]], outputs: list[Any]) -> 
         elif "count" in name or "num" in name:
             try:
                 count = int(output[0])
-            except Exception:
+            except (ValueError, TypeError, IndexError):
                 count = int(output.reshape(-1)[0])
         elif len(shape) == 3 and shape[-1] == 4:
             boxes = output
@@ -583,9 +596,14 @@ async def extract_frames(video_path: str, output_dir: str, interval_s: int = 2) 
                 process.kill()
         raise
 
-    files = sorted(
-        [os.path.join(output_dir, f) for f in os.listdir(output_dir) if f.startswith("frame_")]
-    )
+    # v1.1.1 fix: Run blocking I/O in executor to avoid blocking event loop
+    def _list_frames() -> list[str]:
+        return sorted(
+            [os.path.join(output_dir, f) for f in os.listdir(output_dir) if f.startswith("frame_")]
+        )
+    
+    loop = asyncio.get_event_loop()
+    files = await loop.run_in_executor(None, _list_frames)
     return files
 
 
@@ -649,7 +667,7 @@ async def analyze_recording(
     }
 
     result_path = os.path.join(job_dir, "result.json")
-    _write_json(result_path, result)
+    await _write_json_async(result_path, result)
 
     try:
         start_time = time.monotonic()
@@ -659,7 +677,7 @@ async def analyze_recording(
         result["frame_count"] = len(frames)
         result["duration_sec"] = duration_sec
         result["status"] = "frames_extracted"
-        _write_json(result_path, result)
+        await _write_json_async(result_path, result)
 
         detections: list[dict[str, Any]] = []
 
@@ -759,7 +777,7 @@ async def analyze_recording(
                         try:
                             # v1.1.0 fix: Read file in executor to avoid blocking event loop
                             frame_bytes = await asyncio.to_thread(lambda p=frame_path: open(p, "rb").read())
-                        except Exception as read_err:
+                        except OSError as read_err:
                             _LOGGER.debug("Failed to read frame %d: %s", idx, read_err)
                             consecutive_face_errors += 1
                             continue
@@ -768,7 +786,7 @@ async def analyze_recording(
                         if Image is not None:
                             try:
                                 frame_img = Image.open(io.BytesIO(frame_bytes)).convert("RGB")
-                            except Exception:
+                            except (OSError, ValueError):
                                 frame_img = None
 
                         embed_flag = "1" if (face_store_embeddings or (people_db and len(people_db) > 0)) else "0"
@@ -1001,7 +1019,7 @@ async def analyze_recording(
                                     crop.save(buf, format="JPEG", quality=THUMB_JPEG_QUALITY)
                                     thumb_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
                                     thumb_data = f"data:image/jpeg;base64,{thumb_b64}"
-                                except Exception:
+                                except (OSError, ValueError):
                                     thumb_data = None
 
                             face_item = {
@@ -1045,27 +1063,24 @@ async def analyze_recording(
         
         # v1.1.0n: Cleanup frames after successful analysis to save disk space
         # Frames are only needed during detection, not afterwards
+        # v1.1.1 fix: Run blocking I/O in executor to avoid blocking event loop
         try:
-            import shutil
             if os.path.isdir(frames_dir):
-                shutil.rmtree(frames_dir)
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, shutil.rmtree, frames_dir)
                 result["frames_cleaned"] = True
-        except Exception as cleanup_err:
+        except OSError as cleanup_err:
             result["frames_cleanup_error"] = str(cleanup_err)
         
+        await _write_json_async(result_path, result)
         return result
     except asyncio.CancelledError:
         result["status"] = "cancelled"
         result["error"] = "analysis_cancelled"
-        _write_json(result_path, result)
+        await _write_json_async(result_path, result)
         raise
     except Exception as e:
         result["status"] = "error"
         result["error"] = str(e)
-        _write_json(result_path, result)
+        await _write_json_async(result_path, result)
         return result
-    finally:
-        try:
-            _write_json(result_path, result)
-        except Exception:
-            pass

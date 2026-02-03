@@ -188,7 +188,7 @@ class PreRecordBuffer:
             except FileNotFoundError:
                 _LOGGER.error("FFmpeg not found. Please install FFmpeg.")
                 return False
-            except Exception as e:
+            except OSError as e:
                 _LOGGER.error(f"Failed to start pre-record buffer for {self.camera_name}: {e}")
                 return False
     
@@ -292,7 +292,7 @@ class PreRecordBuffer:
                 stderr=asyncio.subprocess.PIPE
             )
             _LOGGER.info(f"Successfully restarted buffer for {self.camera_name}")
-        except Exception as e:
+        except OSError as e:
             _LOGGER.error(f"Failed to restart buffer for {self.camera_name}: {e}")
     
     async def get_segments(self, max_seconds: int | None = None) -> list[Path]:
@@ -387,7 +387,7 @@ class PreRecordBuffer:
                 except asyncio.TimeoutError:
                     _LOGGER.warning(f"Force killing buffer for {self.camera_name}")
                     self._process.kill()
-                except Exception as e:
+                except OSError as e:
                     _LOGGER.error(f"Error stopping buffer for {self.camera_name}: {e}")
                 finally:
                     self._process = None
@@ -627,7 +627,7 @@ class PreRecordManager:
                 
                 return concat_success
                 
-            except Exception as e:
+            except OSError as e:
                 _LOGGER.error(f"Pre-record capture failed for {camera_name}: {e}")
                 return False
                 
@@ -677,7 +677,7 @@ class PreRecordManager:
         except asyncio.TimeoutError:
             _LOGGER.error("Live recording timed out")
             return False
-        except Exception as e:
+        except OSError as e:
             _LOGGER.error(f"Live recording error: {e}")
             return False
     
@@ -757,7 +757,7 @@ class PreRecordManager:
             
             return Path(output_path).exists()
             
-        except Exception as e:
+        except OSError as e:
             _LOGGER.error(f"Concat error: {e}")
             return False
             

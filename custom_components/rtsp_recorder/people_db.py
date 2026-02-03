@@ -13,6 +13,7 @@ Version: 1.1.0k - SQLite-only (cleaned API)
 import asyncio
 import datetime
 import logging
+import sqlite3
 from typing import Any, Optional
 
 from .const import PEOPLE_DB_VERSION
@@ -110,7 +111,7 @@ async def _load_people_from_sqlite() -> dict[str, Any]:
             "created_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
             "updated_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
         }
-    except Exception as e:
+    except sqlite3.Error as e:
         _LOGGER.error(f"Failed to load people from SQLite: {e}")
         return _default_people_db()
 
@@ -135,7 +136,7 @@ def _public_people_view(people: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     t = emb.get("thumb")
                     if t:
                         thumbs.append(t)
-        except Exception:
+        except TypeError:
             thumbs = []
         
         neg_count = len(p.get("negative_embeddings", []) or [])
@@ -177,7 +178,7 @@ async def add_ignored_embedding(embedding: list[float], thumb: str | None = None
     try:
         result = _sqlite_db.add_ignored_embedding(embedding, reason="User ignored")
         return result > 0
-    except Exception as e:
+    except sqlite3.Error as e:
         _LOGGER.error(f"Failed to add ignored embedding: {e}")
         return False
 
@@ -193,7 +194,7 @@ async def get_ignored_embeddings() -> list[list[float]]:
     
     try:
         return _sqlite_db.get_ignored_embeddings()
-    except Exception as e:
+    except sqlite3.Error as e:
         _LOGGER.error(f"Failed to get ignored embeddings: {e}")
         return []
 
@@ -209,7 +210,7 @@ async def get_ignored_count() -> int:
     
     try:
         return len(_sqlite_db.get_ignored_embeddings())
-    except Exception:
+    except sqlite3.Error:
         return 0
 
 
@@ -239,7 +240,7 @@ async def _save_person_to_sqlite(person_id: str, name: str, embeddings: list = N
                     _sqlite_db.add_embedding(person_id, vector)
         
         return True
-    except Exception as e:
+    except sqlite3.Error as e:
         _LOGGER.error(f"Failed to save person to SQLite: {e}")
         return False
 
@@ -258,7 +259,7 @@ async def _delete_person_from_sqlite(person_id: str) -> bool:
     
     try:
         return _sqlite_db.delete_person(person_id, hard_delete=True)
-    except Exception as e:
+    except sqlite3.Error as e:
         _LOGGER.error(f"Failed to delete person from SQLite: {e}")
         return False
 
@@ -278,7 +279,7 @@ async def _rename_person_in_sqlite(person_id: str, new_name: str) -> bool:
     
     try:
         return _sqlite_db.update_person(person_id, name=new_name)
-    except Exception as e:
+    except sqlite3.Error as e:
         _LOGGER.error(f"Failed to rename person in SQLite: {e}")
         return False
 
@@ -300,7 +301,7 @@ async def _add_embedding_to_sqlite(person_id: str, embedding: list, thumb: str =
     try:
         result = _sqlite_db.add_embedding(person_id, embedding, source_image=thumb)
         return result > 0
-    except Exception as e:
+    except sqlite3.Error as e:
         _LOGGER.error(f"Failed to add embedding to SQLite: {e}")
         return False
 

@@ -1,5 +1,5 @@
-// ===== RTSP Recorder Card v1.1.0n BETA (Person Detail Popup) =====
-console.log("[RTSP-Recorder] Card Version: 1.1.0n (Person Detail Popup)");
+// ===== RTSP Recorder Card v1.1.1 (XSS Hardening) =====
+console.log("[RTSP-Recorder] Card Version: 1.1.1 (XSS Hardening)");
 // MED-008 Fix: Debug logging behind feature flag
 const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
 const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
@@ -297,7 +297,7 @@ class RtspRecorderCard extends HTMLElement {
             const cameraList = entries.map(([_, rec]) => {
                 const cam = rec.camera ? rec.camera.replace(/_/g, ' ') : 'Unbekannt';
                 const dur = rec.duration || 0;
-                return `${cam} (${dur}s)`;
+                return `${this._escapeHtml(cam)} (${dur}s)`;
             }).join(', ');
             
             statusEl.innerHTML = `<span style="color: #f44336;">● Aufnahme: ${cameraList}</span>`;
@@ -2248,7 +2248,7 @@ class RtspRecorderCard extends HTMLElement {
                 const count = hourData[h] || 0;
                 const pct = maxH > 0 ? (count / maxH) * 100 : 0;
                 const barColor = count > 0 ? 'linear-gradient(180deg, #03a9f4, #00bcd4)' : 'var(--divider-color)';
-                hourCameraHtml += `<div style="flex:1; background:${barColor}; height:${Math.max(pct, 3)}%; border-radius:2px 2px 0 0; min-height:3px;" title="${camera}: ${count}x um ${h}:00"></div>`;
+                hourCameraHtml += `<div style="flex:1; background:${barColor}; height:${Math.max(pct, 3)}%; border-radius:2px 2px 0 0; min-height:3px;" title="${this._escapeHtml(camera)}: ${count}x um ${h}:00"></div>`;
             }
             hourCameraHtml += '</div>';
             hourCameraHtml += '<div style="display:flex; justify-content:space-between; font-size:8px; color:#666; margin-top:2px;"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div></div>';
@@ -2265,7 +2265,7 @@ class RtspRecorderCard extends HTMLElement {
                 const count = hourData[h] || 0;
                 const pct = maxH > 0 ? (count / maxH) * 100 : 0;
                 const barColor = count > 0 ? 'linear-gradient(180deg, #9c27b0, #e91e63)' : 'var(--divider-color)';
-                hourPersonHtml += `<div style="flex:1; background:${barColor}; height:${Math.max(pct, 3)}%; border-radius:2px 2px 0 0; min-height:3px;" title="${person}: ${count}x um ${h}:00"></div>`;
+                hourPersonHtml += `<div style="flex:1; background:${barColor}; height:${Math.max(pct, 3)}%; border-radius:2px 2px 0 0; min-height:3px;" title="${this._escapeHtml(person)}: ${count}x um ${h}:00"></div>`;
             }
             hourPersonHtml += '</div>';
             hourPersonHtml += '<div style="display:flex; justify-content:space-between; font-size:8px; color:#666; margin-top:2px;"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div></div>';

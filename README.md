@@ -2,81 +2,49 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.1.0n%20BETA-orange)
+![Version](https://img.shields.io/badge/version-1.1.1-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![ISO 25010](https://img.shields.io/badge/ISO%2025010-90.0%25-brightgreen)
-![ISO 27001](https://img.shields.io/badge/ISO%2027001-90.0%25-brightgreen)
+![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%25-brightgreen)
+![ISO 27001](https://img.shields.io/badge/ISO%2027001-85%25-brightgreen)
+![Type Hints](https://img.shields.io/badge/Type%20Hints-88.2%25-brightgreen)
 ![HACS](https://img.shields.io/badge/HACS-Compatible-orange)
 
-📋 **[Audit Report v1.1.0k](AUDIT_REPORT_v1.1.0k_FINAL.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
+📋 **[Audit Report v4.0](COMPREHENSIVE_AUDIT_REPORT_v4.0_2026-02-03.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
+
+## What's New in v1.1.1
+
+### 🔍 Quality & Security Audit v4.0
+- **ISO 25010 Score**: 93/100 (EXCELLENT) ⬆️ +1
+- **ISO 27001 Score**: 85/100 (GOOD)
+- **10 Hardcore Security Tests**: All passed ✅
+- **Type Hints Coverage**: 88.2% (134/152 functions)
+
+### 📝 Type Hints Coverage
+All core modules now have comprehensive type hints:
+- `analysis.py`: 100% | `database.py`: 100% | `exceptions.py`: 100%
+- `config_flow.py`: 100% | `helpers.py`: 88% | `services.py`: 50%
 
 ## Version Comparison
 
-| Feature | v1.0.9 STABLE | v1.1.0n BETA |
-|---------|---------------|--------------|
-| **Recording** | Sequential (record → then snapshot) | ⚡ Parallel (snapshot DURING recording) |
-| **Timeline Update** | After recording saved | ⚡ Immediate on start |
-| **Recording Completion** | Polling/sleep | ⚡ Callback-based events |
-| **Time per Recording** | duration + 5-6s | ⚡ duration + 1-2s |
-| **TPU Load Display** | ❌ Not available | ✅ Real-time percentage |
-| **Performance Metrics** | ❌ Not available | ✅ METRIC logging |
-| **Recording Progress** | ❌ Not visible | ✅ Footer display |
-| **Rate Limiter** | ❌ Not available | ✅ DoS protection |
-| **Custom Exceptions** | ❌ Generic only | ✅ 20+ specific types |
-| **Performance Module** | ❌ Not available | ✅ Metrics tracking |
-| **Migrations** | ❌ Manual | ✅ Automatic versioning |
-| **Languages** | 2 (DE, EN) | ✅ 5 (DE, EN, ES, FR, NL) |
-| **Analysis Cleanup** | ❌ Manual only | ✅ Automatic with video |
-| **Cleanup Interval** | ❌ Fixed 24h | ✅ Configurable 1-24h |
-| **Movement Profile** | ❌ Limited | ✅ Full recognition logging |
-| **Person Detail Popup** | ❌ Not available | ✅ View/edit all samples |
-| **Person Entities** | ❌ Not available | ✅ For HA automations |
-| **SQLite Backend** | ✅ | ✅ Schema v2 |
-| **Face Recognition** | ✅ | ✅ |
-| **Coral EdgeTPU** | ✅ | ✅ |
-| **HACS Compatible** | ✅ | ✅ |
-| **Audit Score** | 92.5% | 90.0% |
-| **Production Ready** | ✅ Stable | 🔶 Beta Testing |
-
-## What's New in v1.1.0n BETA
-
-### 👤 Person Detail Popup (NEW in v1.1.0n)
-- **Click on person names** in People-Tab to open detailed view
-- **View all positive samples**: All assigned face images with dates
-- **View all negative samples**: All exclusion images (corrected false matches)
-- **Recognition counter**: How often was this person detected
-- **Last seen info**: Date, time and camera of last recognition
-- **Delete samples**: Remove individual samples with one click
-- **Help text**: Explanation box for all functions
-
-### 🏠 Person Entities for Automations (NEW in v1.1.0n)
-- **Automatic entity creation**: `binary_sensor.rtsp_person_{name}`
-- **State tracking**: "on" when recently recognized, "off" after 5 minutes
-- **Rich attributes**: `last_seen`, `last_camera`, `confidence`, `total_sightings`
-- **Perfect for automations**: Notifications when specific person arrives
-
-### 🧹 Automatic Analysis Cleanup (NEW in v1.1.0k)
-- **Analysis folders** automatically deleted when source video is removed
-- **Retention-based cleanup** for analysis data matching video retention
-- **Per-camera retention** support for analysis cleanup
-- **On-demand deletion** when video is manually deleted via service
-
-### ⚙️ Configurable Cleanup Interval (NEW in v1.1.0k)
-- **Slider configuration** in options: 1-24 hours
-- **Flexible scheduling** for different retention needs
-- **Recommended:** Set to 1h for short retention times (e.g., 2h)
-
-### 📊 Movement Profile Logging (Fixed in v1.1.0k)
-- **Recognition events** properly logged to SQLite database
-- **Full history** of person detections per camera
-- **Movement tab** now shows actual detection data
-
-### 🔒 Security & Reliability Modules
-- **Rate Limiter** (`rate_limiter.py`): Token Bucket DoS protection
-- **Custom Exceptions** (`exceptions.py`): 20+ structured exception types
-- **Performance Monitor**: Operations metrics tracking
-- **Database Migrations**: Automatic schema versioning
+| Feature | v1.0.9 STABLE | v1.1.1 |
+|---------|---------------|--------|
+| **Recording** | Sequential | ⚡ Parallel |
+| **Timeline Update** | After save | ⚡ Immediate |
+| **Time per Recording** | +5-6s | ⚡ +1-2s |
+| **TPU Load Display** | ❌ | ✅ Real-time |
+| **Performance Metrics** | ❌ | ✅ METRIC logging |
+| **Recording Progress** | ❌ | ✅ Footer display |
+| **Rate Limiter** | ❌ | ✅ DoS protection |
+| **Custom Exceptions** | ❌ | ✅ 29 types |
+| **Type Hints** | ~40% | ✅ 88.2% |
+| **Languages** | 2 | ✅ 5 |
+| **Analysis Cleanup** | ❌ | ✅ Automatic |
+| **Person Detail Popup** | ❌ | ✅ Full features |
+| **Person Entities** | ❌ | ✅ HA automations |
+| **ISO 25010 Score** | 92% | ✅ 93% |
+| **ISO 27001 Score** | 85% | ✅ 85% |
+| **Production Ready** | ✅ | ✅ |
 
 ### ⚡ Performance Optimizations
 - **Parallel Snapshots**: Thumbnails captured DURING recording

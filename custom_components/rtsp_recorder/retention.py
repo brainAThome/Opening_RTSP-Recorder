@@ -117,7 +117,7 @@ def cleanup_recordings(
                     count_deleted += 1
                     size_freed += file_size
                     _LOGGER.debug(f"Deleted old recording: {file_path}")
-            except Exception as e:
+            except OSError as e:
                 _LOGGER.error(f"Error deleting {file_path}: {e}")
 
     if count_deleted > 0:
@@ -182,7 +182,7 @@ def cleanup_analysis_data(
                 # Use folder modification time as fallback
                 try:
                     folder_mtime = os.stat(folder_path).st_mtime
-                except Exception:
+                except OSError:
                     continue
                     
                 if folder_mtime < global_cutoff:
@@ -193,7 +193,7 @@ def cleanup_analysis_data(
                             fp = os.path.join(dirpath, f)
                             try:
                                 folder_size += os.path.getsize(fp)
-                            except Exception:
+                            except OSError:
                                 pass
                     
                     try:
@@ -201,7 +201,7 @@ def cleanup_analysis_data(
                         folders_deleted += 1
                         size_freed += folder_size
                         _LOGGER.debug(f"Deleted old analysis: {folder_path}")
-                    except Exception as e:
+                    except OSError as e:
                         _LOGGER.error(f"Error deleting analysis folder {folder_path}: {e}")
                         
         except Exception as e:
@@ -267,7 +267,7 @@ def delete_analysis_for_video(video_path: str, storage_path: str) -> bool:
             shutil.rmtree(analysis_path)
             _LOGGER.info(f"Deleted analysis folder: {analysis_path}")
             return True
-        except Exception as e:
+        except OSError as e:
             _LOGGER.error(f"Error deleting analysis folder {analysis_path}: {e}")
             
     return False

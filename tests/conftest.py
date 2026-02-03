@@ -20,8 +20,16 @@ def pytest_configure(config):
     """Configure pytest markers."""
     config.addinivalue_line("markers", "unit: Unit tests")
     config.addinivalue_line("markers", "integration: Integration tests")
+    config.addinivalue_line("markers", "ha: Home Assistant integration tests")
     config.addinivalue_line("markers", "slow: Slow tests")
     config.addinivalue_line("markers", "asyncio: Async tests")
+    # Ensure pytest-asyncio can handle async fixtures from HA test plugin
+    try:
+        import pytest_homeassistant_custom_component  # noqa: F401
+        if getattr(config.option, "asyncio_mode", None) in (None, "strict"):
+            config.option.asyncio_mode = "auto"
+    except Exception:
+        pass
 
 
 @pytest.fixture(scope="session")

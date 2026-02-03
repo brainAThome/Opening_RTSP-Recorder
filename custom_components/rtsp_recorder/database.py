@@ -98,7 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_face_embeddings_person ON face_embeddings(person_
 class DatabaseManager:
     """Thread-safe SQLite database manager for RTSP Recorder."""
     
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str) -> None:
         """Initialize database manager.
         
         Args:
@@ -175,7 +175,7 @@ class DatabaseManager:
             _LOGGER.error(f"Failed to initialize database: {e}")
             return False
     
-    def _migrate(self, from_version: int, to_version: int):
+    def _migrate(self, from_version: int, to_version: int) -> None:
         """Run database migrations.
         
         Args:
@@ -195,7 +195,7 @@ class DatabaseManager:
         )
         self.conn.commit()
     
-    def close(self):
+    def close(self) -> None:
         """Close database connection."""
         if hasattr(self._local, 'connection') and self._local.connection:
             self._local.connection.close()
@@ -269,22 +269,27 @@ class DatabaseManager:
             True if successful
         """
         try:
-            updates = ["updated_at = ?"]
-            params = [datetime.now().isoformat()]
-            
-            if name:
-                updates.append("name = ?")
-                params.append(name)
-            if metadata is not None:
-                updates.append("metadata = ?")
-                params.append(json.dumps(metadata))
-            
-            params.append(person_id)
-            
-            self.conn.execute(
-                f"UPDATE people SET {', '.join(updates)} WHERE id = ?",
-                params
-            )
+            now = datetime.now().isoformat()
+            if name and metadata is not None:
+                self.conn.execute(
+                    "UPDATE people SET updated_at = ?, name = ?, metadata = ? WHERE id = ?",
+                    (now, name, json.dumps(metadata), person_id)
+                )
+            elif name:
+                self.conn.execute(
+                    "UPDATE people SET updated_at = ?, name = ? WHERE id = ?",
+                    (now, name, person_id)
+                )
+            elif metadata is not None:
+                self.conn.execute(
+                    "UPDATE people SET updated_at = ?, metadata = ? WHERE id = ?",
+                    (now, json.dumps(metadata), person_id)
+                )
+            else:
+                self.conn.execute(
+                    "UPDATE people SET updated_at = ? WHERE id = ?",
+                    (now, person_id)
+                )
             self.conn.commit()
             return True
         except Exception as e:
@@ -886,7 +891,7 @@ class DatabaseManager:
         count = len(blob) // 4  # 4 bytes per float
         return list(struct.unpack(f'{count}f', blob))
     
-    def vacuum(self):
+    def vacuum(self) -> None:
         """Optimize database file size."""
         try:
             self.conn.execute("VACUUM")
@@ -947,7 +952,7 @@ def get_database(hass_config_path: str = None) -> DatabaseManager:
     return _db_instance
 
 
-def close_database():
+def close_database() -> None:
     """Close database connection."""
     global _db_instance
     if _db_instance:

@@ -513,7 +513,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 if files:
                     files.sort(reverse=True)
                     return files[0]
-            except Exception:
+            except OSError:
                 pass
             return None
         

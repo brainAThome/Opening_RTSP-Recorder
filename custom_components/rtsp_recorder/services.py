@@ -195,7 +195,7 @@ def register_services(
             return parts[-2]
         return ""
 
-    async def handle_save_recording(call: ServiceCall = None, camera_name: str = None, duration: int = 30, snapshot_delay: float = 0):
+    async def handle_save_recording(call: ServiceCall = None, camera_name: str = None, duration: int = 30, snapshot_delay: float = 0) -> None:
         """Handle recording. Can be called via Service (manual) or Internal Event (auto)."""
         # v1.1.0 METRICS: Track total pipeline time from start
         pipeline_start = time.time()

@@ -91,12 +91,12 @@ class OptimizedRecorder:
         self.on_final_thumbnail = on_final_thumbnail
         self._watchdog_task: Optional[asyncio.Task] = None
         
-    async def start(self):
+    async def start(self) -> None:
         """Start the recorder (including watchdog)."""
         self._watchdog_task = asyncio.create_task(self._watchdog_loop())
         _LOGGER.info("OptimizedRecorder started with watchdog")
         
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the recorder and cleanup."""
         if self._watchdog_task:
             self._watchdog_task.cancel()
@@ -214,7 +214,7 @@ class OptimizedRecorder:
             )
             _LOGGER.info("Started FFmpeg recording: %s (PID: %s)", job.camera_name, process.pid)
             return process
-        except Exception as e:
+        except OSError as e:
             _LOGGER.error("Failed to start FFmpeg: %s", e)
             return None
     
@@ -255,7 +255,7 @@ class OptimizedRecorder:
                 
                 if self.on_early_thumbnail:
                     self.on_early_thumbnail(job, early_thumb_path)
-        except Exception as e:
+        except OSError as e:
             _LOGGER.warning("Early thumbnail failed: %s", e)
     
     async def _monitor_ffmpeg(self, job: RecordingJob):
@@ -270,7 +270,7 @@ class OptimizedRecorder:
                 stderr_text = stderr.decode('utf-8', errors='replace')[-500:] if stderr else ""
                 _LOGGER.warning("FFmpeg exited with code %s: %s", job.process.returncode, stderr_text)
                 job.error = f"FFmpeg error code {job.process.returncode}"
-        except Exception as e:
+        except OSError as e:
             _LOGGER.error("FFmpeg monitoring failed: %s", e)
             job.error = str(e)
     
@@ -345,7 +345,7 @@ class OptimizedRecorder:
                     self.on_final_thumbnail(job, thumb_path)
             else:
                 _LOGGER.warning("Final thumbnail generation failed")
-        except Exception as e:
+        except OSError as e:
             _LOGGER.error("Thumbnail generation error: %s", e)
     
     async def _watchdog_loop(self):

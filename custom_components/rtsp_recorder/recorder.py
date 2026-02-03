@@ -77,7 +77,7 @@ def log_to_file(msg: str) -> None:
     try:
         with open("/config/rtsp_debug.log", "a") as f:
             f.write(f"RECORDER: {msg}\n")
-    except Exception:
+    except OSError:
         pass
 
 async def _monitor_recording(
@@ -129,7 +129,7 @@ async def _monitor_recording(
                     os.rename(tmp_path, final_path)
                     log_to_file(f"Renamed {tmp_path} -> {final_path} (Success)")
                     success = True
-                except Exception as e:
+                except OSError as e:
                     error_msg = f"Rename failed: {e}"
                     log_to_file(f"RENAME ERROR: {e}")
             else:
@@ -308,7 +308,7 @@ def cleanup_orphaned_tmp_files(recordings_path: str, max_age_hours: int = 24) ->
                             os.remove(filepath)
                             log_to_file(f"Cleaned up orphaned tmp file: {filepath}")
                             deleted += 1
-                    except Exception as e:
+                    except OSError as e:
                         log_to_file(f"Error cleaning tmp file {filepath}: {e}")
     except Exception as e:
         log_to_file(f"Error during tmp cleanup: {e}")

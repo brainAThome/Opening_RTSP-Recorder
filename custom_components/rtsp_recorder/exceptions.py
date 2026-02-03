@@ -11,7 +11,7 @@ from typing import Any
 class RTSPRecorderError(Exception):
     """Base exception for RTSP Recorder errors."""
     
-    def __init__(self, message: str, details: dict[str, Any] | None = None):
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         self.message = message
         self.details = details or {}
         super().__init__(message)
@@ -35,7 +35,7 @@ class ConfigurationError(RTSPRecorderError):
 class InvalidConfigError(ConfigurationError):
     """Invalid configuration value provided."""
     
-    def __init__(self, key: str, value: Any, reason: str):
+    def __init__(self, key: str, value: Any, reason: str) -> None:
         super().__init__(
             f"Invalid configuration for '{key}': {reason}",
             {"key": key, "value": str(value), "reason": reason}
@@ -45,7 +45,7 @@ class InvalidConfigError(ConfigurationError):
 class MissingConfigError(ConfigurationError):
     """Required configuration is missing."""
     
-    def __init__(self, key: str):
+    def __init__(self, key: str) -> None:
         super().__init__(
             f"Missing required configuration: '{key}'",
             {"key": key}
@@ -62,7 +62,7 @@ class DatabaseError(RTSPRecorderError):
 class DatabaseConnectionError(DatabaseError):
     """Failed to connect to database."""
     
-    def __init__(self, path: str, reason: str):
+    def __init__(self, path: str, reason: str) -> None:
         super().__init__(
             f"Failed to connect to database at '{path}': {reason}",
             {"path": path, "reason": reason}
@@ -72,7 +72,7 @@ class DatabaseConnectionError(DatabaseError):
 class DatabaseQueryError(DatabaseError):
     """Database query failed."""
     
-    def __init__(self, operation: str, reason: str):
+    def __init__(self, operation: str, reason: str) -> None:
         super().__init__(
             f"Database {operation} failed: {reason}",
             {"operation": operation, "reason": reason}
@@ -82,7 +82,7 @@ class DatabaseQueryError(DatabaseError):
 class MigrationError(DatabaseError):
     """Database migration failed."""
     
-    def __init__(self, from_version: int, to_version: int, reason: str):
+    def __init__(self, from_version: int, to_version: int, reason: str) -> None:
         super().__init__(
             f"Migration from v{from_version} to v{to_version} failed: {reason}",
             {"from_version": from_version, "to_version": to_version, "reason": reason}
@@ -99,7 +99,7 @@ class RecordingError(RTSPRecorderError):
 class CameraConnectionError(RecordingError):
     """Failed to connect to camera."""
     
-    def __init__(self, camera_name: str, url: str, reason: str):
+    def __init__(self, camera_name: str, url: str, reason: str) -> None:
         super().__init__(
             f"Failed to connect to camera '{camera_name}': {reason}",
             {"camera": camera_name, "url": url, "reason": reason}
@@ -109,7 +109,7 @@ class CameraConnectionError(RecordingError):
 class RecordingStartError(RecordingError):
     """Failed to start recording."""
     
-    def __init__(self, camera_name: str, reason: str):
+    def __init__(self, camera_name: str, reason: str) -> None:
         super().__init__(
             f"Failed to start recording for '{camera_name}': {reason}",
             {"camera": camera_name, "reason": reason}
@@ -119,7 +119,7 @@ class RecordingStartError(RecordingError):
 class RecordingStopError(RecordingError):
     """Failed to stop recording cleanly."""
     
-    def __init__(self, camera_name: str, reason: str):
+    def __init__(self, camera_name: str, reason: str) -> None:
         super().__init__(
             f"Failed to stop recording for '{camera_name}': {reason}",
             {"camera": camera_name, "reason": reason}
@@ -129,7 +129,7 @@ class RecordingStopError(RecordingError):
 class StorageError(RecordingError):
     """Storage operation failed."""
     
-    def __init__(self, path: str, operation: str, reason: str):
+    def __init__(self, path: str, operation: str, reason: str) -> None:
         super().__init__(
             f"Storage {operation} failed for '{path}': {reason}",
             {"path": path, "operation": operation, "reason": reason}
@@ -146,7 +146,7 @@ class AnalysisError(RTSPRecorderError):
 class DetectorError(AnalysisError):
     """Detector service error."""
     
-    def __init__(self, url: str, reason: str):
+    def __init__(self, url: str, reason: str) -> None:
         super().__init__(
             f"Detector service error at '{url}': {reason}",
             {"url": url, "reason": reason}
@@ -156,7 +156,7 @@ class DetectorError(AnalysisError):
 class ModelLoadError(AnalysisError):
     """Failed to load ML model."""
     
-    def __init__(self, model_name: str, reason: str):
+    def __init__(self, model_name: str, reason: str) -> None:
         super().__init__(
             f"Failed to load model '{model_name}': {reason}",
             {"model": model_name, "reason": reason}
@@ -166,7 +166,7 @@ class ModelLoadError(AnalysisError):
 class VideoProcessingError(AnalysisError):
     """Failed to process video file."""
     
-    def __init__(self, video_path: str, reason: str):
+    def __init__(self, video_path: str, reason: str) -> None:
         super().__init__(
             f"Failed to process video '{video_path}': {reason}",
             {"video": video_path, "reason": reason}
@@ -183,7 +183,7 @@ class FaceRecognitionError(RTSPRecorderError):
 class FaceDetectionError(FaceRecognitionError):
     """Failed to detect face in image."""
     
-    def __init__(self, reason: str):
+    def __init__(self, reason: str) -> None:
         super().__init__(
             f"Face detection failed: {reason}",
             {"reason": reason}
@@ -193,7 +193,7 @@ class FaceDetectionError(FaceRecognitionError):
 class FaceEmbeddingError(FaceRecognitionError):
     """Failed to generate face embedding."""
     
-    def __init__(self, reason: str):
+    def __init__(self, reason: str) -> None:
         super().__init__(
             f"Face embedding generation failed: {reason}",
             {"reason": reason}
@@ -203,7 +203,7 @@ class FaceEmbeddingError(FaceRecognitionError):
 class FaceMatchError(FaceRecognitionError):
     """Face matching operation failed."""
     
-    def __init__(self, reason: str):
+    def __init__(self, reason: str) -> None:
         super().__init__(
             f"Face matching failed: {reason}",
             {"reason": reason}
@@ -220,7 +220,7 @@ class PersonDatabaseError(RTSPRecorderError):
 class PersonNotFoundError(PersonDatabaseError):
     """Person not found in database."""
     
-    def __init__(self, person_id: str):
+    def __init__(self, person_id: str) -> None:
         super().__init__(
             f"Person with ID '{person_id}' not found",
             {"person_id": person_id}
@@ -230,7 +230,7 @@ class PersonNotFoundError(PersonDatabaseError):
 class DuplicatePersonError(PersonDatabaseError):
     """Person already exists in database."""
     
-    def __init__(self, person_name: str):
+    def __init__(self, person_name: str) -> None:
         super().__init__(
             f"Person '{person_name}' already exists",
             {"person_name": person_name}
@@ -240,7 +240,7 @@ class DuplicatePersonError(PersonDatabaseError):
 class InvalidPersonNameError(PersonDatabaseError):
     """Invalid person name provided."""
     
-    def __init__(self, name: str, reason: str):
+    def __init__(self, name: str, reason: str) -> None:
         super().__init__(
             f"Invalid person name '{name}': {reason}",
             {"name": name, "reason": reason}
@@ -257,7 +257,7 @@ class APIError(RTSPRecorderError):
 class RateLimitExceededError(APIError):
     """Rate limit exceeded."""
     
-    def __init__(self, retry_after: int):
+    def __init__(self, retry_after: int) -> None:
         super().__init__(
             f"Rate limit exceeded. Retry after {retry_after} seconds",
             {"retry_after": retry_after}
@@ -267,7 +267,7 @@ class RateLimitExceededError(APIError):
 class AuthenticationError(APIError):
     """Authentication failed."""
     
-    def __init__(self, reason: str):
+    def __init__(self, reason: str) -> None:
         super().__init__(
             f"Authentication failed: {reason}",
             {"reason": reason}
@@ -277,7 +277,7 @@ class AuthenticationError(APIError):
 class ValidationError(APIError):
     """Input validation failed."""
     
-    def __init__(self, field: str, reason: str):
+    def __init__(self, field: str, reason: str) -> None:
         super().__init__(
             f"Validation failed for '{field}': {reason}",
             {"field": field, "reason": reason}

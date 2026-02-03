@@ -40,7 +40,7 @@ def log_to_file(msg: str) -> None:
     try:
         with open("/config/rtsp_debug.log", "a") as f:
             f.write(f"FLOW: {msg}\n")
-    except Exception:
+    except OSError:
         pass
 
 
@@ -98,7 +98,7 @@ class RtspRecorderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: config_entries.ConfigEntry):
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> "RtspRecorderOptionsFlow":
         """Get the options flow handler for reconfiguration."""
         return RtspRecorderOptionsFlow(config_entry)
 
@@ -157,7 +157,7 @@ class RtspRecorderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
     """Handle options flow - Simplified 2-page design."""
 
-    def __init__(self, config_entry):
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self._config_entry = config_entry
         self.config_cache = {**config_entry.data, **config_entry.options}
@@ -175,7 +175,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         except Exception:
             return False
 
-    async def async_step_init(self, user_input=None):
+    async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> config_entries.FlowResult:
         """
         HAUPTSEITE: Globale Einstellungen + Kamera-Auswahl
         Alles auf einer Seite fuer schnellen Zugriff.
@@ -286,7 +286,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             last_step=True
         )
 
-    async def async_step_camera_config(self, user_input=None):
+    async def async_step_camera_config(self, user_input: Optional[Dict[str, Any]] = None) -> config_entries.FlowResult:
         """
         SEITE 2: Kamera-Konfiguration
         Bewegungssensor und Aufnahme-Einstellungen.
@@ -470,7 +470,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             last_step=True
         )
 
-    async def async_step_manual_camera(self, user_input=None):
+    async def async_step_manual_camera(self, user_input: Optional[Dict[str, Any]] = None) -> config_entries.FlowResult:
         """
         SEITE 2b: Manuelle RTSP-Kamera hinzufuegen
         """
@@ -566,7 +566,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             last_step=True
         )
 
-    async def async_step_analysis(self, user_input=None):
+    async def async_step_analysis(self, user_input: Optional[Dict[str, Any]] = None) -> config_entries.FlowResult:
         """
         SEITE 3: Offline-Analyse konfigurieren
         """
@@ -828,7 +828,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                     ):
                         continue
                     candidates.add(d)
-            except Exception as e:
+            except OSError as e:
                 log_to_file(f"Disk scan error: {e}")
         
         # 2. Scan HA camera entities
