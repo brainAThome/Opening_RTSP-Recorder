@@ -1,0 +1,48 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Personal/Internal files
+AGENT_PROMPT*.md
+HANDOVER*.md
+AUDIT_REPORT*.md
+DEEP_ANALYSIS*.md
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+
+# Test/Development scripts (personal)
+full_audit*.py
+iso_audit*.py
+*_test.py
+comprehensive_test.py
+hardcore_test.py
+memory_management_test.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+rtsp_debug.log
+
+# Local development
+.env
+.env.local
+secrets.yaml
