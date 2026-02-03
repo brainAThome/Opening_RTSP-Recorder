@@ -331,7 +331,7 @@ automation:
 | Person-Name | Entity-ID |
 |-------------|-----------|
 | Max Mustermann | `binary_sensor.rtsp_person_max_mustermann` |
-| Sven | `binary_sensor.rtsp_person_sven` |
+| Max | `binary_sensor.rtsp_person_max` |
 | Unknown | `binary_sensor.rtsp_person_unknown` |
 
 ---
