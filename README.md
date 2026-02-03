@@ -1,6 +1,8 @@
 # RTSP Recorder for Home Assistant
 
-A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
+**🎯 Face Recognition Integration for Home Assistant** - Motion-triggered recording with AI-powered person identification, featuring unique **Negative Samples** for false-match prevention and **Movement Profiles** for tracking recognized persons.
+
+> *Not a Frigate alternative, but a specialized face recognition solution with Coral EdgeTPU support.*
 
 ![Version](https://img.shields.io/badge/version-1.1.0k%20BETA-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
@@ -8,6 +10,15 @@ A complete video surveillance solution with AI-powered object detection using Co
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-90.0%25-brightgreen)
 ![ISO 27001](https://img.shields.io/badge/ISO%2027001-90.0%25-brightgreen)
 ![HACS](https://img.shields.io/badge/HACS-Compatible-orange)
+
+### 🚀 What Makes This Different?
+
+| Innovation | Description |
+|------------|-------------|
+| **🚫 Negative Samples** | Train faces to *exclude* - prevent false matches (unique feature!) |
+| **📊 Movement Profiles** | Track when & where persons are recognized over time |
+| **🔌 Native HA Integration** | No Docker needed - pure custom component |
+| **🎛️ All-in-One Card** | Recording, analysis, training UI in one Lovelace card |
 
 📋 **[Audit Report v1.1.0k](AUDIT_REPORT_v1.1.0k_FINAL.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
 
