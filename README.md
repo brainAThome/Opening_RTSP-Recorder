@@ -1,32 +1,19 @@
 # RTSP Recorder for Home Assistant
 
-**🎯 Face Recognition Integration for Home Assistant** - Motion-triggered recording with AI-powered person identification, featuring unique **Negative Samples** for false-match prevention and **Movement Profiles** for tracking recognized persons.
+A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-> *Not a Frigate alternative, but a specialized face recognition solution with Coral EdgeTPU support.*
-
-![Version](https://img.shields.io/badge/version-1.1.0k%20BETA-orange)
+![Version](https://img.shields.io/badge/version-1.1.0n%20BETA-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-90.0%25-brightgreen)
 ![ISO 27001](https://img.shields.io/badge/ISO%2027001-90.0%25-brightgreen)
 ![HACS](https://img.shields.io/badge/HACS-Compatible-orange)
 
-### 🚀 What Makes This Different?
-
-| Innovation | Description |
-|------------|-------------|
-| **🚫 Negative Samples** | Train faces to *exclude* - prevent false matches (unique feature!) |
-| **📊 Movement Profiles** | Track when & where persons are recognized over time |
-| **🔌 Native HA Integration** | No Docker needed - pure custom component |
-| **🎛️ All-in-One Card** | Recording, analysis, training UI in one Lovelace card |
-
 📋 **[Audit Report v1.1.0k](AUDIT_REPORT_v1.1.0k_FINAL.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
-
-📊 **[Market Comparison](MARKET_COMPARISON.md)** - Vergleich mit Frigate, MotionEye, Double Take & Projekteinschätzung
 
 ## Version Comparison
 
-| Feature | v1.0.9 STABLE | v1.1.0k BETA |
+| Feature | v1.0.9 STABLE | v1.1.0n BETA |
 |---------|---------------|--------------|
 | **Recording** | Sequential (record → then snapshot) | ⚡ Parallel (snapshot DURING recording) |
 | **Timeline Update** | After recording saved | ⚡ Immediate on start |
@@ -43,6 +30,8 @@
 | **Analysis Cleanup** | ❌ Manual only | ✅ Automatic with video |
 | **Cleanup Interval** | ❌ Fixed 24h | ✅ Configurable 1-24h |
 | **Movement Profile** | ❌ Limited | ✅ Full recognition logging |
+| **Person Detail Popup** | ❌ Not available | ✅ View/edit all samples |
+| **Person Entities** | ❌ Not available | ✅ For HA automations |
 | **SQLite Backend** | ✅ | ✅ Schema v2 |
 | **Face Recognition** | ✅ | ✅ |
 | **Coral EdgeTPU** | ✅ | ✅ |
@@ -50,7 +39,22 @@
 | **Audit Score** | 92.5% | 90.0% |
 | **Production Ready** | ✅ Stable | 🔶 Beta Testing |
 
-## What's New in v1.1.0k BETA
+## What's New in v1.1.0n BETA
+
+### 👤 Person Detail Popup (NEW in v1.1.0n)
+- **Click on person names** in People-Tab to open detailed view
+- **View all positive samples**: All assigned face images with dates
+- **View all negative samples**: All exclusion images (corrected false matches)
+- **Recognition counter**: How often was this person detected
+- **Last seen info**: Date, time and camera of last recognition
+- **Delete samples**: Remove individual samples with one click
+- **Help text**: Explanation box for all functions
+
+### 🏠 Person Entities for Automations (NEW in v1.1.0n)
+- **Automatic entity creation**: `binary_sensor.rtsp_person_{name}`
+- **State tracking**: "on" when recently recognized, "off" after 5 minutes
+- **Rich attributes**: `last_seen`, `last_camera`, `confidence`, `total_sightings`
+- **Perfect for automations**: Notifications when specific person arrives
 
 ### 🧹 Automatic Analysis Cleanup (NEW in v1.1.0k)
 - **Analysis folders** automatically deleted when source video is removed

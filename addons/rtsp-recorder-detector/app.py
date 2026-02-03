@@ -1326,6 +1326,97 @@ def health():
     }
 
 
+@app.get("/stats")
+def stats():
+    """Get live inference statistics for the frontend dashboard.
+    
+    Returns real-time stats about:
+    - Inference counts (total, coral, cpu)
+    - Inference timing (avg, last)
+    - Device usage percentages
+    - System resource usage
+    
+    This is the primary endpoint for the v1.1.0 dashboard stats display.
+    """
+    with _metrics_lock:
+        total = _inference_metrics["total_inferences"]
+        coral = _inference_metrics["tpu_inferences"]
+        cpu = _inference_metrics["cpu_inferences"]
+        
+        # Calculate coral usage percentage
+        coral_pct = round(coral / total * 100, 1) if total > 0 else 0
+        
+        # Calculate recent coral usage (from last 10 inferences approximation)
+        recent_coral_pct = coral_pct  # Simplified - use overall percentage
+        
+        # Calculate inferences per minute
+        uptime = time.time() - _startup_time if '_startup_time' in globals() else 0
+        ipm = round(total / (uptime / 60), 1) if uptime > 60 else 0
+        
+        # Get system stats (optional - psutil may not be available)
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent(interval=None)
+            memory = psutil.virtual_memory()
+            memory_percent = memory.percent
+            memory_used_mb = round(memory.used / 1024 / 1024)
+            memory_total_mb = round(memory.total / 1024 / 1024)
+        except ImportError:
+            # psutil not installed, use /proc directly (Linux)
+            try:
+                with open('/proc/stat', 'r') as f:
+                    cpu_line = f.readline().split()
+                cpu_percent = 0  # Would need two measurements for accurate %
+                
+                with open('/proc/meminfo', 'r') as f:
+                    meminfo = {}
+                    for line in f:
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            meminfo[parts[0].rstrip(':')] = int(parts[1])
+                memory_total_mb = round(meminfo.get('MemTotal', 0) / 1024)
+                memory_free = meminfo.get('MemAvailable', meminfo.get('MemFree', 0))
+                memory_used_mb = round((meminfo.get('MemTotal', 0) - memory_free) / 1024)
+                memory_percent = round(memory_used_mb / memory_total_mb * 100, 1) if memory_total_mb > 0 else 0
+            except Exception:
+                cpu_percent = 0
+                memory_percent = 0
+                memory_used_mb = 0
+                memory_total_mb = 0
+        except Exception:
+            cpu_percent = 0
+            memory_percent = 0
+            memory_used_mb = 0
+            memory_total_mb = 0
+        
+        return {
+            "devices": _detect_devices(),
+            "tpu_healthy": _tpu_healthy,
+            "inference_stats": {
+                "uptime_seconds": round(uptime) if uptime > 0 else 0,
+                "total_inferences": total,
+                "coral_inferences": coral,
+                "cpu_inferences": cpu,
+                "last_device": _inference_metrics["last_device"],
+                "inferences_per_minute": ipm,
+                "avg_inference_ms": _inference_metrics["avg_inference_ms"],
+                "last_inference_ms": _inference_metrics["last_inference_ms"],
+                "coral_usage_pct": coral_pct,
+                "recent_coral_pct": recent_coral_pct,
+            },
+            "system_stats": {
+                "cpu_percent": cpu_percent,
+                "memory_percent": memory_percent,
+                "memory_used_mb": memory_used_mb,
+                "memory_total_mb": memory_total_mb,
+            }
+        }
+
+
+# Track startup time for uptime calculation
+_startup_time = time.time()
+
+
 @app.get("/metrics")
 def metrics():
     """Get detailed inference metrics.

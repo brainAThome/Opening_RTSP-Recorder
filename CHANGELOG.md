@@ -2,6 +2,31 @@
 
 All notable changes to RTSP Recorder will be documented in this file.
 
+## [1.1.0n BETA] - 2026-02-03
+
+### 👤 Person Detail Popup (NEW)
+- **Klickbare Personennamen** im People-Tab öffnen Detail-Popup
+- **Positive Samples anzeigen**: Alle zugewiesenen Gesichtsbilder mit Datum
+- **Negative Samples anzeigen**: Alle Ausschluss-Bilder (korrigierte Fehlerkennungen)
+- **Erkennungszähler**: Wie oft wurde die Person insgesamt erkannt
+- **Zuletzt gesehen**: Datum, Uhrzeit und Kamera der letzten Erkennung
+- **Löschen-Funktion**: Einzelne Samples entfernen per Klick auf ✕
+- **Erklärungsbox**: Hilfetext zu allen Funktionen im Popup
+
+### 🏠 Home Assistant Integration
+- **Person-Entities für Automationen**: 
+  - `binary_sensor.rtsp_person_{name}` wird automatisch erstellt
+  - State: "on" wenn kürzlich erkannt, "off" nach 5 Minuten
+  - Attribute: `last_seen`, `last_camera`, `confidence`, `total_sightings`
+  - Perfekt für Automatisierungen (z.B. Benachrichtigungen)
+
+### 🔧 Verbesserungen
+- **Recognition Count**: Zählt jetzt korrekt auch ältere Einträge (fallback auf person_name)
+- **Database Query Optimierung**: `person_id OR person_name` für Kompatibilität
+- **UI Polish**: Bessere Darstellung der Stats-Kacheln mit Farben und größerer Schrift
+
+---
+
 ## [1.1.0k BETA] - 2026-02-03
 
 ### 🗄️ SQLite-Only Backend

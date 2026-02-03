@@ -52,13 +52,24 @@ CREATE TABLE IF NOT EXISTS face_embeddings (
     FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
 );
 
--- Ignored embeddings table
+-- Ignored embeddings table (global - not person-specific)
 CREATE TABLE IF NOT EXISTS ignored_embeddings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     embedding BLOB NOT NULL,
     reason TEXT,
     created_at TEXT NOT NULL,
     camera_name TEXT
+);
+
+-- Negative embeddings table (person-specific - "NOT this person")
+CREATE TABLE IF NOT EXISTS negative_embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id TEXT NOT NULL,
+    embedding BLOB NOT NULL,
+    source TEXT,              -- 'manual', 'analysis', etc.
+    thumb TEXT,               -- Path to thumbnail image
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
 );
 
 -- Recognition history table (for analytics)
@@ -373,6 +384,189 @@ class DatabaseManager:
             {"vector": self._blob_to_embedding(row[0]), "thumb": row[1]}
             for row in cursor.fetchall()
         ]
+    
+    def get_person_details(self, person_id: str) -> Optional[Dict[str, Any]]:
+        """Get comprehensive person details including all embeddings with IDs.
+        
+        Args:
+            person_id: Person's unique identifier
+            
+        Returns:
+            Dict with person info, embeddings (positive), negative samples, and stats
+        """
+        # Get person info
+        person = self.get_person(person_id)
+        if not person:
+            return None
+        
+        # Get positive embeddings with IDs (source_image is thumbnail)
+        cursor = self.conn.execute(
+            """SELECT id, source_image, created_at, confidence 
+               FROM face_embeddings WHERE person_id = ? ORDER BY created_at DESC""",
+            (person_id,)
+        )
+        positive_samples = []
+        for row in cursor.fetchall():
+            positive_samples.append({
+                "id": row[0],
+                "thumb": row[1],
+                "created_at": row[2],
+                "confidence": row[3],
+                "type": "positive"
+            })
+        
+        # Get negative samples for this person
+        cursor = self.conn.execute(
+            """SELECT id, thumb, created_at 
+               FROM negative_embeddings WHERE person_id = ? ORDER BY created_at DESC""",
+            (person_id,)
+        )
+        negative_samples = []
+        for row in cursor.fetchall():
+            negative_samples.append({
+                "id": row[0],
+                "thumb": row[1],
+                "created_at": row[2],
+                "type": "negative"
+            })
+        
+        # Get person name for fallback query
+        person_name = person.get("name", "")
+        
+        # Get recognition count (check both person_id and person_name since older entries may only have name)
+        cursor = self.conn.execute(
+            "SELECT COUNT(*) FROM recognition_history WHERE person_id = ? OR person_name = ?",
+            (person_id, person_name)
+        )
+        recognition_count = cursor.fetchone()[0]
+        
+        # Get last seen (check both person_id and person_name)
+        cursor = self.conn.execute(
+            """SELECT camera_name, recognized_at FROM recognition_history 
+               WHERE person_id = ? OR person_name = ? ORDER BY recognized_at DESC LIMIT 1""",
+            (person_id, person_name)
+        )
+        last_seen_row = cursor.fetchone()
+        last_seen = None
+        last_camera = None
+        if last_seen_row:
+            last_camera = last_seen_row[0]
+            last_seen = last_seen_row[1]
+        
+        return {
+            "id": person_id,
+            "name": person.get("name", "Unknown"),
+            "created_at": person.get("created_at"),
+            "positive_samples": positive_samples,
+            "negative_samples": negative_samples,
+            "positive_count": len(positive_samples),
+            "negative_count": len(negative_samples),
+            "recognition_count": recognition_count,
+            "last_seen": last_seen,
+            "last_camera": last_camera
+        }
+    
+    def delete_positive_embedding(self, embedding_id: int) -> bool:
+        """Delete a positive embedding by ID.
+        
+        Args:
+            embedding_id: Embedding's unique identifier
+            
+        Returns:
+            True if successful
+        """
+        return self.delete_embedding(embedding_id)
+    
+    def delete_negative_embedding(self, embedding_id: int) -> bool:
+        """Delete a negative embedding by ID.
+        
+        Args:
+            embedding_id: Negative embedding's unique identifier
+            
+        Returns:
+            True if successful
+        """
+        try:
+            cursor = self.conn.execute(
+                "DELETE FROM negative_embeddings WHERE id = ?",
+                (embedding_id,)
+            )
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            _LOGGER.error(f"Failed to delete negative embedding {embedding_id}: {e}")
+            return False
+    
+    # ==================== Negative Embeddings (Person-specific) ====================
+    
+    def add_negative_embedding(self, person_id: str, embedding: List[float],
+                               source: str = None, thumb: str = None,
+                               confidence: float = None) -> int:
+        """Add a negative embedding for a person (mark as 'NOT this person').
+        
+        Args:
+            person_id: Person's unique identifier
+            embedding: Face embedding vector
+            source: Source of the embedding ('manual', 'analysis', etc.)
+            thumb: Path to thumbnail/source image
+            confidence: Detection confidence
+            
+        Returns:
+            Embedding ID or -1 on failure
+        """
+        try:
+            embedding_blob = self._embedding_to_blob(embedding)
+            cursor = self.conn.execute(
+                """INSERT INTO negative_embeddings 
+                   (person_id, embedding, thumb, created_at, source)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (person_id, embedding_blob, thumb, 
+                 datetime.now().isoformat(), source)
+            )
+            self.conn.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            _LOGGER.error(f"Failed to add negative embedding for {person_id}: {e}")
+            return -1
+    
+    def get_negative_embeddings_for_person(self, person_id: str) -> List[Dict[str, Any]]:
+        """Get all negative embeddings for a person.
+        
+        Args:
+            person_id: Person's unique identifier
+            
+        Returns:
+            List of dicts with 'vector', 'thumb', etc.
+        """
+        cursor = self.conn.execute(
+            """SELECT embedding, thumb, created_at, source
+               FROM negative_embeddings WHERE person_id = ? ORDER BY created_at DESC""",
+            (person_id,)
+        )
+        return [
+            {
+                "vector": self._blob_to_embedding(row[0]),
+                "thumb": row[1],
+                "created_at": row[2],
+                "source": row[3]
+            }
+            for row in cursor.fetchall()
+        ]
+    
+    def get_negative_count_for_person(self, person_id: str) -> int:
+        """Get count of negative embeddings for a person.
+        
+        Args:
+            person_id: Person's unique identifier
+            
+        Returns:
+            Number of negative embeddings
+        """
+        cursor = self.conn.execute(
+            "SELECT COUNT(*) FROM negative_embeddings WHERE person_id = ?",
+            (person_id,)
+        )
+        return cursor.fetchone()[0]
     
     def get_all_embeddings(self) -> Dict[str, List[List[float]]]:
         """Get all embeddings grouped by person.

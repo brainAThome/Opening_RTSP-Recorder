@@ -893,4 +893,83 @@ def register_people_websocket_handlers(
 
     websocket_api.async_register_command(hass, ws_get_movement_profile)
 
+    # ===== v1.1.0n: Get Person Details (for Detail Popup) =====
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_person_details",
+        vol.Required("person_id"): str,
+    })
+    @websocket_api.async_response
+    async def ws_get_person_details(hass, connection, msg):
+        """Get comprehensive person details including all embeddings with IDs.
+        
+        Returns positive samples, negative samples, stats for the person detail popup.
+        """
+        log_to_file(f"INIT: get_person_details called for person_id={msg.get('person_id')}")
+        try:
+            person_id = str(msg.get("person_id"))
+            
+            from .database import get_database
+            db = get_database()
+            if not db:
+                connection.send_error(msg["id"], "db_error", "Database not available")
+                return
+            
+            details = db.get_person_details(person_id)
+            if not details:
+                connection.send_error(msg["id"], "not_found", f"Person {person_id} not found")
+                return
+            
+            log_to_file(f"INIT: get_person_details returning {details.get('positive_count', 0)} positive, {details.get('negative_count', 0)} negative samples")
+            connection.send_result(msg["id"], details)
+            
+        except Exception as exc:
+            log_to_file(f"INIT: get_person_details ERROR: {type(exc).__name__}: {exc}")
+            connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
+
+    websocket_api.async_register_command(hass, ws_get_person_details)
+
+    # ===== v1.1.0n: Delete Embedding (positive or negative) =====
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/delete_embedding",
+        vol.Required("embedding_id"): int,
+        vol.Required("embedding_type"): str,  # "positive" or "negative"
+    })
+    @websocket_api.async_response
+    async def ws_delete_embedding(hass, connection, msg):
+        """Delete a specific embedding by ID.
+        
+        Can delete either positive (face_embeddings) or negative (negative_embeddings) samples.
+        """
+        log_to_file(f"INIT: delete_embedding called for id={msg.get('embedding_id')}, type={msg.get('embedding_type')}")
+        try:
+            embedding_id = int(msg.get("embedding_id"))
+            embedding_type = str(msg.get("embedding_type"))
+            
+            if embedding_type not in ("positive", "negative"):
+                connection.send_error(msg["id"], "invalid_type", "Type must be 'positive' or 'negative'")
+                return
+            
+            from .database import get_database
+            db = get_database()
+            if not db:
+                connection.send_error(msg["id"], "db_error", "Database not available")
+                return
+            
+            if embedding_type == "positive":
+                success = db.delete_positive_embedding(embedding_id)
+            else:
+                success = db.delete_negative_embedding(embedding_id)
+            
+            if success:
+                log_to_file(f"INIT: Deleted {embedding_type} embedding {embedding_id}")
+                connection.send_result(msg["id"], {"success": True, "deleted_id": embedding_id})
+            else:
+                connection.send_error(msg["id"], "delete_failed", f"Failed to delete embedding {embedding_id}")
+            
+        except Exception as exc:
+            log_to_file(f"INIT: delete_embedding ERROR: {type(exc).__name__}: {exc}")
+            connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
+
+    websocket_api.async_register_command(hass, ws_delete_embedding)
+
 

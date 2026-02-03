@@ -1,6 +1,6 @@
 # RTSP Recorder - Benutzerhandbuch
 
-**Version:** 1.0.9 STABLE  
+**Version:** 1.1.0n BETA  
 **Datum:** Februar 2026  
 **Kompatibilität:** Home Assistant 2024.1+
 
@@ -20,11 +20,27 @@
 10. [Troubleshooting](#10-troubleshooting)
 11. [FAQ](#11-faq)
 
+> 📚 **Weitere Dokumentation:**
+> - [Installation](INSTALLATION.md) - Detaillierte Installationsanleitung
+> - [Konfiguration](CONFIGURATION.md) - Alle Optionen erklärt
+> - [Gesichtserkennung](FACE_RECOGNITION.md) - Training & Matching
+> - [Troubleshooting](TROUBLESHOOTING.md) - Problemlösung
+
 ---
 
 ## 1. Einführung
 
 RTSP Recorder ist eine umfassende Videoüberwachungslösung für Home Assistant mit KI-gestützter Objekterkennung und Gesichtserkennung.
+
+### Was ist neu in v1.1.0?
+
+| Feature | Beschreibung |
+|---------|--------------|
+| ⚡ **Parallele Snapshots** | Thumbnails während der Aufnahme |
+| 📊 **TPU-Load Anzeige** | Echtzeit Coral-Auslastung |
+| 🔒 **Rate Limiter** | DoS-Schutz für API |
+| 🌐 **5 Sprachen** | DE, EN, ES, FR, NL |
+| 🧪 **Unit Tests** | pytest Framework |
 
 ### Hauptfunktionen
 
@@ -351,7 +367,54 @@ Negative Samples verhindern falsche Zuordnungen.
 | **Negative Samples** bei Verwechslungen | Verhindert False Positives |
 | **Regelmäßig nachtrainieren** | Verbessert Genauigkeit über Zeit |
 
-### 7.6 Person umbenennen/löschen
+### 7.6 Person Detail Popup (NEU in v1.1.0n)
+
+Klicke auf den **Namen einer Person** im People-Tab, um das Detail-Popup zu öffnen.
+
+**Was zeigt das Popup?**
+- **Positive Samples:** Alle zugewiesenen Gesichtsbilder mit Datum
+- **Negative Samples:** Alle Ausschluss-Bilder
+- **Erkennungen:** Wie oft wurde diese Person insgesamt erkannt
+- **Zuletzt gesehen:** Datum, Uhrzeit und Kamera der letzten Erkennung
+
+**Samples verwalten:**
+- Klicke auf das rote **✕** um einzelne Samples zu löschen
+- Ideal für die Qualitätskontrolle deiner Trainingsdaten
+
+### 7.7 Person-Entities für Automationen (NEU in v1.1.0n)
+
+Erstelle Home Assistant Entities für erkannte Personen:
+
+1. Gehe zu **Einstellungen** → **RTSP Recorder** → **Konfigurieren**
+2. Aktiviere **Person-Entities erstellen**
+
+**Erstellte Entities:**
+```yaml
+binary_sensor.rtsp_person_max:
+  state: "on"  # Wenn kürzlich erkannt
+  attributes:
+    last_seen: "2026-02-03T14:30:00"
+    last_camera: "Wohnzimmer"
+    confidence: 0.87
+```
+
+**Beispiel-Automation:**
+```yaml
+automation:
+  - alias: "Max erkannt"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.rtsp_person_max
+        to: "on"
+    action:
+      - service: notify.mobile_app
+        data:
+          message: "Max wurde bei {{ trigger.to_state.attributes.last_camera }} gesehen"
+```
+
+> 📚 **Mehr Details:** Siehe [Gesichtserkennung](FACE_RECOGNITION.md#8-person-entities-für-automationen)
+
+### 7.8 Person umbenennen/löschen
 
 - **Umbenennen:** Klicke auf ✏️ neben dem Namen
 - **Löschen:** Klicke auf 🗑️ → Bestätigen

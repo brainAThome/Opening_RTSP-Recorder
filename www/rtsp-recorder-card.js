@@ -1,5 +1,5 @@
-// ===== RTSP Recorder Card v1.1.0m BETA (Pure event-driven recording + analysis) =====
-console.log("[RTSP-Recorder] Card Version: 1.1.0h (Robust status restore)");
+// ===== RTSP Recorder Card v1.1.0n BETA (Person Detail Popup) =====
+console.log("[RTSP-Recorder] Card Version: 1.1.0n (Person Detail Popup)");
 // MED-008 Fix: Debug logging behind feature flag
 const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
 const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
@@ -2429,11 +2429,16 @@ class RtspRecorderCard extends HTMLElement {
                     onmouseout="this.style.transform='scale(1)'; this.style.borderColor='#444';"
                 />`
             ).join('');
+            const negCount = p.negative_count || 0;
+            const negBadge = negCount > 0 ? `<span style="background:#e74c3c; color:white; padding:2px 6px; border-radius:10px; font-size:0.7em; margin-left:6px;" title="${negCount} Negativ-Samples">-${negCount}</span>` : '';
             return `
                 <div class="person-card" style="background:#1a1a1a; border-radius:12px; padding:12px; margin-bottom:10px;">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                        <div style="flex:1;">
-                            <div style="font-weight:600; font-size:1.1em; margin-bottom:4px;">${p.name}</div>
+                        <div style="flex:1; cursor:pointer;" data-action="show-details" data-person-id="${p.id}">
+                            <div style="font-weight:600; font-size:1.1em; margin-bottom:4px; display:flex; align-items:center;">
+                                <span class="person-name-link" style="color:var(--primary-color); text-decoration:underline; cursor:pointer;">${this._escapeHtml(p.name)}</span>
+                                ${negBadge}
+                            </div>
                             <div style="font-size:0.85em; color:#888;">📸 ${p.embeddings_count} Embeddings</div>
                         </div>
                         <div style="display:flex; gap:6px;">
@@ -2577,6 +2582,20 @@ class RtspRecorderCard extends HTMLElement {
                 const current = people.find(p => p.id === id);
                 if (confirm(`Person "${current ? current.name : ''}" wirklich loeschen?`)) {
                     await this.deletePerson(current || { id });
+                }
+            };
+        });
+
+        // v1.1.0n: Event-Handler für Person-Details Popup
+        container.querySelectorAll('[data-action="show-details"]').forEach(el => {
+            el.onclick = async (e) => {
+                // Prevent click if clicking on rename/delete buttons
+                if (e.target.closest('[data-action="rename"]') || e.target.closest('[data-action="delete"]')) {
+                    return;
+                }
+                const personId = el.getAttribute('data-person-id');
+                if (personId) {
+                    await this.showPersonDetailPopup(personId);
                 }
             };
         });
@@ -2925,6 +2944,172 @@ class RtspRecorderCard extends HTMLElement {
         } catch (e) {
             this.showToast('Fehler beim Ignorieren: ' + (e.message || e), 'error');
             return false;
+        }
+    }
+
+    // v1.1.0n: Person Detail Popup - shows all embeddings with delete option
+    async showPersonDetailPopup(personId) {
+        try {
+            // Load person details from backend
+            const details = await this._hass.callWS({
+                type: 'rtsp_recorder/get_person_details',
+                person_id: String(personId)
+            });
+            
+            if (!details) {
+                this.showToast('Person nicht gefunden', 'error');
+                return;
+            }
+            
+            // Format dates
+            const formatDate = (dateStr) => {
+                if (!dateStr) return '-';
+                try {
+                    const d = new Date(dateStr);
+                    return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                } catch {
+                    return dateStr;
+                }
+            };
+            
+            // Render sample grid
+            const renderSamples = (samples, type) => {
+                if (!samples || samples.length === 0) {
+                    return `<div style="color:#888; text-align:center; padding:20px;">Keine ${type === 'positive' ? 'positiven' : 'negativen'} Samples vorhanden</div>`;
+                }
+                return samples.map(s => `
+                    <div class="sample-item" style="display:inline-block; margin:4px; position:relative;">
+                        ${s.thumb 
+                            ? `<img src="${this._escapeHtml(s.thumb)}" style="width:75px; height:75px; object-fit:cover; border-radius:8px; border:2px solid ${type === 'positive' ? '#27ae60' : '#e74c3c'};" />`
+                            : `<div style="width:75px; height:75px; background:#333; border-radius:8px; display:flex; align-items:center; justify-content:center; border:2px solid ${type === 'positive' ? '#27ae60' : '#e74c3c'};">👤</div>`
+                        }
+                        <button class="delete-sample-btn" data-id="${s.id}" data-type="${type}" 
+                            style="position:absolute; top:-5px; right:-5px; width:20px; height:20px; border-radius:50%; background:#e74c3c; border:2px solid #222; color:white; font-size:11px; cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:0.9; transition:all 0.2s;"
+                            title="Sample löschen">✕</button>
+                        <div style="font-size:0.6em; color:#777; text-align:center; margin-top:2px; max-width:75px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            ${formatDate(s.created_at).split(',')[0] || ''}
+                        </div>
+                    </div>
+                `).join('');
+            };
+            
+            // Create popup
+            const popup = document.createElement('div');
+            popup.className = 'person-detail-popup';
+            popup.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; z-index:10001;';
+            popup.innerHTML = `
+                <div style="background:#1a1a1a; border-radius:16px; padding:24px; max-width:950px; width:95%; max-height:92vh; overflow-y:auto; border:1px solid #333;">
+                    <!-- Header -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:15px; border-bottom:1px solid #333;">
+                        <div>
+                            <h2 style="margin:0; color:var(--primary-color); font-size:1.5em;">👤 ${this._escapeHtml(details.name)}</h2>
+                            <div style="color:#888; font-size:0.85em; margin-top:4px;">ID: ${this._escapeHtml(details.id)}</div>
+                        </div>
+                        <button class="close-detail-popup" style="background:none; border:none; color:#888; font-size:24px; cursor:pointer; padding:5px 10px;">✕</button>
+                    </div>
+                    
+                    <!-- Stats -->
+                    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:20px;">
+                        <div style="background:#222; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:1.8em; font-weight:bold; color:#27ae60;">${details.positive_count || 0}</div>
+                            <div style="font-size:0.75em; color:#888;">Positiv</div>
+                        </div>
+                        <div style="background:#222; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:1.8em; font-weight:bold; color:#e74c3c;">${details.negative_count || 0}</div>
+                            <div style="font-size:0.75em; color:#888;">Negativ</div>
+                        </div>
+                        <div style="background:#222; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:1.8em; font-weight:bold; color:#3498db;">${details.recognition_count || 0}</div>
+                            <div style="font-size:0.75em; color:#888;">Erkennungen</div>
+                        </div>
+                        <div style="background:#222; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:1.1em; font-weight:bold; color:${details.last_seen ? '#9b59b6' : '#666'};">${details.last_seen ? formatDate(details.last_seen) : '-'}</div>
+                            <div style="font-size:0.8em; color:#aaa; margin-top:2px;">${details.last_seen ? (details.last_camera ? this._escapeHtml(details.last_camera) : 'Zuletzt') : 'Nie gesehen'}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Created Info -->
+                    <div style="font-size:0.8em; color:#666; margin-bottom:15px;">
+                        📅 Erstellt: ${formatDate(details.created_at)}
+                    </div>
+                    
+                    <!-- Positive Samples -->
+                    <div style="margin-bottom:15px;">
+                        <h3 style="margin:0 0 10px 0; color:#27ae60; font-size:1em; display:flex; align-items:center; gap:8px;">
+                            <span>✓ Positive Samples</span>
+                            <span style="background:#27ae60; color:white; padding:2px 8px; border-radius:10px; font-size:0.8em;">${details.positive_count || 0}</span>
+                        </h3>
+                        <div style="background:#222; padding:10px; border-radius:10px; max-height:280px; overflow-y:auto;">
+                            ${renderSamples(details.positive_samples, 'positive')}
+                        </div>
+                    </div>
+                    
+                    <!-- Negative Samples -->
+                    <div style="margin-bottom:15px;">
+                        <h3 style="margin:0 0 10px 0; color:#e74c3c; font-size:1em; display:flex; align-items:center; gap:8px;">
+                            <span>✗ Negative Samples</span>
+                            <span style="background:#e74c3c; color:white; padding:2px 8px; border-radius:10px; font-size:0.8em;">${details.negative_count || 0}</span>
+                        </h3>
+                        <div style="background:#222; padding:10px; border-radius:10px; max-height:200px; overflow-y:auto;">
+                            ${renderSamples(details.negative_samples, 'negative')}
+                        </div>
+                    </div>
+                    
+                    <!-- Info Box -->
+                    <div style="padding:14px; background:linear-gradient(135deg, #1e3a5f 0%, #1a2a3a 100%); border-radius:10px; font-size:0.8em; border:1px solid #2a4a6a;">
+                        <div style="font-weight:bold; color:#5dade2; margin-bottom:8px;">📖 Erklärung:</div>
+                        <div style="color:#aaa; line-height:1.6;">
+                            <div style="margin-bottom:4px;">✅ <strong style="color:#27ae60;">Positive Samples:</strong> Gesichtsbilder, die dieser Person zugeordnet wurden</div>
+                            <div style="margin-bottom:4px;">❌ <strong style="color:#e74c3c;">Negative Samples:</strong> Bilder, die NICHT diese Person zeigen (korrigierte Fehlerkennungen)</div>
+                            <div style="margin-bottom:4px;">📊 <strong style="color:#3498db;">Erkennungen:</strong> Wie oft wurde diese Person insgesamt erkannt</div>
+                            <div>🗑️ <strong style="color:#888;">Löschen:</strong> Klicke auf das rote ✕ um einzelne Samples zu entfernen</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(popup);
+            
+            // Self reference for handlers
+            const self = this;
+            
+            // Close handlers
+            popup.querySelector('.close-detail-popup').onclick = () => document.body.removeChild(popup);
+            popup.onclick = (e) => { if (e.target === popup) document.body.removeChild(popup); };
+            
+            // Delete sample handlers
+            popup.querySelectorAll('.delete-sample-btn').forEach(btn => {
+                btn.onclick = async (e) => {
+                    e.stopPropagation();
+                    const sampleId = parseInt(btn.getAttribute('data-id'), 10);
+                    const sampleType = btn.getAttribute('data-type');
+                    
+                    if (!confirm(`Sample wirklich löschen?`)) return;
+                    
+                    try {
+                        await self._hass.callWS({
+                            type: 'rtsp_recorder/delete_embedding',
+                            embedding_id: sampleId,
+                            embedding_type: sampleType
+                        });
+                        
+                        self.showToast('Sample gelöscht', 'success');
+                        
+                        // Refresh the popup
+                        document.body.removeChild(popup);
+                        await self.refreshPeople();
+                        await self.showPersonDetailPopup(personId);
+                        
+                    } catch (err) {
+                        self.showToast('Fehler beim Löschen: ' + (err.message || err), 'error');
+                    }
+                };
+                btn.onmouseover = () => { btn.style.opacity = '1'; btn.style.transform = 'scale(1.1)'; };
+                btn.onmouseout = () => { btn.style.opacity = '0.85'; btn.style.transform = 'scale(1)'; };
+            });
+            
+        } catch (e) {
+            this.showToast('Fehler beim Laden: ' + (e.message || e), 'error');
         }
     }
 
