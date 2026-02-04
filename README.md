@@ -203,12 +203,16 @@ sequenceDiagram
     INIT->>REC: save_recording()
     REC->>CAM: Start Stream
     
-    loop Recording Duration
-        CAM-->>REC: Video Frames
-        REC-->>FS: Write to .mp4
+    par Parallel Execution
+        loop Recording Duration
+            CAM-->>REC: Video Frames
+            REC-->>FS: Write to .mp4
+        end
+    and Snapshot Capture
+        REC->>CAM: Get Snapshot Frame
+        REC->>FS: Save Thumbnail (.jpg)
     end
     
-    REC->>FS: Save Thumbnail
     REC->>INIT: Recording Complete
     
     alt Auto-Analyze Enabled
