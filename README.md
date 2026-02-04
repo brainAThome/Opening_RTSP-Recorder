@@ -471,34 +471,46 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    START["New Face Embedding"]
+    %% Define Styles
+    classDef input fill:#263238,stroke:#37474f,stroke-width:2px,color:#fff;
+    classDef logic fill:#eceff1,stroke:#cfd8dc,stroke-width:2px,color:#37474f;
+    classDef db fill:#fff176,stroke:#fbc02d,stroke-width:2px,color:#37474f,stroke-dasharray: 5 5;
+    classDef match fill:#66bb6a,stroke:#2e7d32,stroke-width:2px,color:#fff;
+    classDef reject fill:#ef5350,stroke:#b71c1c,stroke-width:2px,color:#fff;
+    classDef unknown fill:#ffa726,stroke:#e65100,stroke-width:2px,color:#fff;
+
+    START("👤 New Face Embedding"):::input
     
-    subgraph LoadDB["Load Database"]
-        LOAD["Load SQLite DB"]
-        PEOPLE["Person List"]
+    subgraph Data ["📂 Database"]
+        LOAD[("Load SQLite DB")]:::db
+        PEOPLE[/"Person List"\]:::logic
     end
     
-    subgraph PositiveMatch["Positive Sample Check"]
-        FOR_P["For each Person"]
-        FOR_E["For each Embedding"]
-        COS_P["Cosine Similarity"]
-        THRESH_P{"similarity ><br/>face_threshold?"}
+    subgraph Positive ["✅ Positive Check"]
+        direction TB
+        FOR_P("Iterate Persons"):::logic
+        FOR_E("Iterate Embeddings"):::logic
+        COS_P{"Cosine<br/>Similarity"}:::logic
+        THRESH_P{"Match?"}:::logic
     end
     
-    subgraph NegativeCheck["Negative Sample Check"]
-        HAS_NEG{"Has Negative<br/>Samples?"}
-        FOR_N["For each Negative"]
-        COS_N["Cosine Similarity"]
-        THRESH_N{"similarity ><br/>0.75?"}
+    subgraph Negative ["🛡️ Negative Check (Fail-Fast)"]
+        direction TB
+        HAS_NEG{"Has<br/>Negatives?"}:::logic
+        FOR_N("Iterate Negatives"):::logic
+        COS_N{"Cosine<br/>Similarity"}:::logic
+        THRESH_N{"Match?"}:::logic
     end
     
-    subgraph Result["Match Result"]
-        MATCH["✅ MATCH<br/>person_id"]
-        REJECT["❌ REJECTED<br/>negative match"]
-        UNKNOWN["❓ UNKNOWN<br/>no match"]
-        LOG["Log to recognition_history"]
+    subgraph Outcome ["🎯 Result"]
+        direction TB
+        MATCH(["✅ MATCH<br/>person_id"]):::match
+        REJECT(["❌ REJECTED<br/>negative match"]):::reject
+        UNKNOWN(["❓ UNKNOWN<br/>no match"]):::unknown
+        LOG["📝 Log History"]:::logic
     end
     
+    %% Connections
     START --> LOAD
     LOAD --> PEOPLE
     PEOPLE --> FOR_P
@@ -507,27 +519,23 @@ flowchart TB
     COS_P --> THRESH_P
     
     THRESH_P -->|Yes| HAS_NEG
-    THRESH_P -->|No| FOR_P
+    THRESH_P -->|No| FOR_E
+    FOR_E -->|Loop End| FOR_P
     
-    HAS_NEG -->|Yes| FOR_N
     HAS_NEG -->|No| MATCH
-    
+    HAS_NEG -->|Yes| FOR_N
     FOR_N --> COS_N
     COS_N --> THRESH_N
     
     THRESH_N -->|Yes| REJECT
     THRESH_N -->|No| FOR_N
-    FOR_N -->|all checked| MATCH
+    FOR_N -->|All Clear| MATCH
     
-    FOR_P -->|no matches| UNKNOWN
+    FOR_P -->|No Matches| UNKNOWN
     
     MATCH --> LOG
     REJECT --> LOG
-    
-    style MATCH fill:#c8e6c9
-    style REJECT fill:#ffcdd2
-    style UNKNOWN fill:#fff9c4
-    style LOG fill:#e3f2fd
+    UNKNOWN --> LOG
 ```
 
 ## Components
