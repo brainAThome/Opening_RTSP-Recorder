@@ -316,69 +316,81 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph Input["Input Image"]
-        IMG["Frame from Video<br/>or Camera"]
+    %% Define Styles
+    classDef input fill:#263238,stroke:#37474f,stroke-width:2px,color:#fff;
+    classDef coral fill:#ff7043,stroke:#e64a19,stroke-width:2px,color:#fff;
+    classDef cpu fill:#42a5f5,stroke:#1976d2,stroke-width:2px,color:#fff;
+    classDef logic fill:#eceff1,stroke:#cfd8dc,stroke-width:2px,color:#37474f;
+    classDef db fill:#fff176,stroke:#fbc02d,stroke-width:2px,color:#37474f,stroke-dasharray: 5 5;
+    classDef result fill:#66bb6a,stroke:#2e7d32,stroke-width:2px,color:#fff;
+
+    subgraph Source ["📸 Input"]
+        IMG[/"Frame from Video<br/>or Camera"\]:::input
     end
     
-    subgraph Stage1["Stage 1: Object Detection (MobileDet)"]
-        MD["MobileDet SSD<br/>320x320 input"]
-        MD_OUT["Bounding Boxes<br/>+ Labels + Confidence"]
+    subgraph Parallel ["⚡ Parallel AI Processing"]
+        direction TB
+        
+        subgraph Stage1 ["Stage 1: Object Detection"]
+            MD("MobileDet SSD<br/>320x320"):::coral
+            MD_OUT["Bounding Boxes<br/>+ Labels"]:::logic
+        end
+        
+        subgraph Stage3 ["Stage 3: Face Detection"]
+            FD("MobileNet V2 Face<br/>320x320"):::coral
+            FD_OUT["Face Boxes<br/>+ Confidence"]:::logic
+        end
+        
+        subgraph Stage5 ["Stage 5: Pose (Optional)"]
+            MN("MoveNet Lightning<br/>192x192"):::cpu
+            MN_OUT["17 Keypoints"]:::logic
+        end
     end
     
-    subgraph Stage2["Stage 2: Person Detection (MobileDet, label=person)"]
-        PERSON_FILTER["Filter: label=person"]
-        PERSON_BOX["Person Bounding Box"]
+    subgraph Processing ["🔍 Detail Processing"]
+        direction TB
+        
+        PERSON_FILTER{"Filter:<br/>Person?"}:::logic
+        PERSON_BOX["Person Box"]:::logic
+        
+        FCROP["Crop Face<br/>+ Padding"]:::logic
+        FE("EfficientNet-EdgeTPU-S<br/>224x224"):::coral
+        FE_OUT["1280-dim Vector"]:::logic
     end
     
-    subgraph Stage3["Stage 3: Face Detection (MobileNet V2)"]
-        FD["MobileNet V2 Face<br/>320x320 input"]
-        FD_OUT["Face Boxes<br/>+ Confidence"]
+    subgraph Identification ["🧠 Identification Logic"]
+        direction TB
+        DB[("Person DB<br/>SQLite v2")]:::db
+        COS{"Cosine<br/>Similarity"}:::logic
+        CHECKS["✅ Positive & ❌ Negative Checks"]:::logic
+        RESULT(["🎯 Match Result"]):::result
     end
     
-    subgraph Stage4["Stage 4: Face Embedding (EfficientNet-EdgeTPU-S)"]
-        FCROP["Crop Face<br/>+ Padding"]
-        FE["EfficientNet-EdgeTPU-S<br/>224x224 input"]
-        FE_OUT["1280-dim Embedding<br/>Vector"]
-    end
-    
-    subgraph Stage5["Stage 5: Pose (Optional, MoveNet)"]
-        MN["MoveNet Lightning<br/>192x192 input"]
-        MN_OUT["17 Keypoints<br/>nose, eyes, ears..."]
-    end
-    
-    subgraph Matching["Face Matching"]
-        DB[("Person Database<br/>SQLite v2")]
-        COS["Cosine Similarity"]
-        POS["Positive Check<br/>threshold: config"]
-        NEG["Negative Check<br/>threshold: 0.75"]
-        RESULT["Match Result"]
-    end
-    
+    %% Connections
     IMG --> MD
+    IMG --> FD
+    IMG --> MN
+    
     MD --> MD_OUT
     MD_OUT --> PERSON_FILTER
-    PERSON_FILTER --> PERSON_BOX
+    PERSON_FILTER -->|Yes| PERSON_BOX
     
-    IMG --> FD
     FD --> FD_OUT
     FD_OUT --> FCROP
     FCROP --> FE
     FE --> FE_OUT
     
-    IMG --> MN
     MN --> MN_OUT
     
+    %% Matching Logic
     FE_OUT --> COS
     DB --> COS
-    COS --> POS
-    POS --> NEG
-    NEG --> RESULT
+    COS --> CHECKS
+    CHECKS --> RESULT
     
-    style MD fill:#e1f5fe
-    style PERSON_FILTER fill:#b3e5fc
-    style FD fill:#e8f5e9
-    style FE fill:#fff3e0
-    style MN fill:#fce4ec
+    %% Force Layout hints
+    Stage1 ~~~ Stage3
+    Stage3 ~~~ Stage5
 ```
 
 ### Module Interaction
