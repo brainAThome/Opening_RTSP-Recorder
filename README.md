@@ -957,3 +957,16 @@ MIT License - See LICENSE file for details.
 - Uses TensorFlow Lite Runtime
 - Models from Google Coral test data
 
+---
+
+<div align="center">
+
+*Built with ❤️ by a Smart Home Enthusiast and Tech Nerd,  
+for everyone who loves technology as much as we do.*
+
+*Dieses Projekt wurde mit viel Liebe von einem Smarthome-Liebhaber und Tech-Nerd  
+für alle entwickelt, die Technik genauso im Herzen tragen.*
+
+</div>
+
+
