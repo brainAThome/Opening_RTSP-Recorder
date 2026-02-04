@@ -358,7 +358,8 @@ flowchart TB
     MD --> MD_OUT
     MD_OUT --> PERSON_FILTER
     PERSON_FILTER --> PERSON_BOX
-    PERSON_BOX --> FD
+    
+    IMG --> FD
     FD --> FD_OUT
     FD_OUT --> FCROP
     FCROP --> FE
@@ -414,7 +415,7 @@ flowchart TB
     end
     
     subgraph Retention["retention.py"]
-        CLEANUP["cleanup_old_files()"]
+        CLEANUP["cleanup_recordings()"]
         PER_CAM["per_camera_retention()"]
         ANALYSIS_CLEAN["cleanup_analysis_data()"]
         DELETE_ANALYSIS["delete_analysis_for_video()"]
@@ -496,8 +497,9 @@ flowchart TB
     THRESH_P -->|Yes| HAS_NEG
     THRESH_P -->|No| FOR_P
     
-    HAS_NEG -->|No| MATCH
     HAS_NEG -->|Yes| FOR_N
+    HAS_NEG -->|No| MATCH
+    
     FOR_N --> COS_N
     COS_N --> THRESH_N
     
@@ -611,12 +613,11 @@ erDiagram
     
     face_embeddings {
         int id PK
-        text person_id FK
+        string person_id FK
         blob embedding
-        text source_image
-        text thumb
-        real confidence
-        text created_at
+        string source_image
+        string created_at
+        float confidence
     }
     
     negative_embeddings {
