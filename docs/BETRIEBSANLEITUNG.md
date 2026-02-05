@@ -91,7 +91,7 @@ Verfügbare Kameras in diesem Setup:
 - Flur oben
 - Garten hinten
 - Haustuer
-- Thorins Zimmer
+- Kinderzimmer
 - Wohnzimmer
 
 ---

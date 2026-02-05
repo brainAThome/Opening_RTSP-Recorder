@@ -45,7 +45,7 @@ detection_schedule:
     
   Garten:
     mode: "home_away"
-    home_entity: "person.sven"
+    home_entity: "person.max_mustermann"
     when_home: []  # Keine Erkennung wenn zuhause
     when_away: ["person", "car"]
 ```
