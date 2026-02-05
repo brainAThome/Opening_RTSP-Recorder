@@ -6,16 +6,30 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.2.0-brightgreen)
+![Version](https://img.shields.io/badge/version-1.2.1-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![ISO 25010](https://img.shields.io/badge/ISO%2025010-94%25-brightgreen)
-![ISO 27001](https://img.shields.io/badge/ISO%2027001-86%25-brightgreen)
+![ISO 25010](https://img.shields.io/badge/ISO%2025010-96%25-brightgreen)
+![ISO 27001](https://img.shields.io/badge/ISO%2027001-88%25-brightgreen)
 ![Type Hints](https://img.shields.io/badge/Type%20Hints-88.2%25-brightgreen)
 ![HACS](https://img.shields.io/badge/HACS-Compatible-orange)
 ![Tests](https://img.shields.io/badge/Tests-139%20passed-brightgreen)
 
-📋 **[Audit Report v5.0](COMPREHENSIVE_AUDIT_REPORT_v5.0_2026-02-05.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (05.02.2026)
+📋 **[Audit Report v5.1](COMPREHENSIVE_AUDIT_REPORT_v5.0_2026-02-05.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (05.02.2026)
+🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
+
+## What's New in v1.2.1
+
+### 🔧 Code Quality Improvements (MEDIUM Findings Remediation)
+**Major refactoring and code quality improvements!**
+
+- **Cyclomatic Complexity**: `analyze_recording` reduced from CC=140 to CC=23 (-84%)
+- **Exception Handling**: 7 silent `except:pass` blocks now have debug logging
+- **Security Documentation**: New `SECURITY.md` with biometric data policy
+- **ISO 25010 Score**: 95↖96/100
+- **Maintainability Score**: 85↖90/100
+
+---
 
 ## What's New in v1.2.0
 
@@ -58,9 +72,10 @@ A complete video surveillance solution with AI-powered object detection using Co
 - **Integration Icon**: Custom icon for Home Assistant integrations page
 - **5 Languages**: German, English, Spanish, French, Dutch
 
-### 📊 Quality Metrics (v5.0 Audit - 05.02.2026)
-- **ISO 25010 Score**: 94/100 (EXCELLENT) ⬆️ +1
-- **ISO 27001 Score**: 86/100 (GOOD) ⬆️ +1
+### 📊 Quality Metrics (v5.1 Audit - 05.02.2026)
+- **ISO 25010 Score**: 96/100 (EXCELLENT) ⬆️ +2
+- **ISO 27001 Score**: 88/100 (GOOD) ⬆️ +2
+- **Maintainability Score**: 90/100 ⬆️ +5
 - **Type Hints Coverage**: 88.2% (134/152 functions)
 - **Automated Tests**: 139 passed, 221 total
 - **Lines of Code**: 10,980 (7,276 SLOC)
@@ -87,8 +102,8 @@ A complete video surveillance solution with AI-powered object detection using Co
 | **Outlier Detection** | ❌ | ❌ | ✅ NEW |
 | **Bulk Sample Delete** | ❌ | ❌ | ✅ NEW |
 | **Overlay Smoothing** | ❌ | ❌ | ✅ NEW |
-| **ISO 25010 Score** | 92% | ✅ 93% | ✅ **94%** |
-| **ISO 27001 Score** | 85% | ✅ 85% | ✅ **86%** |
+| **ISO 25010 Score** | 92% | ✅ 93% | ✅ **96%** |
+| **ISO 27001 Score** | 85% | ✅ 85% | ✅ **88%** |
 | **Production Ready** | ✅ | ✅ | ✅ |
 
 ### ⚡ Performance Optimizations
