@@ -353,8 +353,8 @@ def detect_available_devices() -> list[str]:
     try:
         tflite.load_delegate("libedgetpu.so.1")
         devices.append("coral_usb")
-    except Exception:
-        pass
+    except Exception as e:
+        _LOGGER.debug("EdgeTPU delegate not available: %s", e)
     return devices
 
 
@@ -1071,8 +1071,8 @@ def _update_analysis_run_error(
                 status=status,
                 error_message=error_message,
             )
-    except Exception:
-        pass
+    except Exception as e:
+        _LOGGER.debug("Failed to update analysis_run: %s", e)
 
 
 def _get_person_boxes(

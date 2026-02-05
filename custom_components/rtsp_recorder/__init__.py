@@ -307,8 +307,8 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             if entity_id in timers:
                 try:
                     timers[entity_id].cancel()
-                except Exception:
-                    pass
+                except Exception as e:
+                    _LOGGER.debug("Failed to cancel timer for %s: %s", entity_id, e)
             timers[entity_id] = hass.loop.call_later(10, lambda: hass.states.async_set(entity_id, "off", attrs))  # v1.1.0: Reduced from 30s
 
         def _extract_person_matches(result: dict) -> dict[str, dict[str, Any]]:
@@ -363,8 +363,8 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                 result = await hass.async_add_executor_job(_find_analysis_for_video, analysis_output_path, video_path)
                 if result:
                     _update_person_entities_from_result(result)
-            except Exception:
-                pass
+            except Exception as e:
+                _LOGGER.debug("Failed to update person entities for video: %s", e)
 
         # ===== Register Services (from services.py) =====
         

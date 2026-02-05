@@ -292,8 +292,10 @@ def log_to_file(msg: str) -> None:
             loop.create_task(asyncio.to_thread(_write_log))
         except RuntimeError:
             _write_log()
-    except Exception:
-        pass
+    except Exception as e:
+        # Log write failed - cannot log this recursively, print to stderr
+        import sys
+        print(f"RTSP Recorder log_to_file failed: {e}", file=sys.stderr)
 
 
 # ===== Path Validation (HIGH-001 Fix) =====

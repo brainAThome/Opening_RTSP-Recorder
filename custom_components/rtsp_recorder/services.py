@@ -408,8 +408,8 @@ def register_services(
                     await asyncio.wait_for(asyncio.shield(snapshot_task), timeout=10)
                 except asyncio.TimeoutError:
                     log_to_file(f"HA Snapshot task still running, continuing")
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_to_file(f"HA Snapshot task exception: {e}")
                     
                 log_to_file(f"HA camera recording and snapshot complete")
 
@@ -506,8 +506,8 @@ def register_services(
                                 updated = update_person_entities_func(result or {})
                                 if not updated:
                                     await update_person_entities_for_video_func(path)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                log_to_file(f"Person entities update failed: {e}")
                         
                         # v1.1.0 METRICS: Record analysis duration
                         record_metric("analysis_duration", cam_name, analysis_start)
