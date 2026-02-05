@@ -46,7 +46,7 @@
                     "snapshot_path": "Path for thumbnails (Default: /config/www/thumbnails)",
                     "retention_days": "Recordings are automatically deleted after X days",
                     "snapshot_retention_days": "Thumbnails are deleted after X days",
-                    "camera_selection": "Select a camera to configure motion sensor and recording duration",
+                    "camera_selection": "Select a camera to configure Trigger Sensors and recording duration",
                     "analysis_configure": "Opens advanced analysis settings"
                 }
             },
@@ -108,7 +108,7 @@
                 "title": "📹 Configure {camera_name}",
                 "description": "Motion detection and recording settings for this camera.",
                 "data": {
-                    "motion_sensor": "🏃 Motion Sensor",
+                    "motion_sensors": "🏃 Trigger Sensors",
                     "recording_duration": "⏱️ Recording Duration",
                     "snapshot_delay": "📸 Snapshot Delay",
                     "rtsp_url": "🔗 RTSP URL (Optional)",
@@ -120,7 +120,7 @@
                     "configure_another": "🔄 Configure Another Camera"
                 },
                 "data_description": {
-                    "motion_sensor": "Binary sensor that starts recording (e.g. motion sensor)",
+                    "motion_sensors": "Binary sensor that starts recording (e.g. Trigger Sensors)",
                     "recording_duration": "How long to record after motion (seconds)",
                     "snapshot_delay": "Wait time before thumbnail creation for better images",
                     "rtsp_url": "Custom RTSP URL instead of the one detected by Home Assistant (e.g. rtsp://user:pass@192.168.1.100:554/stream)",
@@ -138,7 +138,7 @@
                 "data": {
                     "camera_name": "📹 Camera Name",
                     "rtsp_url": "🔗 RTSP URL",
-                    "motion_sensor": "🏃 Motion Sensor",
+                    "motion_sensors": "🏃 Trigger Sensors",
                     "recording_duration": "⏱️ Recording Duration",
                     "snapshot_delay": "📸 Snapshot Delay",
                     "camera_retention": "🗑️ Custom Retention (Hours)",
@@ -147,7 +147,7 @@
                 "data_description": {
                     "camera_name": "Unique name for the camera (e.g. Garage, Driveway)",
                     "rtsp_url": "RTSP stream URL of the camera (e.g. rtsp://user:pass@192.168.1.100:554/stream)",
-                    "motion_sensor": "Binary sensor that starts recording (e.g. motion sensor)",
+                    "motion_sensors": "Binary sensor that starts recording (e.g. Trigger Sensors)",
                     "recording_duration": "How long to record after motion (seconds)",
                     "snapshot_delay": "Wait time before thumbnail creation for better images",
                     "camera_retention": "0 = Use global setting. Otherwise: Hours for this camera",

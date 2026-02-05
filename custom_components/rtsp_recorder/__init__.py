@@ -416,8 +416,35 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
 
         for key, value in config_data.items():
             try:
-                if key.startswith("sensor_"):
+                # v1.2.0: Support new multi-sensor format (sensors_) and legacy single sensor (sensor_)
+                if key.startswith("sensors_"):
+                    # New format: value is a list of entity IDs
+                    camera_target = key.replace("sensors_", "")
+                    motion_entities = value if isinstance(value, list) else [value]
+                    
+                    duration_key = f"duration_{camera_target}"
+                    record_duration = config_data.get(duration_key, 120)
+                    
+                    delay_key = f"snapshot_delay_{camera_target}"
+                    snap_delay = config_data.get(delay_key, 0)
+                    
+                    for motion_entity in motion_entities:
+                        log_to_file(f"Setup Auto-Record: {motion_entity} -> {camera_target} ({record_duration}s, delay {snap_delay}s)")
+                        
+                        unsub = async_track_state_change_event(
+                            hass, 
+                            [motion_entity], 
+                            _create_motion_handler(camera_target, record_duration, snap_delay)
+                        )
+                        entry.async_on_unload(unsub)
+                        
+                elif key.startswith("sensor_"):
+                    # Legacy format: value is a single entity ID string
                     camera_target = key.replace("sensor_", "")
+                    # Skip if new format already exists for this camera
+                    if f"sensors_{camera_target}" in config_data:
+                        continue
+                        
                     motion_entity = value
                     
                     duration_key = f"duration_{camera_target}"
@@ -426,7 +453,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                     delay_key = f"snapshot_delay_{camera_target}"
                     snap_delay = config_data.get(delay_key, 0)
                     
-                    log_to_file(f"Setup Auto-Record: {motion_entity} -> {camera_target} ({record_duration}s, delay {snap_delay}s)")
+                    log_to_file(f"Setup Auto-Record (legacy): {motion_entity} -> {camera_target} ({record_duration}s, delay {snap_delay}s)")
                     
                     unsub = async_track_state_change_event(
                         hass, 
@@ -534,13 +561,22 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             try:
                 loop = asyncio.get_event_loop()
                 
-                # Get all configured cameras from motion sensors
+                # v1.2.0: Get all configured cameras from motion sensors (both formats)
+                cameras_to_check = {}  # camera_name -> list of motion entities
+                
                 for key, value in config_data.items():
-                    if not key.startswith("sensor_"):
-                        continue
-                    
-                    camera_name = key.replace("sensor_", "")
-                    motion_entity = value
+                    if key.startswith("sensors_"):
+                        # New format: list of entities
+                        camera_name = key.replace("sensors_", "")
+                        motion_entities = value if isinstance(value, list) else [value]
+                        cameras_to_check[camera_name] = motion_entities
+                    elif key.startswith("sensor_"):
+                        # Legacy format: single entity
+                        camera_name = key.replace("sensor_", "")
+                        if camera_name not in cameras_to_check:  # Don't override new format
+                            cameras_to_check[camera_name] = [value]
+                
+                for camera_name, motion_entities in cameras_to_check.items():
                     cam_folder = os.path.join(storage_path, camera_name)
                     
                     # Find newest recording (run in executor to avoid blocking)
@@ -560,10 +596,14 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
                     except Exception as e:
                         log_to_file(f"Watchdog: Error checking {camera_name}: {e}")
                     
-                    # Check motion sensor state
-                    state = hass.states.get(motion_entity)
-                    if state:
-                        camera_expected_activity[camera_name] = (state.state == "on")
+                    # Check if any motion sensor is active
+                    camera_has_motion = False
+                    for motion_entity in motion_entities:
+                        state = hass.states.get(motion_entity)
+                        if state and state.state == "on":
+                            camera_has_motion = True
+                            break
+                    camera_expected_activity[camera_name] = camera_has_motion
                 
                 # Log health status
                 now_dt = datetime.datetime.now()

@@ -110,7 +110,7 @@
                 "title": "📹 {camera_name} konfigurieren",
                 "description": "Bewegungserkennung und Aufnahme-Einstellungen für diese Kamera.",
                 "data": {
-                    "motion_sensor": "🏃 Bewegungssensor",
+                    "motion_sensors": "🏃 Auslöser (Sensoren)",
                     "recording_duration": "⏱️ Aufnahmedauer",
                     "snapshot_delay": "📸 Snapshot-Verzögerung",
                     "rtsp_url": "🔗 RTSP-URL (Optional)",
@@ -122,7 +122,7 @@
                     "configure_another": "🔄 Weitere Kamera konfigurieren"
                 },
                 "data_description": {
-                    "motion_sensor": "Binary Sensor der die Aufnahme startet (z.B. Bewegungssensor)",
+                    "motion_sensors": "Sensoren die die Aufnahme starten (z.B. Bewegung, Türklingel, Türkontakt). Mehrere möglich.",
                     "recording_duration": "Wie lange nach Bewegung aufgenommen wird (Sekunden)",
                     "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung für bessere Bilder",
                     "rtsp_url": "Eigene RTSP-URL statt der von Home Assistant erkannten (z.B. rtsp://user:pass@192.168.1.100:554/stream)",
@@ -140,7 +140,7 @@
                 "data": {
                     "camera_name": "📹 Kamera-Name",
                     "rtsp_url": "🔗 RTSP-URL",
-                    "motion_sensor": "🏃 Bewegungssensor",
+                    "motion_sensors": "🏃 Auslöser (Sensoren)",
                     "recording_duration": "⏱️ Aufnahmedauer",
                     "snapshot_delay": "📸 Snapshot-Verzögerung",
                     "camera_retention": "🗑️ Eigene Aufbewahrung (Stunden)",
@@ -149,7 +149,7 @@
                 "data_description": {
                     "camera_name": "Eindeutiger Name für die Kamera (z.B. Garage, Einfahrt)",
                     "rtsp_url": "RTSP-Stream-URL der Kamera (z.B. rtsp://user:pass@192.168.1.100:554/stream)",
-                    "motion_sensor": "Binary Sensor der die Aufnahme startet (z.B. Bewegungssensor)",
+                    "motion_sensors": "Sensoren die die Aufnahme starten (z.B. Bewegung, Türklingel). Mehrere möglich.",
                     "recording_duration": "Wie lange nach Bewegung aufgenommen wird (Sekunden)",
                     "snapshot_delay": "Wartezeit vor Thumbnail-Erstellung für bessere Bilder",
                     "camera_retention": "0 = Globale Einstellung nutzen. Sonst: Stunden für diese Kamera",

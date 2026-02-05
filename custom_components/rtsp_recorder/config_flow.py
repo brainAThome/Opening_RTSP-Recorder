@@ -237,8 +237,9 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         for cam in sorted(self._camera_list):
             display = prettify_camera_name(cam)
             safe_name = cam.replace(" ", "_")
-            has_sensor = f"sensor_{safe_name}" in self.config_cache
-            icon = "✅" if has_sensor else "🆕"
+            # v1.2.0: Check both new multi-sensor format and legacy single sensor
+            has_sensors = f"sensors_{safe_name}" in self.config_cache or f"sensor_{safe_name}" in self.config_cache
+            icon = "✅" if has_sensors else "🆕"
             cam_options.append({"value": cam, "label": f"{icon} {display}"})
 
         schema = vol.Schema({
@@ -298,7 +299,8 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         # Create safe key prefix
         safe_name = sanitize_camera_key(cam)
         
-        key_sensor = f"sensor_{safe_name}"
+        key_sensors = f"sensors_{safe_name}"  # v1.2.0: Multi-sensor support (list)
+        key_sensor_legacy = f"sensor_{safe_name}"  # Legacy single sensor
         key_duration = f"duration_{safe_name}"
         key_delay = f"snapshot_delay_{safe_name}"
         key_retention = f"retention_hours_{safe_name}"
@@ -310,12 +312,15 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         key_face_threshold = f"face_match_threshold_{safe_name}"
         
         if user_input is not None:
-            # Save sensor (if selected)
-            sensor = user_input.get("motion_sensor")
-            if sensor:
-                self.config_cache[key_sensor] = sensor
-            elif key_sensor in self.config_cache:
-                del self.config_cache[key_sensor]
+            # Save sensors (list of trigger entities)
+            sensors = user_input.get("motion_sensors", [])
+            if sensors:
+                self.config_cache[key_sensors] = sensors
+                # Remove legacy single sensor key if exists
+                if key_sensor_legacy in self.config_cache:
+                    del self.config_cache[key_sensor_legacy]
+            elif key_sensors in self.config_cache:
+                del self.config_cache[key_sensors]
             
             # Save duration
             self.config_cache[key_duration] = int(user_input.get("recording_duration", 120))
@@ -371,7 +376,14 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=self.config_cache)
 
         # Load current values
-        cur_sensor = self.config_cache.get(key_sensor)
+        # v1.2.0: Support both new list format and legacy single sensor
+        cur_sensors = self.config_cache.get(key_sensors, [])
+        if not cur_sensors and key_sensor_legacy in self.config_cache:
+            # Migrate legacy single sensor to list format
+            legacy_sensor = self.config_cache.get(key_sensor_legacy)
+            if legacy_sensor:
+                cur_sensors = [legacy_sensor]
+        
         cur_duration = self.config_cache.get(key_duration, 120)
         cur_delay = self.config_cache.get(key_delay, 0)
         cur_retention = self.config_cache.get(key_retention, 0)
@@ -416,10 +428,11 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         ]
 
         schema = vol.Schema({
-            vol.Optional("motion_sensor", description={"suggested_value": cur_sensor}): selector.EntitySelector(
+            # v1.2.0: Multi-sensor support - allows multiple trigger entities
+            vol.Optional("motion_sensors", default=cur_sensors): selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain="binary_sensor",
-                    device_class="motion"
+                    multiple=True  # Allow multiple sensors
                 )
             ),
             vol.Required("recording_duration", default=cur_duration): selector.NumberSelector(
@@ -486,7 +499,8 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 errors["rtsp_url"] = "invalid_rtsp"
 
             safe_name = sanitize_camera_key(camera_name) if camera_name else ""
-            key_sensor = f"sensor_{safe_name}"
+            key_sensors = f"sensors_{safe_name}"  # v1.2.0: Multi-sensor support
+            key_sensor_legacy = f"sensor_{safe_name}"  # Legacy single sensor
             key_duration = f"duration_{safe_name}"
             key_delay = f"snapshot_delay_{safe_name}"
             key_retention = f"retention_hours_{safe_name}"
@@ -496,15 +510,16 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             existing_norm.update({normalize_camera_name(k.replace("rtsp_url_", "")) for k in self.config_cache.keys() if k.startswith("rtsp_url_")})
             if camera_name and normalize_camera_name(camera_name) in existing_norm:
                 errors["camera_name"] = "camera_exists"
-            if safe_name and (key_rtsp in self.config_cache or key_duration in self.config_cache or key_sensor in self.config_cache):
+            if safe_name and (key_rtsp in self.config_cache or key_duration in self.config_cache or key_sensors in self.config_cache or key_sensor_legacy in self.config_cache):
                 errors["camera_name"] = "camera_exists"
 
             if not errors:
-                sensor = user_input.get("motion_sensor")
-                if sensor:
-                    self.config_cache[key_sensor] = sensor
-                elif key_sensor in self.config_cache:
-                    del self.config_cache[key_sensor]
+                # v1.2.0: Save as list of sensors
+                sensors = user_input.get("motion_sensors", [])
+                if sensors:
+                    self.config_cache[key_sensors] = sensors
+                elif key_sensors in self.config_cache:
+                    del self.config_cache[key_sensors]
 
                 self.config_cache[key_duration] = int(user_input.get("recording_duration", 120))
                 self.config_cache[key_delay] = int(user_input.get("snapshot_delay", 0))
@@ -529,10 +544,11 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             vol.Required("rtsp_url"): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
             ),
-            vol.Optional("motion_sensor"): selector.EntitySelector(
+            # v1.2.0: Multi-sensor support
+            vol.Optional("motion_sensors", default=[]): selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain="binary_sensor",
-                    device_class="motion"
+                    multiple=True
                 )
             ),
             vol.Required("recording_duration", default=120): selector.NumberSelector(

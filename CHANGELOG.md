@@ -2,6 +2,26 @@
 
 All notable changes to RTSP Recorder will be documented in this file.
 
+## [1.2.0] - 2026-02-05
+
+### 🚀 New Feature: Multi-Sensor Trigger
+
+**Multiple trigger sensors per camera!**
+
+Previously each camera could only have one motion sensor as trigger. Now you can configure multiple sensors - e.g. a motion sensor AND a doorbell - to start recording.
+
+- **Config Flow**: Motion sensor selector now allows multi-select
+- **Backward Compatible**: Existing `sensor_{camera}` configs still work
+- **New Format**: `sensors_{camera}` stores list of entities
+- **Both Steps**: Camera config + Manual camera support multi-sensors
+
+### 🔧 Technical Changes
+- `config_flow.py`: EntitySelector with `multiple=True`
+- `__init__.py`: Listener registration iterates over sensor list
+- `strings.json` & translations: Updated labels (de, en)
+
+---
+
 ## [1.1.2] - 2026-02-05
 
 ### � Bug Fixes
