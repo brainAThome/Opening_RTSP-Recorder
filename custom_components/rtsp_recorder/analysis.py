@@ -1438,70 +1438,23 @@ async def analyze_recording(
                         if frame_w and frame_h:
                             result["frame_width"] = frame_w
                             result["frame_height"] = frame_h
+                        
+                        # v1.2.0 Refactor: Use helper function for face normalization
                         normed_faces = []
                         for face in faces:
-                            face_box = face.get("box") or {}
-                            score = face.get("score", 0.0)
-                            emb = face.get("embedding")
-                            emb_source = (face.get("embedding_source") or "").lower()
-                            emb_list = _safe_float_list(emb) if isinstance(emb, list) else []
-                            if emb_list:
-                                emb_list = _normalize_embedding(emb_list)
-                            match = None
-                            # Allow matching with any embedding type (including fallback)
-                            # for basic face recognition without dedicated embedding model
-                            if emb_list and people_db:
-                                match = _match_face(emb_list, people_db, face_match_threshold, no_face_embeddings)
-                                # Check if this is a known false positive (not a real face)
-                                if match and match.get("is_no_face"):
-                                    continue  # Skip this face entirely, it's a false positive
-                                if match:
-                                    faces_matched += 1
-
-                            # HIGH-005 Fix: Limit thumbnails to prevent memory exhaustion
-                            thumb_data = None
-                            total_thumbs_created = sum(
-                                1 for det in detections 
-                                for f in det.get("faces", []) 
-                                if f.get("thumb")
+                            face_item, was_matched = _normalize_and_match_face(
+                                face=face,
+                                people_db=people_db,
+                                face_match_threshold=face_match_threshold,
+                                no_face_embeddings=no_face_embeddings,
+                                face_store_embeddings=face_store_embeddings,
+                                frame_img=frame_img,
+                                detections=detections,
                             )
-                            
-                            if frame_img is not None and total_thumbs_created < MAX_FACES_WITH_THUMBS:
-                                try:
-                                    x = max(int(face_box.get("x", 0)), 0)
-                                    y = max(int(face_box.get("y", 0)), 0)
-                                    w = max(int(face_box.get("w", 0)), 1)
-                                    h = max(int(face_box.get("h", 0)), 1)
-                                    x2 = min(x + w, frame_img.width)
-                                    y2 = min(y + h, frame_img.height)
-                                    crop = frame_img.crop((x, y, x2, y2))
-                                    crop = crop.resize((MAX_THUMB_SIZE, MAX_THUMB_SIZE))
-                                    buf = io.BytesIO()
-                                    crop.save(buf, format="JPEG", quality=THUMB_JPEG_QUALITY)
-                                    thumb_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-                                    thumb_data = f"data:image/jpeg;base64,{thumb_b64}"
-                                except (OSError, ValueError):
-                                    thumb_data = None
-
-                            face_item = {
-                                "score": round(float(score), 3),
-                                "box": {
-                                    "x": int(face_box.get("x", 0)),
-                                    "y": int(face_box.get("y", 0)),
-                                    "w": int(face_box.get("w", 0)),
-                                    "h": int(face_box.get("h", 0)),
-                                },
-                            }
-                            if match:
-                                face_item["match"] = match
-                            # Store embeddings regardless of source (including fallback)
-                            # so face samples can be collected even without a dedicated embedding model
-                            if emb_list and face_store_embeddings:
-                                face_item["embedding"] = emb_list
-                            if emb_source:
-                                face_item["embedding_source"] = emb_source
-                            if thumb_data:
-                                face_item["thumb"] = thumb_data
+                            if face_item is None:
+                                continue  # Skip false positives
+                            if was_matched:
+                                faces_matched += 1
                             normed_faces.append(face_item)
 
                         faces_detected += len(normed_faces)
