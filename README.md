@@ -1,4 +1,4 @@
-# RTSP Recorder for Home Assistant
+# Opening RTSP Recorder for Home Assistant
 
 <div align="center">
   <img src="www/opening_logo4.png" alt="RTSP Recorder Logo" width="400">
@@ -1036,5 +1036,6 @@ for everyone who loves technology as much as we do.*
 für alle entwickelt, die Technik genauso im Herzen tragen.*
 
 </div>
+
 
 
