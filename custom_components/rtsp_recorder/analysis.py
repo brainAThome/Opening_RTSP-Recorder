@@ -615,6 +615,15 @@ async def _render_annotated_video(
 
     if not os.path.exists(output_video):
         raise RuntimeError("Annotated video not created")
+    
+    # v1.1.2: Clean up annotated frames after video creation to save disk space
+    # The video is the final output, individual frames are no longer needed
+    try:
+        if os.path.isdir(annotated_dir):
+            shutil.rmtree(annotated_dir)
+    except OSError:
+        pass  # Best effort cleanup, don't fail if frames can't be deleted
+    
     return output_video
 
 
