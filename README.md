@@ -1,5 +1,9 @@
 # RTSP Recorder for Home Assistant
 
+<div align="center">
+  <img src="www/opening_logo4.png" alt="RTSP Recorder Logo" width="400">
+</div>
+
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
 ![Version](https://img.shields.io/badge/version-1.2.0-brightgreen)
@@ -1019,6 +1023,7 @@ MIT License - See LICENSE file for details.
 - Coral USB support inspired by Frigate NVR
 - Uses TensorFlow Lite Runtime
 - Models from Google Coral test data
+- **Logo Design Inspiration**: Special thanks to [@ElektroGandhi](https://github.com/ElektroGandhi) 🎨
 
 ---
 
