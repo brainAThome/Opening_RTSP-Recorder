@@ -482,6 +482,7 @@ def _annotate_frame(frame_path: str, detections: list[dict[str, Any]], out_path:
 
     img = Image.open(frame_path).convert("RGB")
     draw = ImageDraw.Draw(img)
+    img_w, img_h = img.size
 
     # Draw object detections (red boxes)
     for det in detections:
@@ -494,16 +495,20 @@ def _annotate_frame(frame_path: str, detections: list[dict[str, Any]], out_path:
         score = det.get("score")
         text = f"{label} {score:.2f}" if isinstance(score, (int, float)) else str(label)
 
-        x2 = max(x + w, x + 1)
-        y2 = max(y + h, y + 1)
+        # Clamp coordinates to image bounds to avoid PIL errors
+        x = max(0, min(x, img_w - 1))
+        y = max(0, min(y, img_h - 1))
+        x2 = max(x + 1, min(x + w, img_w))
+        y2 = max(y + 1, min(y + h, img_h))
         draw.rectangle([x, y, x2, y2], outline=(255, 64, 64), width=2)
 
         text_w = max(8 * len(text), 20)
         text_h = 16
         tx1, ty1 = x, max(0, y - text_h)
-        tx2, ty2 = x + text_w + 6, y
-        draw.rectangle([tx1, ty1, tx2, ty2], fill=(0, 0, 0))
-        draw.text((tx1 + 3, ty1 + 2), text, fill=(255, 255, 255))
+        tx2, ty2 = min(x + text_w + 6, img_w), y
+        if ty2 > ty1:  # Only draw if valid rectangle
+            draw.rectangle([tx1, ty1, tx2, ty2], fill=(0, 0, 0))
+            draw.text((tx1 + 3, ty1 + 2), text, fill=(255, 255, 255))
 
     # Draw face detections (orange boxes)
     if faces:
@@ -523,17 +528,21 @@ def _annotate_frame(frame_path: str, detections: list[dict[str, Any]], out_path:
                 label = "face"
             text = f"{label} {score:.2f}" if isinstance(score, (int, float)) else str(label)
 
-            x2 = max(x + w, x + 1)
-            y2 = max(y + h, y + 1)
+            # Clamp coordinates to image bounds to avoid PIL errors
+            x = max(0, min(x, img_w - 1))
+            y = max(0, min(y, img_h - 1))
+            x2 = max(x + 1, min(x + w, img_w))
+            y2 = max(y + 1, min(y + h, img_h))
             # Orange color for faces: RGB(255, 165, 0)
             draw.rectangle([x, y, x2, y2], outline=(255, 165, 0), width=3)
 
             text_w = max(8 * len(text), 20)
             text_h = 16
             tx1, ty1 = x, max(0, y - text_h)
-            tx2, ty2 = x + text_w + 6, y
-            draw.rectangle([tx1, ty1, tx2, ty2], fill=(255, 165, 0))
-            draw.text((tx1 + 3, ty1 + 2), text, fill=(0, 0, 0))
+            tx2, ty2 = min(x + text_w + 6, img_w), y
+            if ty2 > ty1:  # Only draw if valid rectangle
+                draw.rectangle([tx1, ty1, tx2, ty2], fill=(255, 165, 0))
+                draw.text((tx1 + 3, ty1 + 2), text, fill=(0, 0, 0))
 
     img.save(out_path, "JPEG", quality=90)
 
