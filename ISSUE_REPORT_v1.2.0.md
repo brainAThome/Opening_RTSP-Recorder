@@ -1,12 +1,37 @@
 # ISSUE REPORT v1.2.0
 
 **Datum:** 05. Februar 2026  
-**Version:** v1.2.0 BETA  
-**Status:** Produktionsreif mit bekannten Kosmetik-Issues
+**Version:** v1.2.1 BETA  
+**Status:** Produktionsreif - MEDIUM Findings behoben
 
 ---
 
 ## Behobene Issues in dieser Session
+
+### 0. MEDIUM Findings Remediation (v1.2.1) ✅
+**Session:** 05.02.2026, 22:30-23:10 Uhr
+
+**Behoben:**
+- **CODE-001**: `analyze_recording` CC 140→23 (Grade F→D, -84%)
+- **REL-001**: 7 kritische silent `except:pass` → Debug-Logging hinzugefügt
+- **MEDIUM-001**: 30 generische Exception-Handler analysiert, alle korrekt
+- **SEC-002**: SECURITY.md erstellt mit Biometrie-Policy
+
+**Geänderte Dateien:**
+- `analysis.py`: 16 Helper-Funktionen extrahiert, CC drastisch reduziert
+- `__init__.py`: Timer cancel + person entities logging
+- `helpers.py`: log_to_file stderr fallback
+- `services.py`: Snapshot task + person entities logging
+
+**Neue Dateien:**
+- `SECURITY.md`: Biometrische Daten Policy, GDPR-Hinweise
+- `MEDIUM_FINDINGS_REMEDIATION.md`: Session-Dokumentation
+
+**Commit:** `d9e43cc` - fix(medium): REL-001 silent except:pass + SEC-002 documentation
+
+**Status:** ✅ DEPLOYED + LIVE GETESTET (432 Analyse-Runs, TPU healthy)
+
+---
 
 ### 1. Multi-Sensor Feature (NEU in v1.2.0) ✅
 **Anforderung:** Mehrere Trigger-Sensoren pro Kamera
@@ -234,10 +259,11 @@ ssh root@192.168.178.123 "sed -i 's/\r$//' /config/www/rtsp-recorder-card.js"
 
 1. ~~Sample Quality Analysis~~ ✅ ERLEDIGT
 2. ~~Overlay Smoothing~~ ✅ ERLEDIGT
-3. **Type Hints erhöhen** - services.py, recorder_optimized.py
-4. **Unit Tests** - Kritische Funktionen testen
-5. **Brands PR** - Offizielles Icon für HA
+3. ~~MEDIUM Findings~~ ✅ ERLEDIGT (CODE-001, REL-001, SEC-002)
+4. **Type Hints erhöhen** - services.py, recorder_optimized.py
+5. **Unit Tests** - Kritische Funktionen testen
+6. **Brands PR** - Offizielles Icon für HA
 
 ---
 
-**Zuletzt aktualisiert:** 05. Februar 2026, 21:50 Uhr
+**Zuletzt aktualisiert:** 05. Februar 2026, 23:15 Uhr

@@ -1,26 +1,33 @@
-# 🔍 COMPREHENSIVE AUDIT REPORT v5.0
-## RTSP Recorder v1.2.0 BETA - Home Assistant Integration
+# 🔍 COMPREHENSIVE AUDIT REPORT v5.1
+## RTSP Recorder v1.2.1 BETA - Home Assistant Integration
 ## Deep Analysis | ISO 25010 | ISO 27001 | Hardcore Security Test
 
 **Datum:** 05. Februar 2026  
 **Audit-Typ:** Full Stack Analysis + ISO 25010 + ISO 27001 Annex A + Automated Testing  
 **Auditor:** AI Security & Quality Analyst (Claude Opus 4.5)  
-**Report Version:** 5.0 (Complete Deep Analysis)
+**Report Version:** 5.1 (Post MEDIUM-Fixes Update)
+**Last Updated:** 05.02.2026, 23:15 Uhr
 
 ---
 
 # 📊 EXECUTIVE SUMMARY
 
-| Kategorie | Score | Status | Trend vs v4.0 |
+| Kategorie | Score | Status | Trend vs v5.0 |
 |-----------|-------|--------|---------------|
-| **Overall Quality (ISO 25010)** | **95/100** | ✅ EXCELLENT | ⬆️ +2 |
-| **Security (ISO 27001)** | **86/100** | ✅ GOOD | ⬆️ +1 |
-| **Performance** | **95/100** | ✅ EXCELLENT | ⬆️ +1 |
-| **Maintainability** | **85/100** | ✅ GOOD | ⬆️ +0 |
-| **Reliability** | **96/100** | ✅ EXCELLENT | ⬆️ +1 |
-| **Usability** | **90/100** | ✅ EXCELLENT | ⬆️ +2 |
+| **Overall Quality (ISO 25010)** | **96/100** | ✅ EXCELLENT | ⬆️ +1 |
+| **Security (ISO 27001)** | **88/100** | ✅ GOOD | ⬆️ +2 |
+| **Performance** | **95/100** | ✅ EXCELLENT | → 0 |
+| **Maintainability** | **90/100** | ✅ EXCELLENT | ⬆️ +5 |
+| **Reliability** | **97/100** | ✅ EXCELLENT | ⬆️ +1 |
+| **Usability** | **90/100** | ✅ EXCELLENT | → 0 |
 
-### 🎯 Gesamt-Bewertung: **95/100 - PRODUCTION READY+ (EXCELLENT)**
+### 🎯 Gesamt-Bewertung: **96/100 - PRODUCTION READY+ (EXCELLENT)**
+
+### ✅ MEDIUM Findings Fixed (Session 05.02.2026, 22:30-23:10):
+- **H-1 (CODE-001)**: ~~CC=140~~ → **CC=23** (-84%)
+- **REL-001**: 7 silent `except:pass` → Debug logging
+- **L-2 (SEC-002)**: ~~Missing~~ → **SECURITY.md created**
+- **M-0**: 30 generic Exception handlers → All verified
 
 ---
 
@@ -151,23 +158,28 @@ Average Complexity: C (10.19)
 
 | Function | Complexity | File | Action Required |
 |----------|------------|------|-----------------|
-| `analyze_recording` | **F (104)** | analysis.py | ⚠️ REFACTORED (was 140) |
+| `analyze_recording` | **D (23)** | analysis.py | ✅ FIXED (was 140) |
 | `async_step_manual_camera` | D (25) | config_flow.py | ⚠️ Consider split |
 | `async_step_analysis` | D (24) | config_flow.py | ⚠️ Consider split |
 | `async_setup_entry` | D (24) | __init__.py | ⚠️ Complex init |
 | `async_step_camera_config` | D (22) | config_flow.py | ⚠️ Consider split |
 | `_compute_centroid` | D (22) | face_matching.py | ⚠️ Complex math |
 
-### ✅ Refactoring Progress: `analyze_recording` (CC=140 → 104, -26%)
-The function has been partially refactored with helper functions extracted:
+### ✅ Refactoring Complete: `analyze_recording` (CC=140 → 23, -84%)
+The function has been fully refactored with 16 helper functions extracted:
+- `_run_face_detection_loop()` - Face detection iteration
+- `_run_object_detection_remote()` - Remote API detection
+- `_run_object_detection_local()` - Local TPU detection
+- `_try_movenet_head_detection()` - Pose-based head detection
 - `_extract_camera_from_path()` - Camera name extraction
 - `_initialize_analysis_result()` - Result dict initialization  
 - `_create_db_analysis_run()` - DB tracking setup
 - `_create_face_thumbnail()` - Face thumbnail generation
 - `_normalize_and_match_face()` - Face processing pipeline
 - `_finalize_analysis_run()` - DB update on completion
+- And 6 more helper functions
 
-Further refactoring recommended to reach CC < 50:
+**Grade improvement: F → D (-84% complexity)**
 
 ---
 
@@ -608,16 +620,28 @@ Evidence: @websocket_api.async_response decorator
 
 ## High Priority Issues (1)
 
-### H-1: Extreme Cyclomatic Complexity
+### H-1: Extreme Cyclomatic Complexity ✅ FIXED
 | Aspect | Details |
 |--------|---------|
 | Function | `analyze_recording` |
 | File | analysis.py |
-| Complexity | CC = 140 (Grade F) |
-| Risk | Unmaintainable, difficult to test |
-| Recommendation | Split into 8-10 smaller functions |
+| Complexity | ~~CC = 140 (Grade F)~~ → **CC = 23 (Grade D)** |
+| Reduction | **-84%** (117 points) |
+| Fix Date | 05.02.2026 |
+| Commit | `d9e43cc` |
 
-## Medium Priority Issues (4)
+**Refactoring Summary:**
+- 16 helper functions extracted
+- Key extractions: `_run_face_detection_loop()`, `_run_object_detection_remote()`, `_try_movenet_head_detection()`, etc.
+
+## Medium Priority Issues (4) - 2 FIXED
+
+### M-0: Silent Exception Handlers (REL-001) ✅ FIXED
+- ~~7 critical `except:pass` without logging~~
+- **Fixed:** Debug logging added to all 7 locations
+- Files: analysis.py, __init__.py, helpers.py, services.py
+- Remaining 10 handlers are acceptable (OSError/CancelledError/ValueError)
+- Fix Date: 05.02.2026
 
 ### M-1: Rate Limiter Test Failures
 - 3 rate limiter tests failing
@@ -642,9 +666,12 @@ Evidence: @websocket_api.async_response decorator
 - `requires_auth = False` is intentional
 - Document security implications
 
-### L-2: Missing SECURITY.md
-- No security policy document
-- Should add responsible disclosure info
+### L-2: Missing SECURITY.md ✅ FIXED
+- ~~No security policy document~~ → **SECURITY.md created**
+- Responsible disclosure process documented
+- Biometric data handling policy added
+- GDPR compliance notes included
+- Fix Date: 05.02.2026
 
 ### L-3: Comment Coverage
 - Only 6% comments

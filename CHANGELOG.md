@@ -2,6 +2,32 @@
 
 All notable changes to RTSP Recorder will be documented in this file.
 
+## [1.2.1] - 2026-02-05
+
+### 🔧 Code Quality: MEDIUM Findings Remediation
+
+**Cyclomatic Complexity (CODE-001):**
+- `analyze_recording`: CC 140→23 (-84%, Grade F→D)
+- 16 helper functions extracted: `_run_face_detection_loop()`, `_run_object_detection_remote()`, `_run_object_detection_local()`, etc.
+
+**Silent Exception Handlers (REL-001):**
+- 7 critical `except:pass` blocks now have debug logging
+- Files affected: analysis.py, __init__.py, helpers.py, services.py
+
+**Security Documentation (SEC-002):**
+- New `SECURITY.md` with biometric data policy
+- GDPR compliance notes for face embeddings
+- Encryption roadmap for v1.3
+
+**Generic Exception Analysis (MEDIUM-001):**
+- 30 handlers analyzed - all properly logged or acceptable patterns
+
+### 📁 New Files
+- `SECURITY.md` - Security policy and responsible disclosure
+- `MEDIUM_FINDINGS_REMEDIATION.md` - Session documentation
+
+---
+
 ## [1.2.0] - 2026-02-05
 
 ### 🚀 New Feature: Multi-Sensor Trigger
