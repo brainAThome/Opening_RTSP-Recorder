@@ -87,11 +87,36 @@ CREATE TABLE IF NOT EXISTS recognition_history (
     FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE SET NULL
 );
 
+-- Analysis runs table (metadata for each video analysis)
+CREATE TABLE IF NOT EXISTS analysis_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_path TEXT NOT NULL,
+    analysis_path TEXT,           -- Path to analysis folder
+    camera_name TEXT,
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    status TEXT DEFAULT 'running', -- 'running', 'completed', 'failed'
+    frame_count INTEGER DEFAULT 0,
+    frame_interval REAL,
+    video_duration REAL,
+    video_size_mb REAL,
+    device_used TEXT,             -- 'cpu', 'coral_usb'
+    processing_time_sec REAL,
+    objects_found TEXT,           -- JSON array of unique objects
+    persons_detected INTEGER DEFAULT 0,
+    faces_detected INTEGER DEFAULT 0,
+    faces_matched INTEGER DEFAULT 0,
+    error_message TEXT
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_recognition_history_person ON recognition_history(person_id);
 CREATE INDEX IF NOT EXISTS idx_recognition_history_camera ON recognition_history(camera_name);
 CREATE INDEX IF NOT EXISTS idx_recognition_history_time ON recognition_history(recognized_at);
 CREATE INDEX IF NOT EXISTS idx_face_embeddings_person ON face_embeddings(person_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_runs_video ON analysis_runs(video_path);
+CREATE INDEX IF NOT EXISTS idx_analysis_runs_camera ON analysis_runs(camera_name);
+CREATE INDEX IF NOT EXISTS idx_analysis_runs_created ON analysis_runs(created_at);
 """
 
 
@@ -899,6 +924,253 @@ class DatabaseManager:
         except Exception as e:
             _LOGGER.error(f"Vacuum failed: {e}")
     
+    # ==================== Analysis Runs Methods ====================
+    
+    def create_analysis_run(
+        self,
+        video_path: str,
+        camera_name: str = None,
+        frame_interval: float = None,
+        video_size_mb: float = None,
+        device_used: str = None
+    ) -> int:
+        """Create a new analysis run entry.
+        
+        Args:
+            video_path: Path to the video being analyzed
+            camera_name: Name of the camera
+            frame_interval: Seconds between analyzed frames
+            video_size_mb: Size of the video file
+            device_used: 'cpu' or 'coral_usb'
+            
+        Returns:
+            ID of the created analysis run
+        """
+        now = datetime.now().isoformat()
+        cursor = self.conn.execute(
+            """INSERT INTO analysis_runs 
+               (video_path, camera_name, created_at, status, frame_interval, video_size_mb, device_used)
+               VALUES (?, ?, ?, 'running', ?, ?, ?)""",
+            (video_path, camera_name, now, frame_interval, video_size_mb, device_used)
+        )
+        self.conn.commit()
+        run_id = cursor.lastrowid
+        _LOGGER.debug(f"Created analysis run {run_id} for {video_path}")
+        return run_id
+    
+    def update_analysis_run(
+        self,
+        run_id: int,
+        analysis_path: str = None,
+        status: str = None,
+        frame_count: int = None,
+        video_duration: float = None,
+        processing_time_sec: float = None,
+        objects_found: List[str] = None,
+        persons_detected: int = None,
+        faces_detected: int = None,
+        faces_matched: int = None,
+        error_message: str = None
+    ) -> bool:
+        """Update an existing analysis run.
+        
+        Args:
+            run_id: ID of the analysis run
+            Various optional fields to update
+            
+        Returns:
+            True if successful
+        """
+        updates = []
+        values = []
+        
+        if analysis_path is not None:
+            updates.append("analysis_path = ?")
+            values.append(analysis_path)
+        if status is not None:
+            updates.append("status = ?")
+            values.append(status)
+            if status == "completed":
+                updates.append("completed_at = ?")
+                values.append(datetime.now().isoformat())
+        if frame_count is not None:
+            updates.append("frame_count = ?")
+            values.append(frame_count)
+        if video_duration is not None:
+            updates.append("video_duration = ?")
+            values.append(video_duration)
+        if processing_time_sec is not None:
+            updates.append("processing_time_sec = ?")
+            values.append(processing_time_sec)
+        if objects_found is not None:
+            updates.append("objects_found = ?")
+            values.append(json.dumps(objects_found))
+        if persons_detected is not None:
+            updates.append("persons_detected = ?")
+            values.append(persons_detected)
+        if faces_detected is not None:
+            updates.append("faces_detected = ?")
+            values.append(faces_detected)
+        if faces_matched is not None:
+            updates.append("faces_matched = ?")
+            values.append(faces_matched)
+        if error_message is not None:
+            updates.append("error_message = ?")
+            values.append(error_message)
+        
+        if not updates:
+            return True
+        
+        values.append(run_id)
+        sql = f"UPDATE analysis_runs SET {', '.join(updates)} WHERE id = ?"
+        
+        try:
+            self.conn.execute(sql, values)
+            self.conn.commit()
+            return True
+        except Exception as e:
+            _LOGGER.error(f"Failed to update analysis run {run_id}: {e}")
+            return False
+    
+    def get_analysis_run(self, run_id: int) -> Optional[Dict]:
+        """Get a specific analysis run by ID.
+        
+        Args:
+            run_id: ID of the analysis run
+            
+        Returns:
+            Dict with analysis run data or None
+        """
+        cursor = self.conn.execute(
+            "SELECT * FROM analysis_runs WHERE id = ?", (run_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+        return None
+    
+    def get_analysis_runs(
+        self,
+        camera_name: str = None,
+        status: str = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Dict]:
+        """Get analysis runs with optional filters.
+        
+        Args:
+            camera_name: Filter by camera
+            status: Filter by status
+            limit: Max results
+            offset: Pagination offset
+            
+        Returns:
+            List of analysis run dicts
+        """
+        sql = "SELECT * FROM analysis_runs WHERE 1=1"
+        params = []
+        
+        if camera_name:
+            sql += " AND camera_name = ?"
+            params.append(camera_name)
+        if status:
+            sql += " AND status = ?"
+            params.append(status)
+        
+        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
+        cursor = self.conn.execute(sql, params)
+        return [dict(row) for row in cursor.fetchall()]
+    
+    def get_analysis_stats(self, days: int = 30) -> Dict:
+        """Get analysis statistics for the last N days.
+        
+        Args:
+            days: Number of days to look back
+            
+        Returns:
+            Dict with statistics
+        """
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        
+        stats = {}
+        
+        # Total runs
+        cursor = self.conn.execute(
+            "SELECT COUNT(*) FROM analysis_runs WHERE created_at > ?", (cutoff,)
+        )
+        stats["total_runs"] = cursor.fetchone()[0]
+        
+        # Completed runs
+        cursor = self.conn.execute(
+            "SELECT COUNT(*) FROM analysis_runs WHERE created_at > ? AND status = 'completed'",
+            (cutoff,)
+        )
+        stats["completed_runs"] = cursor.fetchone()[0]
+        
+        # Total faces detected
+        cursor = self.conn.execute(
+            "SELECT SUM(faces_detected) FROM analysis_runs WHERE created_at > ?",
+            (cutoff,)
+        )
+        result = cursor.fetchone()[0]
+        stats["total_faces_detected"] = result or 0
+        
+        # Total faces matched
+        cursor = self.conn.execute(
+            "SELECT SUM(faces_matched) FROM analysis_runs WHERE created_at > ?",
+            (cutoff,)
+        )
+        result = cursor.fetchone()[0]
+        stats["total_faces_matched"] = result or 0
+        
+        # Average processing time
+        cursor = self.conn.execute(
+            "SELECT AVG(processing_time_sec) FROM analysis_runs WHERE created_at > ? AND status = 'completed'",
+            (cutoff,)
+        )
+        result = cursor.fetchone()[0]
+        stats["avg_processing_time_sec"] = round(result, 2) if result else 0
+        
+        return stats
+    
+    def delete_analysis_run(self, run_id: int) -> bool:
+        """Delete an analysis run.
+        
+        Args:
+            run_id: ID of the analysis run
+            
+        Returns:
+            True if deleted
+        """
+        try:
+            self.conn.execute("DELETE FROM analysis_runs WHERE id = ?", (run_id,))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            _LOGGER.error(f"Failed to delete analysis run {run_id}: {e}")
+            return False
+    
+    def cleanup_old_analysis_runs(self, days: int = 90) -> int:
+        """Delete analysis runs older than N days.
+        
+        Args:
+            days: Delete runs older than this
+            
+        Returns:
+            Number of deleted runs
+        """
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        cursor = self.conn.execute(
+            "DELETE FROM analysis_runs WHERE created_at < ?", (cutoff,)
+        )
+        self.conn.commit()
+        deleted = cursor.rowcount
+        if deleted:
+            _LOGGER.info(f"Cleaned up {deleted} old analysis runs")
+        return deleted
+
     def get_db_stats(self) -> Dict[str, int]:
         """Get database statistics.
         
@@ -918,6 +1190,13 @@ class DatabaseManager:
         
         cursor = self.conn.execute("SELECT COUNT(*) FROM recognition_history")
         stats["history"] = cursor.fetchone()[0]
+        
+        # Analysis runs count
+        try:
+            cursor = self.conn.execute("SELECT COUNT(*) FROM analysis_runs")
+            stats["analysis_runs"] = cursor.fetchone()[0]
+        except:
+            stats["analysis_runs"] = 0
         
         # Database file size
         if os.path.exists(self.db_path):

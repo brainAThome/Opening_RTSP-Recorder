@@ -45,6 +45,9 @@ from .const import (
     DEFAULT_ANALYSIS_FRAME_INTERVAL,
 )
 
+# Import database for analysis runs tracking
+from .database import get_database
+
 # ===== Memory Management Constants (HIGH-005 Fix) =====
 # Limit the number of faces with embedded thumbnails to prevent memory exhaustion
 # Each base64 thumbnail is ~6KB (80x80 JPEG), limiting to 50 faces = ~300KB max per analysis
@@ -57,6 +60,9 @@ THUMB_JPEG_QUALITY = 70
 FACE_RETRY_CONFIDENCE_MULTIPLIER = 0.6
 # ===== End Memory Management Constants =====
 
+from datetime import datetime
+from typing import Any
+
 # Lazy access to stats tracker from helpers module
 def _get_inference_stats() -> Any:
     """Get the inference stats tracker from helpers module."""
@@ -65,9 +71,6 @@ def _get_inference_stats() -> Any:
         return get_inference_stats()
     except ImportError:
         return None
-
-from datetime import datetime
-from typing import Any
 
 try:
     import numpy as np
@@ -712,6 +715,34 @@ async def analyze_recording(
     result_path = os.path.join(job_dir, "result.json")
     await _write_json_async(result_path, result)
 
+    # v1.1.2: Track analysis in SQLite for queryable metadata
+    analysis_run_id = None
+    try:
+        db = get_database()
+        if db:
+            # Extract camera name from video path (e.g., /recordings/camera_name/video.mp4)
+            path_parts = video_path.replace("\\", "/").split("/")
+            extracted_camera = None
+            for i, part in enumerate(path_parts):
+                if part == "recordings" and i + 1 < len(path_parts):
+                    extracted_camera = path_parts[i + 1]
+                    break
+            if not extracted_camera:
+                extracted_camera = "unknown"
+            
+            analysis_run_id = db.create_analysis_run(
+                video_path=video_path,
+                camera_name=extracted_camera,
+                frame_interval=interval_s,
+                video_size_mb=video_size_mb,
+                device_used=device
+            )
+            # Store analysis_path via update
+            if analysis_run_id:
+                db.update_analysis_run(run_id=analysis_run_id, analysis_path=job_dir)
+    except Exception as db_err:
+        _LOGGER.warning("Could not create analysis_run entry: %s", db_err)
+
     try:
         start_time = time.monotonic()
         frames = await extract_frames(video_path, frames_dir, interval_s)
@@ -1104,6 +1135,22 @@ async def analyze_recording(
         result["completed_utc"] = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         result["processing_time_seconds"] = round(time.monotonic() - start_time, 2)
         
+        # v1.1.2: Update analysis run in SQLite with final stats
+        if analysis_run_id:
+            try:
+                db = get_database()
+                if db:
+                    db.update_analysis_run(
+                        run_id=analysis_run_id,
+                        status="completed",
+                        frame_count=result.get("frame_count", 0),
+                        faces_detected=result.get("faces_detected", 0),
+                        faces_matched=result.get("faces_matched", 0),
+                        processing_time_sec=result.get("processing_time_seconds"),
+                    )
+            except Exception as db_err:
+                _LOGGER.warning("Could not update analysis_run: %s", db_err)
+        
         # v1.1.0n: Cleanup frames after successful analysis to save disk space
         # Frames are only needed during detection, not afterwards
         # v1.1.1 fix: Run blocking I/O in executor to avoid blocking event loop
@@ -1120,10 +1167,34 @@ async def analyze_recording(
     except asyncio.CancelledError:
         result["status"] = "cancelled"
         result["error"] = "analysis_cancelled"
+        # v1.1.2: Update analysis run on cancellation
+        if analysis_run_id:
+            try:
+                db = get_database()
+                if db:
+                    db.update_analysis_run(
+                        run_id=analysis_run_id,
+                        status="cancelled",
+                        error_message="analysis_cancelled"
+                    )
+            except Exception:
+                pass
         await _write_json_async(result_path, result)
         raise
     except Exception as e:
         result["status"] = "error"
         result["error"] = str(e)
+        # v1.1.2: Update analysis run on error
+        if analysis_run_id:
+            try:
+                db = get_database()
+                if db:
+                    db.update_analysis_run(
+                        run_id=analysis_run_id,
+                        status="error",
+                        error_message=str(e)
+                    )
+            except Exception:
+                pass
         await _write_json_async(result_path, result)
         return result
