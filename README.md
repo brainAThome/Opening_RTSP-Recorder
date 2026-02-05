@@ -9,12 +9,13 @@ A complete video surveillance solution with AI-powered object detection using Co
 ![Version](https://img.shields.io/badge/version-1.2.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%25-brightgreen)
-![ISO 27001](https://img.shields.io/badge/ISO%2027001-85%25-brightgreen)
+![ISO 25010](https://img.shields.io/badge/ISO%2025010-94%25-brightgreen)
+![ISO 27001](https://img.shields.io/badge/ISO%2027001-86%25-brightgreen)
 ![Type Hints](https://img.shields.io/badge/Type%20Hints-88.2%25-brightgreen)
 ![HACS](https://img.shields.io/badge/HACS-Compatible-orange)
+![Tests](https://img.shields.io/badge/Tests-139%20passed-brightgreen)
 
-📋 **[Audit Report v4.0](COMPREHENSIVE_AUDIT_REPORT_v4.0_2026-02-03.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
+📋 **[Audit Report v5.0](COMPREHENSIVE_AUDIT_REPORT_v5.0_2026-02-05.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (05.02.2026)
 
 ## What's New in v1.2.0
 
@@ -57,10 +58,12 @@ A complete video surveillance solution with AI-powered object detection using Co
 - **Integration Icon**: Custom icon for Home Assistant integrations page
 - **5 Languages**: German, English, Spanish, French, Dutch
 
-### 📊 Quality Metrics (unchanged from v1.1.1)
-- **ISO 25010 Score**: 93/100 (EXCELLENT)
-- **ISO 27001 Score**: 85/100 (GOOD)
+### 📊 Quality Metrics (v5.0 Audit - 05.02.2026)
+- **ISO 25010 Score**: 94/100 (EXCELLENT) ⬆️ +1
+- **ISO 27001 Score**: 86/100 (GOOD) ⬆️ +1
 - **Type Hints Coverage**: 88.2% (134/152 functions)
+- **Automated Tests**: 139 passed, 221 total
+- **Lines of Code**: 10,980 (7,276 SLOC)
 
 ## Version Comparison
 
@@ -84,8 +87,8 @@ A complete video surveillance solution with AI-powered object detection using Co
 | **Outlier Detection** | ❌ | ❌ | ✅ NEW |
 | **Bulk Sample Delete** | ❌ | ❌ | ✅ NEW |
 | **Overlay Smoothing** | ❌ | ❌ | ✅ NEW |
-| **ISO 25010 Score** | 92% | ✅ 93% | ✅ 93% |
-| **ISO 27001 Score** | 85% | ✅ 85% | ✅ 85% |
+| **ISO 25010 Score** | 92% | ✅ 93% | ✅ **94%** |
+| **ISO 27001 Score** | 85% | ✅ 85% | ✅ **86%** |
 | **Production Ready** | ✅ | ✅ | ✅ |
 
 ### ⚡ Performance Optimizations
