@@ -117,6 +117,9 @@ CREATE INDEX IF NOT EXISTS idx_face_embeddings_person ON face_embeddings(person_
 CREATE INDEX IF NOT EXISTS idx_analysis_runs_video ON analysis_runs(video_path);
 CREATE INDEX IF NOT EXISTS idx_analysis_runs_camera ON analysis_runs(camera_name);
 CREATE INDEX IF NOT EXISTS idx_analysis_runs_created ON analysis_runs(created_at);
+CREATE INDEX IF NOT EXISTS idx_analysis_runs_status ON analysis_runs(status);
+-- Composite index for common queries (camera + date range)
+CREATE INDEX IF NOT EXISTS idx_analysis_runs_camera_date ON analysis_runs(camera_name, created_at);
 """
 
 
@@ -150,6 +153,15 @@ class DatabaseManager:
             self._local.connection.execute("PRAGMA foreign_keys = ON")
             # WAL mode for better concurrency
             self._local.connection.execute("PRAGMA journal_mode = WAL")
+            # Performance optimizations for high-volume analysis (1000+ runs/day)
+            # NORMAL sync is safe with WAL and ~2x faster than FULL
+            self._local.connection.execute("PRAGMA synchronous = NORMAL")
+            # 8MB cache for better read performance
+            self._local.connection.execute("PRAGMA cache_size = -8000")
+            # Memory-mapped I/O for faster reads (64MB)
+            self._local.connection.execute("PRAGMA mmap_size = 67108864")
+            # Temp tables in memory
+            self._local.connection.execute("PRAGMA temp_store = MEMORY")
         return self._local.connection
     
     @property
@@ -1203,6 +1215,49 @@ class DatabaseManager:
             stats["db_size_mb"] = round(os.path.getsize(self.db_path) / 1024 / 1024, 2)
         
         return stats
+
+    def optimize_database(self) -> Dict[str, any]:
+        """Optimize database for performance.
+        
+        Runs VACUUM and ANALYZE to reclaim space and update statistics.
+        Should be called periodically (e.g., weekly) or after large deletions.
+        
+        Returns:
+            Dict with optimization results
+        """
+        results = {}
+        
+        try:
+            # Get size before
+            size_before = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
+            
+            # Checkpoint WAL to main database
+            self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            
+            # VACUUM to reclaim space and defragment
+            self.conn.execute("VACUUM")
+            
+            # ANALYZE to update query planner statistics
+            self.conn.execute("ANALYZE")
+            
+            # Get size after
+            size_after = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
+            
+            results["success"] = True
+            results["size_before_kb"] = round(size_before / 1024, 1)
+            results["size_after_kb"] = round(size_after / 1024, 1)
+            results["space_saved_kb"] = round((size_before - size_after) / 1024, 1)
+            
+            _LOGGER.info(
+                "Database optimized: %.1f KB -> %.1f KB (saved %.1f KB)",
+                results["size_before_kb"], results["size_after_kb"], results["space_saved_kb"]
+            )
+        except Exception as e:
+            results["success"] = False
+            results["error"] = str(e)
+            _LOGGER.error("Database optimization failed: %s", e)
+        
+        return results
 
 
 # Singleton instance for the integration
