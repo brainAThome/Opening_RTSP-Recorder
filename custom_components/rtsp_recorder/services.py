@@ -611,7 +611,7 @@ def register_services(
                         video_path=path,
                         output_root=analysis_output_path,
                         objects=objects_to_use,
-                        device=auto_device,
+                        device=device,
                         interval_s=analysis_frame_interval,
                         perf_snapshot=perf_snapshot,
                         detector_url=analysis_detector_url,
