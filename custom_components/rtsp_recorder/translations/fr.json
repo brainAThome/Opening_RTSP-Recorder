@@ -76,7 +76,11 @@
                     "analysis_auto_new": "⚡ Analyser immédiatement",
                     "analysis_perf_cpu_entity": "💻 Capteur CPU",
                     "analysis_perf_igpu_entity": "🎮 Capteur iGPU",
-                    "analysis_perf_coral_entity": "🪸 Capteur Coral"
+                    "analysis_perf_coral_entity": "🪸 Capteur Coral",
+                    "analysis_max_concurrent": "🧮 Analyses parallèles max."
+                },
+                "data_description": {
+                    "analysis_max_concurrent": "Limite le nombre d'analyses simultanées (réduit les pics CPU/IO)"
                 }
             },
             "camera": {

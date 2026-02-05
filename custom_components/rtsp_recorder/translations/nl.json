@@ -76,7 +76,11 @@
                     "analysis_auto_new": "⚡ Direct analyseren",
                     "analysis_perf_cpu_entity": "💻 CPU Sensor",
                     "analysis_perf_igpu_entity": "🎮 iGPU Sensor",
-                    "analysis_perf_coral_entity": "🪸 Coral Sensor"
+                    "analysis_perf_coral_entity": "🪸 Coral Sensor",
+                    "analysis_max_concurrent": "🧮 Max. parallelle analyses"
+                },
+                "data_description": {
+                    "analysis_max_concurrent": "Beperkt hoeveel analyses tegelijk kunnen draaien (vermindert CPU/IO-pieken)"
                 }
             },
             "camera": {
