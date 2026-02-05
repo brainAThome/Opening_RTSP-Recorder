@@ -777,45 +777,65 @@ async def extract_frames(video_path: str, output_dir: str, interval_s: int = 2) 
     return files
 
 
-async def analyze_recording(
-    video_path: str,
-    output_root: str,
-    objects: list[str],
-    device: str,
-    interval_s: int = DEFAULT_ANALYSIS_FRAME_INTERVAL,
-    perf_snapshot: dict | None = None,
-    detector_url: str | None = None,
-    detector_confidence: float = DEFAULT_DETECTOR_CONFIDENCE,
-    face_enabled: bool = False,
-    face_confidence: float = DEFAULT_FACE_CONFIDENCE,
-    face_match_threshold: float = DEFAULT_FACE_MATCH_THRESHOLD,
-    face_store_embeddings: bool = False,
-    people_db: list[dict[str, Any]] | None = None,
-    face_detector_url: str | None = None,
-    no_face_embeddings: list[dict[str, Any]] | None = None,
-    overlay_smoothing: bool = DEFAULT_OVERLAY_SMOOTHING,
-    overlay_smoothing_alpha: float = DEFAULT_OVERLAY_SMOOTHING_ALPHA,
-) -> dict:
-    """Offline analysis stub: extracts frames and writes a results JSON.
-
-    This function runs locally and prepares data for later detection.
+def _extract_camera_from_path(video_path: str) -> str:
+    """Extract camera name from video path.
     
-    LOW-003 Fix: Default values now sourced from const.py.
+    Supports paths like:
+    - /recordings/camera_name/video.mp4
+    - /ring_recordings/camera_name/video.mp4
+    - /media/rtsp_recorder/recordings/camera_name/video.mp4
+    
+    Args:
+        video_path: Full path to video file
+        
+    Returns:
+        Camera name or "unknown" if not found
     """
-    _safe_mkdir(output_root)
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    job_dir = os.path.join(output_root, f"analysis_{timestamp}")
-    frames_dir = os.path.join(job_dir, "frames")
-    _safe_mkdir(frames_dir)
+    path_parts = video_path.replace("\\", "/").split("/")
+    for i, part in enumerate(path_parts):
+        if part in ("recordings", "ring_recordings") and i + 1 < len(path_parts):
+            next_part = path_parts[i + 1]
+            if next_part != "_analysis":
+                return next_part
+    return "unknown"
 
-    video_size_mb = None
-    if os.path.exists(video_path):
-        try:
-            video_size_mb = round(os.path.getsize(video_path) / (1024 * 1024), 2)
-        except Exception:
-            video_size_mb = None
 
-    result = {
+def _initialize_analysis_result(
+    video_path: str,
+    objects: list[str] | None,
+    device: str | None,
+    timestamp: str,
+    interval_s: int,
+    video_size_mb: float | None,
+    perf_snapshot: dict | None,
+    overlay_smoothing: bool,
+    overlay_smoothing_alpha: float,
+    face_enabled: bool,
+    face_confidence: float,
+    face_match_threshold: float,
+    face_store_embeddings: bool,
+) -> dict[str, Any]:
+    """Initialize the analysis result dictionary.
+    
+    Args:
+        video_path: Path to the video file
+        objects: List of objects to detect
+        device: Detection device (cpu/coral_usb)
+        timestamp: Analysis timestamp
+        interval_s: Frame extraction interval
+        video_size_mb: Video file size in MB
+        perf_snapshot: Performance snapshot data
+        overlay_smoothing: Enable overlay smoothing
+        overlay_smoothing_alpha: Smoothing alpha value
+        face_enabled: Enable face detection
+        face_confidence: Face detection confidence
+        face_match_threshold: Face matching threshold
+        face_store_embeddings: Store face embeddings
+        
+    Returns:
+        Initialized result dictionary
+    """
+    return {
         "status": "started",
         "video_path": video_path,
         "objects": objects or [],
@@ -840,40 +860,264 @@ async def analyze_recording(
         "duration_sec": 0,
     }
 
-    result_path = os.path.join(job_dir, "result.json")
-    await _write_json_async(result_path, result)
 
-    # v1.1.2: Track analysis in SQLite for queryable metadata
-    analysis_run_id = None
+async def _create_db_analysis_run(
+    video_path: str,
+    camera_name: str,
+    interval_s: int,
+    video_size_mb: float | None,
+    device: str,
+    job_dir: str,
+) -> int | None:
+    """Create an analysis run entry in the database.
+    
+    Args:
+        video_path: Path to video file
+        camera_name: Extracted camera name
+        interval_s: Frame extraction interval
+        video_size_mb: Video size in MB
+        device: Detection device
+        job_dir: Analysis job directory
+        
+    Returns:
+        Analysis run ID or None if creation failed
+    """
     try:
         db = get_database()
         if db:
-            # Extract camera name from video path (e.g., /recordings/camera_name/video.mp4)
-            # Supports both /recordings/ and /ring_recordings/ paths
-            path_parts = video_path.replace("\\", "/").split("/")
-            extracted_camera = None
-            for i, part in enumerate(path_parts):
-                if part in ("recordings", "ring_recordings") and i + 1 < len(path_parts):
-                    # Skip _analysis folder if that's the next part
-                    next_part = path_parts[i + 1]
-                    if next_part != "_analysis":
-                        extracted_camera = next_part
-                        break
-            if not extracted_camera:
-                extracted_camera = "unknown"
-            
             analysis_run_id = db.create_analysis_run(
                 video_path=video_path,
-                camera_name=extracted_camera,
+                camera_name=camera_name,
                 frame_interval=interval_s,
                 video_size_mb=video_size_mb,
                 device_used=device
             )
-            # Store analysis_path via update
             if analysis_run_id:
                 db.update_analysis_run(run_id=analysis_run_id, analysis_path=job_dir)
+            return analysis_run_id
     except Exception as db_err:
         _LOGGER.warning("Could not create analysis_run entry: %s", db_err)
+    return None
+
+
+def _create_face_thumbnail(
+    face_box: dict[str, int],
+    frame_img: Any,
+) -> str | None:
+    """Create a base64-encoded thumbnail from a detected face.
+    
+    Args:
+        face_box: Face bounding box with x, y, w, h
+        frame_img: PIL Image of the frame
+        
+    Returns:
+        Base64-encoded data URL or None if creation failed
+    """
+    if frame_img is None:
+        return None
+    try:
+        x = max(int(face_box.get("x", 0)), 0)
+        y = max(int(face_box.get("y", 0)), 0)
+        w = max(int(face_box.get("w", 0)), 1)
+        h = max(int(face_box.get("h", 0)), 1)
+        x2 = min(x + w, frame_img.width)
+        y2 = min(y + h, frame_img.height)
+        crop = frame_img.crop((x, y, x2, y2))
+        crop = crop.resize((MAX_THUMB_SIZE, MAX_THUMB_SIZE))
+        buf = io.BytesIO()
+        crop.save(buf, format="JPEG", quality=THUMB_JPEG_QUALITY)
+        thumb_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        return f"data:image/jpeg;base64,{thumb_b64}"
+    except (OSError, ValueError):
+        return None
+
+
+def _normalize_and_match_face(
+    face: dict[str, Any],
+    people_db: list[dict[str, Any]] | None,
+    face_match_threshold: float,
+    no_face_embeddings: list[dict[str, Any]] | None,
+    face_store_embeddings: bool,
+    frame_img: Any,
+    detections: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, bool]:
+    """Normalize a detected face and attempt to match against people DB.
+    
+    Args:
+        face: Raw face detection dict with box, score, embedding
+        people_db: List of known people with embeddings
+        face_match_threshold: Minimum similarity for a match
+        no_face_embeddings: Embeddings of known false positives
+        face_store_embeddings: Whether to store embeddings in output
+        frame_img: PIL Image of the frame for thumbnail
+        detections: Current detections list (for thumbnail count)
+        
+    Returns:
+        Tuple of (normalized face_item or None, was_matched)
+    """
+    face_box = face.get("box") or {}
+    score = face.get("score", 0.0)
+    emb = face.get("embedding")
+    emb_source = (face.get("embedding_source") or "").lower()
+    
+    emb_list = _safe_float_list(emb) if isinstance(emb, list) else []
+    if emb_list:
+        emb_list = _normalize_embedding(emb_list)
+    
+    match = None
+    was_matched = False
+    
+    if emb_list and people_db:
+        match = _match_face(emb_list, people_db, face_match_threshold, no_face_embeddings)
+        # Check if this is a known false positive (not a real face)
+        if match and match.get("is_no_face"):
+            return None, False  # Skip this face entirely
+        if match:
+            was_matched = True
+    
+    # Count existing thumbnails
+    total_thumbs_created = sum(
+        1 for det in detections 
+        for f in det.get("faces", []) 
+        if f.get("thumb")
+    )
+    
+    # Create thumbnail if under limit
+    thumb_data = None
+    if total_thumbs_created < MAX_FACES_WITH_THUMBS:
+        thumb_data = _create_face_thumbnail(face_box, frame_img)
+    
+    face_item: dict[str, Any] = {
+        "score": round(float(score), 3),
+        "box": {
+            "x": int(face_box.get("x", 0)),
+            "y": int(face_box.get("y", 0)),
+            "w": int(face_box.get("w", 0)),
+            "h": int(face_box.get("h", 0)),
+        },
+    }
+    
+    if match:
+        face_item["match"] = match
+    if emb_list and face_store_embeddings:
+        face_item["embedding"] = emb_list
+    if emb_source:
+        face_item["embedding_source"] = emb_source
+    if thumb_data:
+        face_item["thumb"] = thumb_data
+    
+    return face_item, was_matched
+
+
+async def _finalize_analysis_run(
+    analysis_run_id: int | None,
+    result: dict[str, Any],
+) -> None:
+    """Update the analysis run entry with final statistics.
+    
+    Args:
+        analysis_run_id: Database ID of the analysis run
+        result: Final result dictionary
+    """
+    if not analysis_run_id:
+        return
+    try:
+        db = get_database()
+        if db:
+            # Extract unique objects and count persons from detections
+            unique_objects: set[str] = set()
+            persons_count = 0
+            for det in result.get("detections", []):
+                for obj in det.get("objects", []):
+                    label = obj.get("label", "")
+                    if label:
+                        unique_objects.add(label)
+                        if label == "person":
+                            persons_count += 1
+            
+            db.update_analysis_run(
+                run_id=analysis_run_id,
+                status="completed",
+                frame_count=result.get("frame_count", 0),
+                faces_detected=result.get("faces_detected", 0),
+                faces_matched=result.get("faces_matched", 0),
+                processing_time_sec=result.get("processing_time_seconds"),
+                objects_found=",".join(sorted(unique_objects)) if unique_objects else None,
+                persons_detected=persons_count,
+            )
+    except Exception as db_err:
+        _LOGGER.warning("Could not update analysis_run: %s", db_err)
+
+
+async def analyze_recording(
+    video_path: str,
+    output_root: str,
+    objects: list[str],
+    device: str,
+    interval_s: int = DEFAULT_ANALYSIS_FRAME_INTERVAL,
+    perf_snapshot: dict | None = None,
+    detector_url: str | None = None,
+    detector_confidence: float = DEFAULT_DETECTOR_CONFIDENCE,
+    face_enabled: bool = False,
+    face_confidence: float = DEFAULT_FACE_CONFIDENCE,
+    face_match_threshold: float = DEFAULT_FACE_MATCH_THRESHOLD,
+    face_store_embeddings: bool = False,
+    people_db: list[dict[str, Any]] | None = None,
+    face_detector_url: str | None = None,
+    no_face_embeddings: list[dict[str, Any]] | None = None,
+    overlay_smoothing: bool = DEFAULT_OVERLAY_SMOOTHING,
+    overlay_smoothing_alpha: float = DEFAULT_OVERLAY_SMOOTHING_ALPHA,
+) -> dict:
+    """Offline analysis stub: extracts frames and writes a results JSON.
+
+    This function runs locally and prepares data for later detection.
+    
+    LOW-003 Fix: Default values now sourced from const.py.
+    v1.2.0 Refactor: Extracted helper functions to reduce cyclomatic complexity.
+    """
+    _safe_mkdir(output_root)
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    job_dir = os.path.join(output_root, f"analysis_{timestamp}")
+    frames_dir = os.path.join(job_dir, "frames")
+    _safe_mkdir(frames_dir)
+
+    video_size_mb = None
+    if os.path.exists(video_path):
+        try:
+            video_size_mb = round(os.path.getsize(video_path) / (1024 * 1024), 2)
+        except Exception:
+            video_size_mb = None
+
+    # v1.2.0 Refactor: Use helper function for result initialization
+    result = _initialize_analysis_result(
+        video_path=video_path,
+        objects=objects,
+        device=device,
+        timestamp=timestamp,
+        interval_s=interval_s,
+        video_size_mb=video_size_mb,
+        perf_snapshot=perf_snapshot,
+        overlay_smoothing=overlay_smoothing,
+        overlay_smoothing_alpha=overlay_smoothing_alpha,
+        face_enabled=face_enabled,
+        face_confidence=face_confidence,
+        face_match_threshold=face_match_threshold,
+        face_store_embeddings=face_store_embeddings,
+    )
+
+    result_path = os.path.join(job_dir, "result.json")
+    await _write_json_async(result_path, result)
+
+    # v1.2.0 Refactor: Use helper functions for camera extraction and DB tracking
+    extracted_camera = _extract_camera_from_path(video_path)
+    analysis_run_id = await _create_db_analysis_run(
+        video_path=video_path,
+        camera_name=extracted_camera,
+        interval_s=interval_s,
+        video_size_mb=video_size_mb,
+        device=device or "cpu",
+        job_dir=job_dir,
+    )
 
     try:
         start_time = time.monotonic()
@@ -1279,33 +1523,7 @@ async def analyze_recording(
         result["processing_time_seconds"] = round(time.monotonic() - start_time, 2)
         
         # v1.1.2: Update analysis run in SQLite with final stats
-        if analysis_run_id:
-            try:
-                db = get_database()
-                if db:
-                    # Extract unique objects and count persons from detections
-                    unique_objects = set()
-                    persons_count = 0
-                    for det in result.get("detections", []):
-                        for obj in det.get("objects", []):
-                            label = obj.get("label", "")
-                            if label:
-                                unique_objects.add(label)
-                                if label == "person":
-                                    persons_count += 1
-                    
-                    db.update_analysis_run(
-                        run_id=analysis_run_id,
-                        status="completed",
-                        frame_count=result.get("frame_count", 0),
-                        faces_detected=result.get("faces_detected", 0),
-                        faces_matched=result.get("faces_matched", 0),
-                        processing_time_sec=result.get("processing_time_seconds"),
-                        objects_found=",".join(sorted(unique_objects)) if unique_objects else None,
-                        persons_detected=persons_count,
-                    )
-            except Exception as db_err:
-                _LOGGER.warning("Could not update analysis_run: %s", db_err)
+        await _finalize_analysis_run(analysis_run_id, result)
         
         # v1.1.0n: Cleanup frames after successful analysis to save disk space
         # Frames are only needed during detection, not afterwards

@@ -119,45 +119,67 @@ ssh root@192.168.178.123 "sed -i 's/\r$//' /config/www/rtsp-recorder-card.js"
 
 ## Session-Zusammenfassung (05.02.2026)
 
-### Timeline
+### Vollständige Timeline
 
-1. **Batch Analysis Bug** gefixt (v1.1.2)
-2. **Multi-Sensor Feature** implementiert (v1.2.0)
-3. **Logo-Integration** durchgeführt
-   - Mehrere Versuche wegen Browser-Cache-Problemen
-   - CRLF-Problem identifiziert und gelöst
-4. **Dokumentation** aktualisiert (README, CHANGELOG)
-5. **Deep-Analyse** des laufenden Systems
-6. **HANDOVER + AGENT_PROMPT** erstellt
+1. **Overlay Smoothing verifiziert** - User bestätigte: "ich erkenne es deutlich am overlay das die funktion greift"
+2. **System-Check durchgeführt** - TPU healthy, 33.100+ Inferences, alle Modelle geladen
+3. **Kamera-Thresholds dokumentiert** - Pro-Kamera Confidence-Werte geprüft
+4. **Sample Quality Analysis** implementiert:
+   - `database.py`: `get_person_details_with_quality()` mit Cosine-Similarity
+   - `database.py`: `bulk_delete_embeddings()` für Mehrfach-Löschung
+   - `websocket_handlers.py`: 2 neue WebSocket-Endpoints
+   - `rtsp-recorder-card.js`: Qualitäts-UI, Checkboxen, Bulk-Actions
+5. **Mehrere Bugfixes** während Implementierung:
+   - `@websocket_api.async_response` Decorator vergessen → hinzugefügt
+   - `db = get_database()` Import fehlte → hinzugefügt
+6. **Logo in README** integriert + Credit für @ElektroGandhi
+7. **Release v1.2.0** erstellt und gepusht
 
 ### Server-Status nach Session
 
-| Komponente | Status |
-|------------|--------|
-| Integration v1.2.0 | ✅ Deployed |
-| Multi-Sensor | ✅ Funktioniert |
-| Logo + Badge | ✅ Sichtbar |
-| 5 Personen | ✅ In DB |
-| 132 Embeddings | ✅ In DB |
-| 175 Analysen | ✅ In DB |
-| Aufnahmen | ✅ 61+ vorhanden |
+| Komponente | Status | Details |
+|------------|--------|---------|
+| Integration v1.2.0 | ✅ Deployed | Alle Features aktiv |
+| TPU | ✅ Healthy | 33.100+ Inferences, ~34ms avg |
+| Multi-Sensor | ✅ Funktioniert | Mehrere Sensoren pro Kamera |
+| Logo + Badge | ✅ Sichtbar | Opening Logo im Header |
+| Quality Analysis | ✅ Aktiv | 70.2% Ø Qualität, 23 Ausreißer erkannt |
+| Overlay Smoothing | ✅ Aktiv | Alpha 0.55, EMA-Algorithmus |
+| 5 Personen | ✅ In DB | Mit Quality-Scores |
+| 182 Embeddings | ✅ In DB | Sven: 107, Bianca: 57, etc. |
+| Aufnahmen | ✅ 61+ vorhanden | Mit Analysen |
 
-### Dateien geändert
+### Wichtige Git-Commits
 
-| Datei | Änderung |
-|-------|----------|
-| `config_flow.py` | Multi-Sensor EntitySelector |
-| `__init__.py` | Sensor-Loop für Multi-Sensor |
-| `strings.json` | Labels aktualisiert |
-| `de.json`, `en.json` | Übersetzungen |
-| `rtsp-recorder-card.js` | Logo + Version Badge |
-| `README.md` | v1.2.0 Features dokumentiert |
-| `CHANGELOG.md` | v1.2.0 Einträge |
+| Commit | Beschreibung |
+|--------|--------------|
+| `cf7d818` | v1.2.0: Sample Quality Analysis, Outlier Detection, Bulk Delete, Overlay Smoothing |
+| `47829c5` | README: Add logo and credit to @ElektroGandhi |
+
+### Dateien geändert in dieser Session
+
+| Datei | Änderungen |
+|-------|-----------|
+| `database.py` | +`get_person_details_with_quality()`, +`bulk_delete_embeddings()` |
+| `websocket_handlers.py` | +2 neue WebSocket-Handler mit `@async_response` |
+| `rtsp-recorder-card.js` | +Quality UI, +Bulk Selection, +Outlier Badges |
+| `README.md` | +Logo, +@ElektroGandhi Credit, +Quality Features |
+| `CHANGELOG.md` | +v1.2.0 Features dokumentiert |
+| `ISSUE_REPORT_v1.2.0.md` | +Session-Zusammenfassung |
+
+### API-Endpoints (NEU in v1.2.0)
+
+| Endpoint | Beschreibung |
+|----------|--------------|
+| `rtsp_recorder/get_person_details_quality` | Person mit Quality-Scores, Outlier-Erkennung |
+| `rtsp_recorder/bulk_delete_embeddings` | Mehrere Embeddings auf einmal löschen |
 
 ### Git-Status
 
-- Tag: `v1.2.0` erstellt und gepusht
-- GitHub: `brainAThome/RTSP-Recorder`
+- **Branch:** main
+- **Tag:** v1.2.0 (neu erstellt)
+- **Remote:** https://github.com/brainAThome/RTSP-Recorder
+- **Release:** https://github.com/brainAThome/RTSP-Recorder/releases/tag/v1.2.0
 
 ---
 
