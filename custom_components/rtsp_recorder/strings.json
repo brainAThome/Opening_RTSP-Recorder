@@ -78,7 +78,8 @@
                     "analysis_auto_new": "⚡ Neue Videos sofort analysieren",
                     "analysis_perf_cpu_entity": "💻 CPU Sensor",
                     "analysis_perf_igpu_entity": "🎮 iGPU Sensor",
-                    "analysis_perf_coral_entity": "🪸 Coral Sensor"
+                    "analysis_perf_coral_entity": "🪸 Coral Sensor",
+                    "analysis_max_concurrent": "🧮 Max. parallele Analysen"
                 },
                 "data_description": {
                     "analysis_enabled": "Aktiviert die Offline-Analyse",
@@ -103,7 +104,8 @@
                     "analysis_auto_skip_existing": "Vorhandene Analysen überspringen",
                     "analysis_perf_cpu_entity": "Sensor für CPU-Auslastung",
                     "analysis_perf_igpu_entity": "Sensor für iGPU-Auslastung",
-                    "analysis_perf_coral_entity": "Sensor für Coral-Auslastung"
+                    "analysis_perf_coral_entity": "Sensor für Coral-Auslastung",
+                    "analysis_max_concurrent": "Begrenzt, wie viele Analysen gleichzeitig laufen dürfen (reduziert CPU/IO-Spitzen)"
                 }
             },
             "camera_config": {
