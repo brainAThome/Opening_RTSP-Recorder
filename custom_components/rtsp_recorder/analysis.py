@@ -1118,6 +1118,158 @@ def _is_point_in_box(
     return px <= point_x <= px + pw and py <= point_y <= py + ph
 
 
+async def _run_face_detection_loop(
+    session: Any,
+    face_url: str,
+    frames: list[str],
+    detections: list[dict[str, Any]],
+    device: str,
+    face_confidence: float,
+    face_store_embeddings: bool,
+    people_db: list[dict[str, Any]] | None,
+    face_match_threshold: float,
+    no_face_embeddings: list[dict[str, Any]] | None,
+    interval_s: int,
+) -> tuple[int, int, int | None, int | None]:
+    """Run face detection on all frames with persons.
+    
+    Args:
+        session: aiohttp session
+        face_url: Face detection API URL
+        frames: List of frame file paths
+        detections: Detection results (modified in place)
+        device: Detection device
+        face_confidence: Minimum confidence threshold
+        face_store_embeddings: Whether to store embeddings
+        people_db: List of known people
+        face_match_threshold: Minimum similarity for match
+        no_face_embeddings: Known false positives
+        interval_s: Frame interval in seconds
+        
+    Returns:
+        Tuple of (faces_detected, faces_matched, frame_w, frame_h)
+    """
+    faces_detected = 0
+    faces_matched = 0
+    consecutive_face_errors = 0
+    max_consecutive_errors = 3
+    frame_w = frame_h = None
+    
+    embed_flag = "1" if (face_store_embeddings or (people_db and len(people_db) > 0)) else "0"
+    
+    for idx, frame_path in enumerate(frames):
+        # Only run face detection when a person is detected in this frame
+        person_boxes = _get_person_boxes(detections, idx)
+        if not person_boxes:
+            continue
+
+        # Skip remaining frames if too many consecutive errors
+        if consecutive_face_errors >= max_consecutive_errors:
+            _LOGGER.warning("Face detection: Skipping remaining frames after %d consecutive errors", max_consecutive_errors)
+            break
+
+        try:
+            frame_bytes = await asyncio.to_thread(lambda p=frame_path: open(p, "rb").read())
+        except OSError as read_err:
+            _LOGGER.debug("Failed to read frame %d: %s", idx, read_err)
+            consecutive_face_errors += 1
+            continue
+
+        frame_img = None
+        if Image is not None:
+            try:
+                frame_img = Image.open(io.BytesIO(frame_bytes)).convert("RGB")
+            except (OSError, ValueError):
+                frame_img = None
+
+        try:
+            data, _detect_ms = await _detect_faces_with_retry(
+                session=session,
+                face_url=face_url,
+                frame_bytes=frame_bytes,
+                frame_path=frame_path,
+                device=device,
+                face_confidence=float(face_confidence),
+                embed_flag=embed_flag,
+            )
+            _used_device = data.get("device", device)
+            _stats = _get_inference_stats()
+            if _stats:
+                _stats.record(_used_device, _detect_ms, 1)
+            consecutive_face_errors = 0
+        except Exception as face_req_err:
+            _LOGGER.debug("Face detection request failed for frame %d: %s", idx, face_req_err)
+            consecutive_face_errors += 1
+            time_s = idx * interval_s
+            if idx < len(detections):
+                detections[idx]["faces"] = []
+            else:
+                detections.append({"time_s": time_s, "faces": []})
+            continue
+
+        faces = data.get("faces", []) or []
+        fw = data.get("frame_width")
+        fh = data.get("frame_height")
+        if fw and fh:
+            frame_w, frame_h = fw, fh
+
+        # Try person crops if no faces found
+        if not faces and frame_img is not None and idx < len(detections):
+            extra_faces = await _try_detect_faces_in_person_crops(
+                session=session,
+                face_url=face_url,
+                frame_img=frame_img,
+                person_boxes=person_boxes,
+                device=device,
+                face_confidence=float(face_confidence),
+                embed_flag=embed_flag,
+            )
+            if extra_faces:
+                faces = extra_faces
+
+        # MoveNet fallback
+        if not faces:
+            movenet_face = await _try_movenet_head_detection(
+                session=session,
+                face_url=face_url,
+                frame_bytes=frame_bytes,
+                frame_path=frame_path,
+                frame_img=frame_img,
+                person_boxes=person_boxes,
+                device=device,
+                embed_flag=embed_flag,
+            )
+            if movenet_face:
+                faces.append(movenet_face)
+
+        # Normalize and match faces
+        normed_faces = []
+        for face in faces:
+            face_item, was_matched = _normalize_and_match_face(
+                face=face,
+                people_db=people_db,
+                face_match_threshold=face_match_threshold,
+                no_face_embeddings=no_face_embeddings,
+                face_store_embeddings=face_store_embeddings,
+                frame_img=frame_img,
+                detections=detections,
+            )
+            if face_item is None:
+                continue
+            if was_matched:
+                faces_matched += 1
+            normed_faces.append(face_item)
+
+        faces_detected += len(normed_faces)
+        time_s = idx * interval_s
+        if idx < len(detections):
+            detections[idx]["faces"] = normed_faces
+        else:
+            detections.append({"time_s": time_s, "faces": normed_faces})
+    
+    return faces_detected, faces_matched, frame_w, frame_h
+
+
 async def _try_movenet_head_detection(
     session: Any,
     face_url: str,
@@ -1705,136 +1857,31 @@ async def analyze_recording(
                 result["detection_error"] = str(e)
 
         # Run face detection + embeddings (optional)
+        # v1.2.0 Refactor: Extracted to helper function
         if frames and face_enabled:
             try:
                 face_url = face_detector_url or detector_url
                 if not face_url:
                     raise RuntimeError("face detector url missing")
 
-                faces_detected = 0
-                faces_matched = 0
-                consecutive_face_errors = 0
-                max_consecutive_errors = 3  # Stop if 3 frames in a row fail
-
                 async with aiohttp.ClientSession() as session:
-                    for idx, frame_path in enumerate(frames):
-                        # Only run face detection when a person is detected in this frame
-                        # v1.2.0: Use helper function
-                        person_boxes = _get_person_boxes(detections, idx)
-                        if not person_boxes:
-                            continue
+                    faces_detected, faces_matched, fw, fh = await _run_face_detection_loop(
+                        session=session,
+                        face_url=face_url,
+                        frames=frames,
+                        detections=detections,
+                        device=device,
+                        face_confidence=face_confidence,
+                        face_store_embeddings=face_store_embeddings,
+                        people_db=people_db,
+                        face_match_threshold=face_match_threshold,
+                        no_face_embeddings=no_face_embeddings,
+                        interval_s=interval_s,
+                    )
 
-                        # Skip remaining frames if too many consecutive errors
-                        if consecutive_face_errors >= max_consecutive_errors:
-                            _LOGGER.warning("Face detection: Skipping remaining frames after %d consecutive errors", max_consecutive_errors)
-                            break
-
-                        try:
-                            # v1.1.0 fix: Read file in executor to avoid blocking event loop
-                            frame_bytes = await asyncio.to_thread(lambda p=frame_path: open(p, "rb").read())
-                        except OSError as read_err:
-                            _LOGGER.debug("Failed to read frame %d: %s", idx, read_err)
-                            consecutive_face_errors += 1
-                            continue
-
-                        frame_img = None
-                        if Image is not None:
-                            try:
-                                frame_img = Image.open(io.BytesIO(frame_bytes)).convert("RGB")
-                            except (OSError, ValueError):
-                                frame_img = None
-
-                        embed_flag = "1" if (face_store_embeddings or (people_db and len(people_db) > 0)) else "0"
-
-                        # v1.2.0 Refactor: Use helper function for face detection with retry
-                        try:
-                            data, _detect_ms = await _detect_faces_with_retry(
-                                session=session,
-                                face_url=face_url,
-                                frame_bytes=frame_bytes,
-                                frame_path=frame_path,
-                                device=device,
-                                face_confidence=float(face_confidence),
-                                embed_flag=embed_flag,
-                            )
-                            _used_device = data.get("device", device)
-                            _stats = _get_inference_stats()
-                            if _stats:
-                                _stats.record(_used_device, _detect_ms, 1)
-                            consecutive_face_errors = 0
-                        except Exception as face_req_err:
-                            _LOGGER.debug("Face detection request failed for frame %d: %s", idx, face_req_err)
-                            consecutive_face_errors += 1
-                            time_s = idx * interval_s
-                            if idx < len(detections):
-                                detections[idx]["faces"] = []
-                            else:
-                                detections.append({"time_s": time_s, "faces": []})
-                            continue
-
-                        faces = data.get("faces", []) or []
-                        frame_w = data.get("frame_width")
-                        frame_h = data.get("frame_height")
-
-                        # v1.2.0 Refactor: Use helper for person crop face detection
-                        # Note: person_boxes already calculated at start of loop via _get_person_boxes
-                        if not faces and frame_img is not None and idx < len(detections):
-                            extra_faces = await _try_detect_faces_in_person_crops(
-                                session=session,
-                                face_url=face_url,
-                                frame_img=frame_img,
-                                person_boxes=person_boxes,
-                                device=device,
-                                face_confidence=float(face_confidence),
-                                embed_flag=embed_flag,
-                            )
-                            if extra_faces:
-                                faces = extra_faces
-
-                        # v1.2.0 Refactor: Use helper for MoveNet head detection
-                        if not faces:
-                            movenet_face = await _try_movenet_head_detection(
-                                session=session,
-                                face_url=face_url,
-                                frame_bytes=frame_bytes,
-                                frame_path=frame_path,
-                                frame_img=frame_img,
-                                person_boxes=person_boxes,
-                                device=device,
-                                embed_flag=embed_flag,
-                            )
-                            if movenet_face:
-                                faces.append(movenet_face)
-
-                        if frame_w and frame_h:
-                            result["frame_width"] = frame_w
-                            result["frame_height"] = frame_h
-                        
-                        # v1.2.0 Refactor: Use helper function for face normalization
-                        normed_faces = []
-                        for face in faces:
-                            face_item, was_matched = _normalize_and_match_face(
-                                face=face,
-                                people_db=people_db,
-                                face_match_threshold=face_match_threshold,
-                                no_face_embeddings=no_face_embeddings,
-                                face_store_embeddings=face_store_embeddings,
-                                frame_img=frame_img,
-                                detections=detections,
-                            )
-                            if face_item is None:
-                                continue  # Skip false positives
-                            if was_matched:
-                                faces_matched += 1
-                            normed_faces.append(face_item)
-
-                        faces_detected += len(normed_faces)
-                        time_s = idx * interval_s
-                        if idx < len(detections):
-                            detections[idx]["faces"] = normed_faces
-                        else:
-                            detections.append({"time_s": time_s, "faces": normed_faces})
-
+                if fw and fh:
+                    result["frame_width"] = fw
+                    result["frame_height"] = fh
                 result["detections"] = detections
                 result["faces_detected"] = faces_detected
                 result["faces_matched"] = faces_matched
