@@ -52,6 +52,11 @@ class RtspRecorderCard extends HTMLElement {
         this._overlayDebounce = null;  // v1.1.0k: Debounce timer for overlay updates
         this._overlayCtx = null;  // v1.2.0: Cached canvas context for performance
         this._detectionsIndex = null;  // v1.2.0: Indexed detections for O(1) lookup
+        this._overlaySmoothingEnabled = false;  // v1.2.0: Overlay box smoothing
+        this._overlaySmoothingAlpha = 0.35;  // v1.2.0: Smoothing alpha (lerp factor)
+        this._smoothedBoxes = {};  // v1.2.0: Current smoothed positions per detection
+        this._lastSmoothTime = null;  // v1.2.0: Last animation timestamp
+        this._smoothingRAF = null;  // v1.2.0: Continuous RAF for smoothing
         this._runningAnalyses = new Map();  // v1.1.0L: Map of video_path -> {camera, started_at} - pure event-driven
         this._runningRecordings = new Map();  // v1.1.0m: Map of video_path -> {camera, duration, started_at} - pure event-driven
         this._lastOverlaySize = null;  // v1.1.0h: Track size changes
@@ -805,6 +810,12 @@ class RtspRecorderCard extends HTMLElement {
                 this._basePath = config.storage_path;
                 console.log('[RTSP-Recorder] Using storage_path from integration:', this._basePath);
             }
+            // v1.2.0: Overlay-Smoothing aus Config laden
+            if (config) {
+                this._overlaySmoothingEnabled = config.analysis_overlay_smoothing === true;
+                this._overlaySmoothingAlpha = config.analysis_overlay_smoothing_alpha || 0.35;
+                console.log('[RTSP-Recorder] Overlay smoothing:', this._overlaySmoothingEnabled, 'alpha:', this._overlaySmoothingAlpha);
+            }
             // v1.0.9: Thumbnails ueber API-Endpoint laden (funktioniert mit jedem Pfad)
             this._thumbBase = '/api/rtsp_recorder/thumbnail';
             console.log('[RTSP-Recorder] Using thumbnail API endpoint:', this._thumbBase);
@@ -1317,6 +1328,7 @@ class RtspRecorderCard extends HTMLElement {
                 if (this._overlayEnabled) {
                     this.loadDetectionsForCurrentVideo();
                 } else {
+                    this._stopSmoothingLoop();
                     this.clearOverlay();
                 }
             };
@@ -1377,6 +1389,7 @@ class RtspRecorderCard extends HTMLElement {
                 if (this._overlayEnabled) {
                     this.loadDetectionsForCurrentVideo();
                 } else {
+                    this._stopSmoothingLoop();
                     this.clearOverlay();
                 }
             };
@@ -2075,6 +2088,7 @@ class RtspRecorderCard extends HTMLElement {
                 if (this._overlayEnabled) {
                     this.loadDetectionsForCurrentVideo();
                 } else {
+                    this._stopSmoothingLoop();
                     this.clearOverlay();
                 }
             };
@@ -2949,19 +2963,23 @@ class RtspRecorderCard extends HTMLElement {
         }
     }
 
-    // v1.1.0n: Person Detail Popup - shows all embeddings with delete option
+    // v1.2.0: Person Detail Popup with quality scores, outlier detection and bulk selection
     async showPersonDetailPopup(personId) {
         try {
-            // Load person details from backend
+            // Load person details with quality scores from backend
             const details = await this._hass.callWS({
-                type: 'rtsp_recorder/get_person_details',
-                person_id: String(personId)
+                type: 'rtsp_recorder/get_person_details_quality',
+                person_id: String(personId),
+                outlier_threshold: 0.65
             });
             
             if (!details) {
                 this.showToast('Person nicht gefunden', 'error');
                 return;
             }
+            
+            // Track selected samples for bulk delete
+            const selectedSamples = new Set();
             
             // Format dates
             const formatDate = (dateStr) => {
@@ -2974,25 +2992,50 @@ class RtspRecorderCard extends HTMLElement {
                 }
             };
             
-            // Render sample grid
+            // Get quality color based on score
+            const getQualityColor = (score) => {
+                if (score === null || score === undefined) return '#888';
+                if (score >= 85) return '#27ae60';  // Green - excellent
+                if (score >= 70) return '#f39c12';  // Orange - good
+                if (score >= 55) return '#e67e22';  // Dark orange - mediocre
+                return '#e74c3c';  // Red - poor/outlier
+            };
+            
+            // Render sample grid with quality indicators and selection
             const renderSamples = (samples, type) => {
                 if (!samples || samples.length === 0) {
                     return `<div style="color:#888; text-align:center; padding:20px;">Keine ${type === 'positive' ? 'positiven' : 'negativen'} Samples vorhanden</div>`;
                 }
-                return samples.map(s => `
-                    <div class="sample-item" style="display:inline-block; margin:4px; position:relative;">
+                return samples.map(s => {
+                    const isOutlier = s.is_outlier === true;
+                    const qualityScore = s.quality_score;
+                    const qualityColor = getQualityColor(qualityScore);
+                    const borderColor = isOutlier ? '#e74c3c' : (type === 'positive' ? '#27ae60' : '#e74c3c');
+                    const outlierBadge = isOutlier ? `<div style="position:absolute; top:-8px; left:-8px; background:#e74c3c; color:white; font-size:9px; padding:2px 4px; border-radius:4px; font-weight:bold;">⚠️</div>` : '';
+                    
+                    return `
+                    <div class="sample-item" data-id="${s.id}" data-type="${type}" data-is-outlier="${isOutlier}" style="display:inline-block; margin:4px; position:relative; cursor:pointer;">
+                        <input type="checkbox" class="sample-checkbox" data-id="${s.id}" data-type="${type}" 
+                            style="position:absolute; top:-5px; left:-5px; width:16px; height:16px; z-index:10; cursor:pointer; accent-color:#3498db;" />
+                        ${outlierBadge}
                         ${s.thumb 
-                            ? `<img src="${this._escapeHtml(s.thumb)}" style="width:75px; height:75px; object-fit:cover; border-radius:8px; border:2px solid ${type === 'positive' ? '#27ae60' : '#e74c3c'};" />`
-                            : `<div style="width:75px; height:75px; background:#333; border-radius:8px; display:flex; align-items:center; justify-content:center; border:2px solid ${type === 'positive' ? '#27ae60' : '#e74c3c'};">👤</div>`
+                            ? `<img src="${this._escapeHtml(s.thumb)}" style="width:75px; height:75px; object-fit:cover; border-radius:8px; border:3px solid ${borderColor}; ${isOutlier ? 'opacity:0.7;' : ''}" />`
+                            : `<div style="width:75px; height:75px; background:#333; border-radius:8px; display:flex; align-items:center; justify-content:center; border:3px solid ${borderColor};">👤</div>`
                         }
                         <button class="delete-sample-btn" data-id="${s.id}" data-type="${type}" 
                             style="position:absolute; top:-5px; right:-5px; width:20px; height:20px; border-radius:50%; background:#e74c3c; border:2px solid #222; color:white; font-size:11px; cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:0.9; transition:all 0.2s;"
                             title="Sample löschen">✕</button>
+                        ${type === 'positive' && qualityScore !== null ? `
+                        <div style="position:absolute; bottom:18px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:${qualityColor}; font-size:9px; padding:1px 4px; border-radius:3px; font-weight:bold;">
+                            ${qualityScore}%
+                        </div>
+                        ` : ''}
                         <div style="font-size:0.6em; color:#777; text-align:center; margin-top:2px; max-width:75px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                             ${formatDate(s.created_at).split(',')[0] || ''}
                         </div>
                     </div>
-                `).join('');
+                `;
+                }).join('');
             };
             
             // Create popup
@@ -3030,9 +3073,46 @@ class RtspRecorderCard extends HTMLElement {
                         </div>
                     </div>
                     
+                    <!-- v1.2.0: Quality Stats Row -->
+                    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-bottom:20px;">
+                        <div style="background:#222; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:1.4em; font-weight:bold; color:${details.avg_quality >= 80 ? '#27ae60' : details.avg_quality >= 60 ? '#f39c12' : '#e74c3c'};">${details.avg_quality || 0}%</div>
+                            <div style="font-size:0.75em; color:#888;">Ø Qualität</div>
+                        </div>
+                        <div style="background:#222; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:1.4em; font-weight:bold; color:${details.outlier_count > 0 ? '#e74c3c' : '#27ae60'};">${details.outlier_count || 0}</div>
+                            <div style="font-size:0.75em; color:#888;">Ausreißer</div>
+                        </div>
+                        <div style="background:#222; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:1.4em; font-weight:bold; color:#3498db;">&lt;${details.outlier_threshold || 65}%</div>
+                            <div style="font-size:0.75em; color:#888;">Schwelle</div>
+                        </div>
+                    </div>
+                    
                     <!-- Created Info -->
                     <div style="font-size:0.8em; color:#666; margin-bottom:15px;">
                         📅 Erstellt: ${formatDate(details.created_at)}
+                    </div>
+                    
+                    <!-- v1.2.0: Bulk Actions -->
+                    <div id="bulk-actions" style="display:none; background:#1a3a5a; padding:12px; border-radius:10px; margin-bottom:15px; border:1px solid #2a5a8a;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <span style="color:#5dade2; font-weight:bold;">📋 Ausgewählt: </span>
+                                <span id="selected-count" style="color:#fff;">0</span>
+                            </div>
+                            <div style="display:flex; gap:10px;">
+                                <button id="btn-select-all-outliers" style="background:#e67e22; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.85em;">
+                                    ⚠️ Alle Ausreißer
+                                </button>
+                                <button id="btn-deselect-all" style="background:#7f8c8d; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.85em;">
+                                    ✖ Auswahl aufheben
+                                </button>
+                                <button id="btn-delete-selected" style="background:#e74c3c; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.85em;">
+                                    🗑️ Ausgewählte löschen
+                                </button>
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- Positive Samples -->
@@ -3040,6 +3120,7 @@ class RtspRecorderCard extends HTMLElement {
                         <h3 style="margin:0 0 10px 0; color:#27ae60; font-size:1em; display:flex; align-items:center; gap:8px;">
                             <span>✓ Positive Samples</span>
                             <span style="background:#27ae60; color:white; padding:2px 8px; border-radius:10px; font-size:0.8em;">${details.positive_count || 0}</span>
+                            ${details.outlier_count > 0 ? `<span style="background:#e74c3c; color:white; padding:2px 8px; border-radius:10px; font-size:0.8em;">⚠️ ${details.outlier_count} Ausreißer</span>` : ''}
                         </h3>
                         <div style="background:#222; padding:10px; border-radius:10px; max-height:280px; overflow-y:auto;">
                             ${renderSamples(details.positive_samples, 'positive')}
@@ -3063,8 +3144,9 @@ class RtspRecorderCard extends HTMLElement {
                         <div style="color:#aaa; line-height:1.6;">
                             <div style="margin-bottom:4px;">✅ <strong style="color:#27ae60;">Positive Samples:</strong> Gesichtsbilder, die dieser Person zugeordnet wurden</div>
                             <div style="margin-bottom:4px;">❌ <strong style="color:#e74c3c;">Negative Samples:</strong> Bilder, die NICHT diese Person zeigen (korrigierte Fehlerkennungen)</div>
-                            <div style="margin-bottom:4px;">📊 <strong style="color:#3498db;">Erkennungen:</strong> Wie oft wurde diese Person insgesamt erkannt</div>
-                            <div>🗑️ <strong style="color:#888;">Löschen:</strong> Klicke auf das rote ✕ um einzelne Samples zu entfernen</div>
+                            <div style="margin-bottom:4px;">📊 <strong style="color:#3498db;">Qualitäts-%:</strong> Ähnlichkeit zum Durchschnitt aller Samples (höher = besser)</div>
+                            <div style="margin-bottom:4px;">⚠️ <strong style="color:#e74c3c;">Ausreißer:</strong> Samples die stark abweichen - evtl. falsche Person</div>
+                            <div>☑️ <strong style="color:#5dade2;">Bulk-Auswahl:</strong> Checkboxen nutzen für Mehrfach-Löschung</div>
                         </div>
                     </div>
                 </div>
@@ -3109,6 +3191,124 @@ class RtspRecorderCard extends HTMLElement {
                 btn.onmouseover = () => { btn.style.opacity = '1'; btn.style.transform = 'scale(1.1)'; };
                 btn.onmouseout = () => { btn.style.opacity = '0.85'; btn.style.transform = 'scale(1)'; };
             });
+            
+            // v1.2.0: Checkbox handlers for bulk selection
+            const bulkActionsDiv = popup.querySelector('#bulk-actions');
+            const selectedCountSpan = popup.querySelector('#selected-count');
+            
+            const updateBulkUI = () => {
+                const count = selectedSamples.size;
+                if (count > 0) {
+                    bulkActionsDiv.style.display = 'block';
+                    selectedCountSpan.textContent = count;
+                } else {
+                    bulkActionsDiv.style.display = 'none';
+                }
+            };
+            
+            popup.querySelectorAll('.sample-checkbox').forEach(cb => {
+                cb.onchange = (e) => {
+                    e.stopPropagation();
+                    const id = parseInt(cb.getAttribute('data-id'), 10);
+                    const type = cb.getAttribute('data-type');
+                    const key = `${type}:${id}`;
+                    if (cb.checked) {
+                        selectedSamples.add(key);
+                        cb.closest('.sample-item').style.boxShadow = '0 0 0 3px #3498db';
+                    } else {
+                        selectedSamples.delete(key);
+                        cb.closest('.sample-item').style.boxShadow = 'none';
+                    }
+                    updateBulkUI();
+                };
+            });
+            
+            // Select all outliers button
+            const btnOutliers = popup.querySelector('#btn-select-all-outliers');
+            if (btnOutliers) {
+                btnOutliers.onclick = () => {
+                    popup.querySelectorAll('.sample-item[data-is-outlier="true"]').forEach(item => {
+                        const cb = item.querySelector('.sample-checkbox');
+                        if (cb && !cb.checked) {
+                            cb.checked = true;
+                            const id = parseInt(cb.getAttribute('data-id'), 10);
+                            const type = cb.getAttribute('data-type');
+                            selectedSamples.add(`${type}:${id}`);
+                            item.style.boxShadow = '0 0 0 3px #3498db';
+                        }
+                    });
+                    updateBulkUI();
+                    self.showToast(`${selectedSamples.size} Ausreißer ausgewählt`, 'info');
+                };
+            }
+            
+            // Deselect all button
+            const btnDeselect = popup.querySelector('#btn-deselect-all');
+            if (btnDeselect) {
+                btnDeselect.onclick = () => {
+                    popup.querySelectorAll('.sample-checkbox').forEach(cb => {
+                        cb.checked = false;
+                        cb.closest('.sample-item').style.boxShadow = 'none';
+                    });
+                    selectedSamples.clear();
+                    updateBulkUI();
+                };
+            }
+            
+            // Delete selected button
+            const btnDeleteSelected = popup.querySelector('#btn-delete-selected');
+            if (btnDeleteSelected) {
+                btnDeleteSelected.onclick = async () => {
+                    const count = selectedSamples.size;
+                    if (count === 0) return;
+                    
+                    if (!confirm(`Wirklich ${count} ausgewählte Samples löschen?`)) return;
+                    
+                    // Group by type
+                    const positiveIds = [];
+                    const negativeIds = [];
+                    selectedSamples.forEach(key => {
+                        const [type, id] = key.split(':');
+                        if (type === 'positive') {
+                            positiveIds.push(parseInt(id, 10));
+                        } else {
+                            negativeIds.push(parseInt(id, 10));
+                        }
+                    });
+                    
+                    try {
+                        let deleted = 0;
+                        
+                        if (positiveIds.length > 0) {
+                            const result = await self._hass.callWS({
+                                type: 'rtsp_recorder/bulk_delete_embeddings',
+                                embedding_ids: positiveIds,
+                                embedding_type: 'positive'
+                            });
+                            deleted += result.success_count || 0;
+                        }
+                        
+                        if (negativeIds.length > 0) {
+                            const result = await self._hass.callWS({
+                                type: 'rtsp_recorder/bulk_delete_embeddings',
+                                embedding_ids: negativeIds,
+                                embedding_type: 'negative'
+                            });
+                            deleted += result.success_count || 0;
+                        }
+                        
+                        self.showToast(`${deleted} Samples gelöscht`, 'success');
+                        
+                        // Refresh
+                        document.body.removeChild(popup);
+                        await self.refreshPeople();
+                        await self.showPersonDetailPopup(personId);
+                        
+                    } catch (err) {
+                        self.showToast('Fehler beim Löschen: ' + (err.message || err), 'error');
+                    }
+                };
+            }
             
         } catch (e) {
             this.showToast('Fehler beim Laden: ' + (e.message || e), 'error');
@@ -3633,6 +3833,9 @@ class RtspRecorderCard extends HTMLElement {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         // v1.2.0: Reset index on clear
         this._detectionsIndex = null;
+        // v1.2.0: Stop smoothing loop and clear smoothed boxes
+        this._stopSmoothingLoop();
+        this._smoothedBoxes = new Map();
     }
 
     updateOverlayStates() {
@@ -3878,6 +4081,14 @@ class RtspRecorderCard extends HTMLElement {
             return;
         }
         
+        // v1.2.0: If smoothing is enabled, run continuous animation loop
+        if (this._overlaySmoothingEnabled) {
+            if (!this._smoothingRAF) {
+                this._startSmoothingLoop();
+            }
+            return;
+        }
+        
         // v1.2.0: Pre-check if frame changed BEFORE scheduling RAF
         const t = video.currentTime;
         const key = Math.floor(t / this._analysisInterval) * this._analysisInterval;
@@ -3890,6 +4101,37 @@ class RtspRecorderCard extends HTMLElement {
             cancelAnimationFrame(this._overlayRAF);
         }
         this._overlayRAF = requestAnimationFrame(() => this.drawOverlay());
+    }
+
+    // v1.2.0: Continuous animation loop for smooth box interpolation
+    _startSmoothingLoop() {
+        if (this._smoothingRAF) return;
+        
+        const animate = (timestamp) => {
+            if (!this._overlayEnabled || !this._overlaySmoothingEnabled) {
+                this._smoothingRAF = null;
+                this._lastSmoothTime = null;
+                return;
+            }
+            
+            // Calculate delta time for frame-rate independent smoothing
+            const deltaTime = this._lastSmoothTime ? (timestamp - this._lastSmoothTime) / 1000 : 0.016;
+            this._lastSmoothTime = timestamp;
+            
+            this.drawOverlaySmoothed(deltaTime);
+            this._smoothingRAF = requestAnimationFrame(animate);
+        };
+        
+        this._smoothingRAF = requestAnimationFrame(animate);
+    }
+
+    // v1.2.0: Stop smoothing animation loop
+    _stopSmoothingLoop() {
+        if (this._smoothingRAF) {
+            cancelAnimationFrame(this._smoothingRAF);
+            this._smoothingRAF = null;
+        }
+        this._lastSmoothTime = null;
     }
 
     drawOverlay() {
@@ -3991,6 +4233,150 @@ class RtspRecorderCard extends HTMLElement {
                 : (face.score != null ? Math.round(face.score * 100) + '%' : '');
             const label = score ? `${matchName} ${score}` : matchName;
             ctx.fillText(label, x + 2, y - 4);
+        });
+    }
+
+    // v1.2.0: Smoothed overlay drawing with interpolation
+    drawOverlaySmoothed(deltaTime) {
+        if (!this._overlayEnabled || !this._analysisDetections) return;
+        const canvas = this.shadowRoot.querySelector('#overlay-canvas');
+        const video = this.shadowRoot.querySelector('#main-video');
+        if (!canvas || !video || !video.videoWidth) return;
+
+        const sizeKey = `${video.clientWidth}x${video.clientHeight}`;
+        const sizeChanged = this._lastOverlaySize !== sizeKey;
+        this._lastOverlaySize = sizeKey;
+
+        if (sizeChanged) {
+            canvas.width = video.clientWidth;
+            canvas.height = video.clientHeight;
+            this._overlayCtx = null;
+        }
+
+        if (!this._overlayCtx) {
+            this._overlayCtx = canvas.getContext('2d');
+        }
+        const ctx = this._overlayCtx;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const frameSize = this._analysisFrameSize || { width: video.videoWidth, height: video.videoHeight };
+        const fw = frameSize.width || video.videoWidth;
+        const fh = frameSize.height || video.videoHeight;
+
+        const containerW = video.clientWidth;
+        const containerH = video.clientHeight;
+        const videoAspect = video.videoWidth / video.videoHeight;
+        const containerAspect = containerW / containerH;
+
+        let drawW, drawH, offsetX, offsetY;
+        if (videoAspect > containerAspect) {
+            drawW = containerW;
+            drawH = containerW / videoAspect;
+            offsetX = 0;
+            offsetY = (containerH - drawH) / 2;
+        } else {
+            drawH = containerH;
+            drawW = containerH * videoAspect;
+            offsetY = 0;
+            offsetX = (containerW - drawW) / 2;
+        }
+
+        const scaleX = drawW / fw;
+        const scaleY = drawH / fh;
+
+        // Get current frame's detections
+        const t = video.currentTime;
+        const key = Math.floor(t / this._analysisInterval) * this._analysisInterval;
+        const frame = this._detectionsIndex ? this._detectionsIndex[key] 
+            : this._analysisDetections.find(d => d.time_s === key);
+        
+        if (!frame || (!frame.objects && !frame.faces)) {
+            this._smoothedBoxes = {}; // Reset when no detections
+            return;
+        }
+
+        // Lerp factor based on delta time and alpha setting
+        // Higher alpha = faster interpolation
+        const lerpFactor = 1 - Math.pow(1 - this._overlaySmoothingAlpha, deltaTime * 60);
+
+        ctx.lineWidth = 2;
+        ctx.font = '12px sans-serif';
+
+        // Helper function for exponential smoothing
+        const lerp = (current, target, factor) => current + (target - current) * factor;
+
+        // Draw objects with smoothing
+        (frame.objects || []).forEach((obj, idx) => {
+            const boxId = `obj_${idx}_${obj.label}`;
+            const targetBox = {
+                x: offsetX + obj.box.x * scaleX,
+                y: offsetY + obj.box.y * scaleY,
+                w: obj.box.w * scaleX,
+                h: obj.box.h * scaleY
+            };
+
+            // Initialize or update smoothed position
+            if (!this._smoothedBoxes[boxId]) {
+                this._smoothedBoxes[boxId] = { ...targetBox };
+            } else {
+                const sb = this._smoothedBoxes[boxId];
+                sb.x = lerp(sb.x, targetBox.x, lerpFactor);
+                sb.y = lerp(sb.y, targetBox.y, lerpFactor);
+                sb.w = lerp(sb.w, targetBox.w, lerpFactor);
+                sb.h = lerp(sb.h, targetBox.h, lerpFactor);
+            }
+
+            const box = this._smoothedBoxes[boxId];
+            ctx.strokeStyle = '#00e5ff';
+            ctx.fillStyle = '#00e5ff';
+            ctx.strokeRect(box.x, box.y, box.w, box.h);
+            const label = `${obj.label} ${Math.round(obj.score * 100)}%`;
+            ctx.fillText(label, box.x + 2, box.y - 4);
+        });
+
+        // Draw faces with smoothing
+        (frame.faces || []).forEach((face, idx) => {
+            const matchName = face.match && face.match.name ? face.match.name : 'Unbekannt';
+            const boxId = `face_${idx}_${matchName}`;
+            const targetBox = {
+                x: offsetX + face.box.x * scaleX,
+                y: offsetY + face.box.y * scaleY,
+                w: face.box.w * scaleX,
+                h: face.box.h * scaleY
+            };
+
+            if (!this._smoothedBoxes[boxId]) {
+                this._smoothedBoxes[boxId] = { ...targetBox };
+            } else {
+                const sb = this._smoothedBoxes[boxId];
+                sb.x = lerp(sb.x, targetBox.x, lerpFactor);
+                sb.y = lerp(sb.y, targetBox.y, lerpFactor);
+                sb.w = lerp(sb.w, targetBox.w, lerpFactor);
+                sb.h = lerp(sb.h, targetBox.h, lerpFactor);
+            }
+
+            const box = this._smoothedBoxes[boxId];
+            ctx.strokeStyle = '#ff9800';
+            ctx.fillStyle = '#ff9800';
+            ctx.strokeRect(box.x, box.y, box.w, box.h);
+            const score = face.match && face.match.similarity != null 
+                ? Math.round(face.match.similarity * 100) + '%' 
+                : (face.score != null ? Math.round(face.score * 100) + '%' : '');
+            const label = score ? `${matchName} ${score}` : matchName;
+            ctx.fillText(label, box.x + 2, box.y - 4);
+        });
+
+        // Cleanup old smoothed boxes that are no longer in frame
+        const currentBoxIds = new Set();
+        (frame.objects || []).forEach((obj, idx) => currentBoxIds.add(`obj_${idx}_${obj.label}`));
+        (frame.faces || []).forEach((face, idx) => {
+            const matchName = face.match && face.match.name ? face.match.name : 'Unbekannt';
+            currentBoxIds.add(`face_${idx}_${matchName}`);
+        });
+        Object.keys(this._smoothedBoxes).forEach(id => {
+            if (!currentBoxIds.has(id)) {
+                delete this._smoothedBoxes[id];
+            }
         });
     }
 

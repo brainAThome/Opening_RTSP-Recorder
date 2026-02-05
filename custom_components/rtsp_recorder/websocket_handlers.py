@@ -975,4 +975,64 @@ def register_people_websocket_handlers(
 
     websocket_api.async_register_command(hass, ws_delete_embedding)
 
+    # v1.2.0: Get person details with quality scores and outlier detection
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_person_details_quality",
+        vol.Required("person_id"): str,
+        vol.Optional("outlier_threshold", default=0.65): float,
+    })
+    @websocket_api.async_response
+    async def ws_get_person_details_quality(hass, connection, msg):
+        """Get person details with quality scores for each embedding."""
+        person_id = msg["person_id"]
+        outlier_threshold = msg.get("outlier_threshold", 0.65)
+        
+        log_to_file(f"INIT: get_person_details_quality called for person_id={person_id}, threshold={outlier_threshold}")
+        
+        try:
+            from .database import get_database
+            db = get_database()
+            details = db.get_person_details_with_quality(person_id, outlier_threshold)
+            
+            if details is None:
+                connection.send_error(msg["id"], "not_found", f"Person {person_id} not found")
+                return
+            
+            log_to_file(f"INIT: get_person_details_quality returning {details.get('positive_count', 0)} samples, {details.get('outlier_count', 0)} outliers, avg_quality={details.get('avg_quality', 0)}")
+            connection.send_result(msg["id"], details)
+            
+        except Exception as exc:
+            log_to_file(f"INIT: get_person_details_quality ERROR: {type(exc).__name__}: {exc}")
+            connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
+
+    websocket_api.async_register_command(hass, ws_get_person_details_quality)
+
+    # v1.2.0: Bulk delete embeddings
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/bulk_delete_embeddings",
+        vol.Required("embedding_ids"): [int],
+        vol.Optional("embedding_type", default="positive"): str,
+    })
+    @websocket_api.async_response
+    async def ws_bulk_delete_embeddings(hass, connection, msg):
+        """Delete multiple embeddings at once."""
+        embedding_ids = msg["embedding_ids"]
+        embedding_type = msg.get("embedding_type", "positive")
+        
+        log_to_file(f"INIT: bulk_delete_embeddings called for {len(embedding_ids)} embeddings, type={embedding_type}")
+        
+        try:
+            from .database import get_database
+            db = get_database()
+            result = db.bulk_delete_embeddings(embedding_ids, embedding_type)
+            
+            log_to_file(f"INIT: bulk_delete_embeddings result: {result['success_count']} deleted, {result['failure_count']} failed")
+            connection.send_result(msg["id"], result)
+            
+        except Exception as exc:
+            log_to_file(f"INIT: bulk_delete_embeddings ERROR: {type(exc).__name__}: {exc}")
+            connection.send_error(msg["id"], "error", f"{type(exc).__name__}: {exc}")
+
+    websocket_api.async_register_command(hass, ws_bulk_delete_embeddings)
+
 

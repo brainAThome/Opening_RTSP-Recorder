@@ -15,15 +15,40 @@ Previously each camera could only have one motion sensor as trigger. Now you can
 - **New Format**: `sensors_{camera}` stores list of entities
 - **Both Steps**: Camera config + Manual camera support multi-sensors
 
-### �️ UI/Branding
+### 🧠 New Feature: Sample Quality Analysis (People DB)
+
+**Automatic outlier detection and quality scoring for face embeddings!**
+
+- **Quality Scores**: Each sample shows similarity to person's centroid (0-100%)
+- **Outlier Detection**: Samples below threshold (default 65%) marked as potential errors
+- **Bulk Selection**: Checkbox for each sample, "Select All Outliers" button
+- **Bulk Delete**: Delete multiple samples at once
+- **New UI Elements**:
+  - Quality stats row: Ø Qualität, Ausreißer count, Threshold display
+  - Color-coded quality badges (green/orange/red)
+  - ⚠️ Outlier badges on problematic samples
+  - Bulk action bar with selection count
+
+### 🎨 New Feature: Overlay Smoothing
+
+**Smooth analysis overlay drawing for better visual experience!**
+
+- **Configurable**: `analysis_overlay_smoothing` toggle in settings
+- **Alpha Value**: `analysis_overlay_smoothing_alpha` (0.1-1.0, default 0.55)
+- **EMA Algorithm**: Exponential moving average for box position smoothing
+- **Reduced Jitter**: Bounding boxes transition smoothly between frames
+
+### 🏠️ UI/Branding
 - **Dashboard Logo**: Opening logo replaces "Kamera Archiv" text in card header
 - **Version Badge**: "BETA v1.2.0" badge in header for version visibility
 
 ### 🔧 Technical Changes
 - `config_flow.py`: EntitySelector with `multiple=True`
 - `__init__.py`: Listener registration iterates over sensor list
+- `database.py`: New `get_person_details_with_quality()` and `bulk_delete_embeddings()` methods
+- `websocket_handlers.py`: New WebSocket endpoints for quality API
+- `rtsp-recorder-card.js`: Quality UI, bulk selection, overlay smoothing
 - `strings.json` & translations: Updated labels (de, en)
-- `rtsp-recorder-card.js`: Logo integration with transparent PNG
 
 ---
 

@@ -173,13 +173,49 @@ ssh root@192.168.178.123 "sed -i 's/\r$//' /config/www/rtsp-recorder-card.js"
 
 ---
 
-## Nächste Schritte
+## Neue Features in v1.2.0 (05.02.2026)
 
-1. **Type Hints erhöhen** - services.py, recorder_optimized.py
-2. **Unit Tests** - Kritische Funktionen testen
-3. **Brands PR** - Offizielles Icon für HA
-4. **Face Threshold** - Default auf 0.55 erhöhen?
+### 5. Sample Quality Analysis (People DB) ✅
+**Anforderung:** Qualitätsbewertung und Ausreißer-Erkennung für Face Embeddings
+
+**Implementierung:**
+- `database.py`: `get_person_details_with_quality()` - Cosine-Similarity zu Centroid
+- `database.py`: `bulk_delete_embeddings()` - Mehrfach-Löschung
+- `websocket_handlers.py`: Neue WebSocket-Endpoints
+- `rtsp-recorder-card.js`: Qualitäts-UI mit Farbcodes
+
+**Features:**
+- Qualitäts-Score pro Sample (0-100%)
+- Ausreißer-Erkennung (Schwelle: 65%)
+- Bulk-Auswahl mit Checkboxen
+- "Alle Ausreißer auswählen" Button
+- Bulk-Löschen ausgewählter Samples
+- Visuelle Indikatoren: ⚠️ Badge, Farbcodes
+
+**Status:** ✅ IMPLEMENTIERT und deployed
 
 ---
 
-**Zuletzt aktualisiert:** 05. Februar 2026, 19:45 Uhr
+### 6. Overlay Smoothing ✅
+**Anforderung:** Flüssigere Darstellung der Analyse-Overlays (weniger Jitter)
+
+**Implementierung:**
+- `rtsp-recorder-card.js`: EMA-Algorithmus für Box-Positionen
+- Config-Optionen: `analysis_overlay_smoothing`, `analysis_overlay_smoothing_alpha`
+- Default Alpha: 0.55 (0.1 = sehr glatt, 1.0 = kein Smoothing)
+
+**Status:** ✅ IMPLEMENTIERT und deployed
+
+---
+
+## Nächste Schritte
+
+1. ~~Sample Quality Analysis~~ ✅ ERLEDIGT
+2. ~~Overlay Smoothing~~ ✅ ERLEDIGT
+3. **Type Hints erhöhen** - services.py, recorder_optimized.py
+4. **Unit Tests** - Kritische Funktionen testen
+5. **Brands PR** - Offizielles Icon für HA
+
+---
+
+**Zuletzt aktualisiert:** 05. Februar 2026, 21:50 Uhr

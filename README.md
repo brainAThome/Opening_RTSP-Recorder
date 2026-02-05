@@ -22,6 +22,22 @@ A complete video surveillance solution with AI-powered object detection using Co
 - New format: `sensors_{camera}` stores a list of entities
 - Both camera config and manual camera steps support multi-sensors
 
+### 🧠 Sample Quality Analysis (People DB)
+**Automatic outlier detection and quality scoring for face embeddings!**
+
+- **Quality Scores**: Each sample shows similarity to person's centroid (0-100%)
+- **Outlier Detection**: Samples below 65% threshold marked with ⚠️ badge
+- **Bulk Selection**: Checkbox per sample + "Select All Outliers" button
+- **Bulk Delete**: Remove multiple problematic samples at once
+- **Visual Indicators**: Color-coded quality (green/orange/red), outlier count
+
+### 🎨 Overlay Smoothing
+**Smooth analysis overlay drawing for reduced visual jitter!**
+
+- Toggle `analysis_overlay_smoothing` in settings
+- Configurable alpha value (0.1-1.0, default 0.55)
+- EMA algorithm for smooth bounding box transitions
+
 ### 🐛 Bug Fixes (from v1.1.2)
 **Fixed**: Batch analysis `auto_device` undefined error - "Alle Aufnahmen analysieren" works again
 
@@ -59,6 +75,11 @@ A complete video surveillance solution with AI-powered object detection using Co
 | **Analysis Cleanup** | ❌ | ✅ Automatic | ✅ Automatic |
 | **Person Detail Popup** | ❌ | ✅ Full features | ✅ Full features |
 | **Person Entities** | ❌ | ✅ HA automations | ✅ HA automations |
+| **Multi-Sensor Trigger** | ❌ | ❌ | ✅ NEW |
+| **Sample Quality Scores** | ❌ | ❌ | ✅ NEW |
+| **Outlier Detection** | ❌ | ❌ | ✅ NEW |
+| **Bulk Sample Delete** | ❌ | ❌ | ✅ NEW |
+| **Overlay Smoothing** | ❌ | ❌ | ✅ NEW |
 | **ISO 25010 Score** | 92% | ✅ 93% | ✅ 93% |
 | **ISO 27001 Score** | 85% | ✅ 85% | ✅ 85% |
 | **Production Ready** | ✅ | ✅ | ✅ |
