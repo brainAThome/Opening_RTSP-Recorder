@@ -1049,6 +1049,365 @@ async def _finalize_analysis_run(
         _LOGGER.warning("Could not update analysis_run: %s", db_err)
 
 
+def _is_point_in_box(
+    point_x: int,
+    point_y: int,
+    box: dict[str, Any],
+) -> bool:
+    """Check if a point is inside a bounding box.
+    
+    Args:
+        point_x: X coordinate of the point
+        point_y: Y coordinate of the point
+        box: Bounding box with x, y, w, h
+        
+    Returns:
+        True if point is inside box
+    """
+    px = int(box.get("x", 0))
+    py = int(box.get("y", 0))
+    pw = int(box.get("w", 0))
+    ph = int(box.get("h", 0))
+    return px <= point_x <= px + pw and py <= point_y <= py + ph
+
+
+async def _try_movenet_head_detection(
+    session: Any,
+    face_url: str,
+    frame_bytes: bytes,
+    frame_path: str,
+    frame_img: Any,
+    person_boxes: list[dict[str, Any]],
+    device: str,
+    embed_flag: str,
+) -> dict[str, Any] | None:
+    """Try to detect a head using MoveNet pose estimation.
+    
+    Only returns a result if:
+    - At least 3 keypoints were found (nose + eyes or ears)
+    - The detected head is within a person bounding box
+    
+    Args:
+        session: aiohttp session
+        face_url: Face detection API URL
+        frame_bytes: JPEG bytes of the frame
+        frame_path: Path to frame file
+        frame_img: PIL Image of the frame
+        person_boxes: List of detected person bounding boxes
+        device: Detection device (coral_usb, cpu)
+        embed_flag: "1" to generate embeddings
+        
+    Returns:
+        Face dict with box, score, method, embedding or None
+    """
+    if not person_boxes:
+        return None
+    
+    try:
+        movenet_form = aiohttp.FormData()
+        movenet_form.add_field(
+            "file", frame_bytes,
+            filename=os.path.basename(frame_path),
+            content_type="image/jpeg"
+        )
+        movenet_form.add_field("min_confidence", "0.3")
+        
+        async with session.post(
+            f"{face_url.rstrip('/')}/head_movenet",
+            data=movenet_form,
+            timeout=30
+        ) as movenet_resp:
+            if movenet_resp.status != 200:
+                return None
+            
+            movenet_data = await movenet_resp.json()
+            head_box_data = movenet_data.get("head_box")
+            
+            if not head_box_data or not head_box_data.get("box"):
+                return None
+            
+            keypoints_used = head_box_data.get("keypoints_used", 0)
+            if keypoints_used < 3:
+                return None
+            
+            hbox = head_box_data["box"]
+            hx = int(hbox.get("x", 0))
+            hy = int(hbox.get("y", 0))
+            hw = int(hbox.get("w", 0))
+            hh = int(hbox.get("h", 0))
+            head_center_x = hx + hw // 2
+            head_center_y = hy + hh // 2
+            
+            # Verify head is within a detected person box
+            head_in_person = any(
+                _is_point_in_box(head_center_x, head_center_y, pobj.get("box") or {})
+                for pobj in person_boxes
+            )
+            
+            if not head_in_person:
+                return None
+            
+            head_face: dict[str, Any] = {
+                "score": head_box_data.get("confidence", 0.5),
+                "box": hbox,
+                "method": "movenet",
+                "keypoints_used": keypoints_used,
+            }
+            
+            # Generate embedding if requested
+            if frame_img is not None and embed_flag == "1":
+                try:
+                    hx2 = min(hx + hw, frame_img.width)
+                    hy2 = min(hy + hh, frame_img.height)
+                    head_crop = frame_img.crop((hx, hy, hx2, hy2))
+                    head_buf = io.BytesIO()
+                    head_crop.save(head_buf, format="JPEG", quality=85)
+                    head_bytes = head_buf.getvalue()
+                    
+                    embed_form = aiohttp.FormData()
+                    embed_form.add_field(
+                        "file", head_bytes,
+                        filename="head.jpg",
+                        content_type="image/jpeg"
+                    )
+                    embed_form.add_field("device", device)
+                    
+                    async with session.post(
+                        f"{face_url.rstrip('/')}/embed_face",
+                        data=embed_form,
+                        timeout=30
+                    ) as embed_resp:
+                        if embed_resp.status == 200:
+                            embed_data = await embed_resp.json()
+                            if embed_data.get("embedding"):
+                                head_face["embedding"] = embed_data["embedding"]
+                                head_face["embedding_source"] = "movenet"
+                except Exception as embed_err:
+                    _LOGGER.debug("MoveNet head embedding failed: %s", embed_err)
+            
+            _LOGGER.debug(
+                "MoveNet detected head with %d keypoints (validated in person box)",
+                keypoints_used
+            )
+            return head_face
+            
+    except Exception as movenet_err:
+        _LOGGER.debug("MoveNet fallback failed: %s", movenet_err)
+        return None
+
+
+async def _detect_faces_with_retry(
+    session: Any,
+    face_url: str,
+    frame_bytes: bytes,
+    frame_path: str,
+    device: str,
+    face_confidence: float,
+    embed_flag: str,
+) -> tuple[dict[str, Any], float]:
+    """Detect faces in a frame with automatic retry at lower confidence.
+    
+    Args:
+        session: aiohttp session
+        face_url: Face detection API URL
+        frame_bytes: JPEG bytes of the frame
+        frame_path: Path to frame file
+        device: Detection device
+        face_confidence: Minimum confidence threshold
+        embed_flag: "1" to generate embeddings
+        
+    Returns:
+        Tuple of (response data dict, detection time in ms)
+    """
+    form = aiohttp.FormData()
+    form.add_field(
+        "file", frame_bytes,
+        filename=os.path.basename(frame_path),
+        content_type="image/jpeg"
+    )
+    form.add_field("device", device)
+    form.add_field("confidence", str(face_confidence))
+    form.add_field("embed", embed_flag)
+    
+    _detect_start = time.perf_counter()
+    async with session.post(
+        f"{face_url.rstrip('/')}/faces",
+        data=form,
+        timeout=60
+    ) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f"Face detector error {resp.status}")
+        data = await resp.json()
+    
+    # Retry once with lower confidence if no faces found
+    if not (data.get("faces") or []) and float(face_confidence) > 0.25:
+        retry_conf = max(DEFAULT_FACE_CONFIDENCE, float(face_confidence) * FACE_RETRY_CONFIDENCE_MULTIPLIER)
+        form_retry = aiohttp.FormData()
+        form_retry.add_field(
+            "file", frame_bytes,
+            filename=os.path.basename(frame_path),
+            content_type="image/jpeg"
+        )
+        form_retry.add_field("device", device)
+        form_retry.add_field("confidence", str(retry_conf))
+        form_retry.add_field("embed", embed_flag)
+        
+        async with session.post(
+            f"{face_url.rstrip('/')}/faces",
+            data=form_retry,
+            timeout=60
+        ) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+    
+    _detect_ms = (time.perf_counter() - _detect_start) * 1000
+    return data, _detect_ms
+
+
+async def _detect_faces_in_crop(
+    session: Any,
+    face_url: str,
+    crop_img: Any,
+    device: str,
+    confidence: float,
+    embed_flag: str,
+    scale_factor: float,
+    offset_x: int,
+    offset_y: int,
+) -> list[dict[str, Any]]:
+    """Detect faces in a cropped image region and adjust coordinates.
+    
+    Args:
+        session: aiohttp session
+        face_url: Face detection API URL
+        crop_img: PIL Image of the crop
+        device: Detection device
+        confidence: Minimum confidence threshold
+        embed_flag: "1" to generate embeddings
+        scale_factor: Scale factor used for upscaling
+        offset_x: X offset to add to face boxes
+        offset_y: Y offset to add to face boxes
+        
+    Returns:
+        List of face dicts with adjusted coordinates
+    """
+    buf = io.BytesIO()
+    crop_img.save(buf, format="JPEG", quality=80)
+    crop_bytes = buf.getvalue()
+    
+    crop_form = aiohttp.FormData()
+    crop_form.add_field("file", crop_bytes, filename="crop.jpg", content_type="image/jpeg")
+    crop_form.add_field("device", device)
+    crop_form.add_field("confidence", str(confidence))
+    crop_form.add_field("embed", embed_flag)
+    
+    async with session.post(f"{face_url.rstrip('/')}/faces", data=crop_form, timeout=60) as resp:
+        if resp.status != 200:
+            return []
+        crop_data = await resp.json()
+    
+    faces_out: list[dict[str, Any]] = []
+    for cf in (crop_data.get("faces") or []):
+        cbox = cf.get("box") or {}
+        sx = float(cbox.get("x", 0)) / scale_factor
+        sy = float(cbox.get("y", 0)) / scale_factor
+        sw = float(cbox.get("w", 0)) / scale_factor
+        sh = float(cbox.get("h", 0)) / scale_factor
+        cf["box"] = {
+            "x": int(sx) + offset_x,
+            "y": int(sy) + offset_y,
+            "w": int(sw),
+            "h": int(sh),
+        }
+        faces_out.append(cf)
+    
+    return faces_out
+
+
+async def _try_detect_faces_in_person_crops(
+    session: Any,
+    face_url: str,
+    frame_img: Any,
+    person_boxes: list[dict[str, Any]],
+    device: str,
+    face_confidence: float,
+    embed_flag: str,
+) -> list[dict[str, Any]]:
+    """Try to detect faces in person bounding box crops with upscaling.
+    
+    Args:
+        session: aiohttp session
+        face_url: Face detection API URL
+        frame_img: PIL Image of the full frame
+        person_boxes: List of person detections with boxes
+        device: Detection device
+        face_confidence: Base confidence threshold
+        embed_flag: "1" to generate embeddings
+        
+    Returns:
+        List of detected faces with adjusted coordinates
+    """
+    if frame_img is None or not person_boxes:
+        return []
+    
+    extra_faces: list[dict[str, Any]] = []
+    
+    for pobj in person_boxes:
+        box = pobj.get("box") or {}
+        x = max(int(box.get("x", 0)), 0)
+        y = max(int(box.get("y", 0)), 0)
+        w = max(int(box.get("w", 0)), 1)
+        h = max(int(box.get("h", 0)), 1)
+        
+        # Add 10% padding
+        pad = int(0.1 * max(w, h))
+        x1 = max(x - pad, 0)
+        y1 = max(y - pad, 0)
+        x2 = min(x + w + pad, frame_img.width)
+        y2 = min(y + h + pad, frame_img.height)
+        
+        # Skip too small crops
+        if (x2 - x1) < 40 or (y2 - y1) < 40:
+            continue
+        
+        crop = frame_img.crop((x1, y1, x2, y2))
+        
+        # Try at original scale
+        faces_crop = await _detect_faces_in_crop(
+            session, face_url, crop, device,
+            float(face_confidence), embed_flag, 1.0, x1, y1
+        )
+        
+        # Try 1.5x upscale for small crops
+        if not faces_crop:
+            max_dim = max(crop.width, crop.height)
+            if max_dim < 160:
+                scale = 1.5
+                crop_up = crop.resize((int(crop.width * scale), int(crop.height * scale)))
+                crop_conf = max(0.15, float(face_confidence) * 0.7)
+                faces_crop = await _detect_faces_in_crop(
+                    session, face_url, crop_up, device,
+                    crop_conf, embed_flag, scale, x1, y1
+                )
+        
+        # Try 2x upscale for very small crops
+        if not faces_crop:
+            max_dim = max(crop.width, crop.height)
+            if max_dim < 120:
+                scale = 2.0
+                crop_up = crop.resize((int(crop.width * scale), int(crop.height * scale)))
+                crop_conf = max(0.1, float(face_confidence) * 0.6)
+                faces_crop = await _detect_faces_in_crop(
+                    session, face_url, crop_up, device,
+                    crop_conf, embed_flag, scale, x1, y1
+                )
+        
+        if faces_crop:
+            extra_faces.extend(faces_crop)
+    
+    return extra_faces
+
+
 async def analyze_recording(
     video_path: str,
     output_root: str,
@@ -1252,42 +1611,26 @@ async def analyze_recording(
                                 frame_img = None
 
                         embed_flag = "1" if (face_store_embeddings or (people_db and len(people_db) > 0)) else "0"
-                        form = aiohttp.FormData()
-                        form.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
-                        form.add_field("device", device)
-                        form.add_field("confidence", str(face_confidence))
-                        form.add_field("embed", embed_flag)
 
+                        # v1.2.0 Refactor: Use helper function for face detection with retry
                         try:
-                            _detect_start = time.perf_counter()
-                            async with session.post(f"{face_url.rstrip('/')}/faces", data=form, timeout=60) as resp:
-                                if resp.status != 200:
-                                    raise RuntimeError(f"Face detector error {resp.status}")
-                                data = await resp.json()
-                            # Retry once with lower confidence if no faces found
-                            # LOW-003 Fix: Use constants instead of magic numbers
-                            if not (data.get("faces") or []) and float(face_confidence) > 0.25:
-                                retry_conf = max(DEFAULT_FACE_CONFIDENCE, float(face_confidence) * FACE_RETRY_CONFIDENCE_MULTIPLIER)
-                                form_retry = aiohttp.FormData()
-                                form_retry.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
-                                form_retry.add_field("device", device)
-                                form_retry.add_field("confidence", str(retry_conf))
-                                form_retry.add_field("embed", embed_flag)
-                                async with session.post(f"{face_url.rstrip('/')}/faces", data=form_retry, timeout=60) as resp:
-                                    if resp.status == 200:
-                                        data = await resp.json()
-                            _detect_ms = (time.perf_counter() - _detect_start) * 1000
+                            data, _detect_ms = await _detect_faces_with_retry(
+                                session=session,
+                                face_url=face_url,
+                                frame_bytes=frame_bytes,
+                                frame_path=frame_path,
+                                device=device,
+                                face_confidence=float(face_confidence),
+                                embed_flag=embed_flag,
+                            )
                             _used_device = data.get("device", device)
                             _stats = _get_inference_stats()
                             if _stats:
                                 _stats.record(_used_device, _detect_ms, 1)
-
-                            # Reset error counter on success
                             consecutive_face_errors = 0
                         except Exception as face_req_err:
                             _LOGGER.debug("Face detection request failed for frame %d: %s", idx, face_req_err)
                             consecutive_face_errors += 1
-                            # Add empty face data for this frame
                             time_s = idx * interval_s
                             if idx < len(detections):
                                 detections[idx]["faces"] = []
@@ -1299,141 +1642,35 @@ async def analyze_recording(
                         frame_w = data.get("frame_width")
                         frame_h = data.get("frame_height")
 
-                        # If no faces found, try person crops (helps for small faces)
+                        # v1.2.0 Refactor: Use helper for person crop face detection
                         if not faces and frame_img is not None and idx < len(detections):
                             person_boxes = [o for o in (detections[idx].get("objects") or []) if o.get("label") == "person"]
-                            extra_faces = []
-                            for pobj in person_boxes:
-                                box = pobj.get("box") or {}
-                                x = max(int(box.get("x", 0)), 0)
-                                y = max(int(box.get("y", 0)), 0)
-                                w = max(int(box.get("w", 0)), 1)
-                                h = max(int(box.get("h", 0)), 1)
-                                pad = int(0.1 * max(w, h))
-                                x1 = max(x - pad, 0)
-                                y1 = max(y - pad, 0)
-                                x2 = min(x + w + pad, frame_img.width)
-                                y2 = min(y + h + pad, frame_img.height)
-                                if (x2 - x1) < 40 or (y2 - y1) < 40:
-                                    continue
-                                crop = frame_img.crop((x1, y1, x2, y2))
-
-                                async def _detect_crop(img, scale_factor: float, conf: float) -> list[dict[str, Any]]:
-                                    buf = io.BytesIO()
-                                    img.save(buf, format="JPEG", quality=80)
-                                    crop_bytes = buf.getvalue()
-                                    crop_form = aiohttp.FormData()
-                                    crop_form.add_field("file", crop_bytes, filename="crop.jpg", content_type="image/jpeg")
-                                    crop_form.add_field("device", device)
-                                    crop_form.add_field("confidence", str(conf))
-                                    crop_form.add_field("embed", embed_flag)
-                                    async with session.post(f"{face_url.rstrip('/')}/faces", data=crop_form, timeout=60) as resp:
-                                        if resp.status != 200:
-                                            return []
-                                        crop_data = await resp.json()
-                                    faces_out = []
-                                    for cf in (crop_data.get("faces") or []):
-                                        cbox = cf.get("box") or {}
-                                        sx = float(cbox.get("x", 0)) / scale_factor
-                                        sy = float(cbox.get("y", 0)) / scale_factor
-                                        sw = float(cbox.get("w", 0)) / scale_factor
-                                        sh = float(cbox.get("h", 0)) / scale_factor
-                                        cf_box = {
-                                            "x": int(sx) + x1,
-                                            "y": int(sy) + y1,
-                                            "w": int(sw),
-                                            "h": int(sh),
-                                        }
-                                        cf["box"] = cf_box
-                                        faces_out.append(cf)
-                                    return faces_out
-
-                                faces_crop = await _detect_crop(crop, 1.0, float(face_confidence))
-                                if not faces_crop:
-                                    max_dim = max(crop.width, crop.height)
-                                    if max_dim < 160:
-                                        scale_factor = 1.5
-                                        crop_up = crop.resize((int(crop.width * scale_factor), int(crop.height * scale_factor)))
-                                        crop_conf = max(0.15, float(face_confidence) * 0.7)
-                                        faces_crop = await _detect_crop(crop_up, scale_factor, crop_conf)
-                                if not faces_crop:
-                                    max_dim = max(crop.width, crop.height)
-                                    if max_dim < 120:
-                                        scale_factor = 2.0
-                                        crop_up = crop.resize((int(crop.width * scale_factor), int(crop.height * scale_factor)))
-                                        crop_conf = max(0.1, float(face_confidence) * 0.6)
-                                        faces_crop = await _detect_crop(crop_up, scale_factor, crop_conf)
-
-                                if faces_crop:
-                                    extra_faces.extend(faces_crop)
+                            extra_faces = await _try_detect_faces_in_person_crops(
+                                session=session,
+                                face_url=face_url,
+                                frame_img=frame_img,
+                                person_boxes=person_boxes,
+                                device=device,
+                                face_confidence=float(face_confidence),
+                                embed_flag=embed_flag,
+                            )
                             if extra_faces:
                                 faces = extra_faces
 
-                        # MoveNet fallback: Use pose estimation for head detection if no faces found
-                        # Only use if keypoints are actually detected AND head is within a person box
+                        # v1.2.0 Refactor: Use helper for MoveNet head detection
                         if not faces:
-                            if person_boxes:
-                                try:
-                                    movenet_form = aiohttp.FormData()
-                                    movenet_form.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
-                                    movenet_form.add_field("min_confidence", "0.3")  # Higher threshold to reduce false positives
-                                    async with session.post(f"{face_url.rstrip('/')}/head_movenet", data=movenet_form, timeout=30) as movenet_resp:
-                                        if movenet_resp.status == 200:
-                                            movenet_data = await movenet_resp.json()
-                                            head_box_data = movenet_data.get("head_box")
-                                            # Only use MoveNet result if at least 3 keypoints were found (nose + eyes or ears)
-                                            keypoints_used = head_box_data.get("keypoints_used", 0) if head_box_data else 0
-                                            if head_box_data and head_box_data.get("box") and keypoints_used >= 3:
-                                                hbox = head_box_data["box"]
-                                                hx, hy = int(hbox.get("x", 0)), int(hbox.get("y", 0))
-                                                hw, hh = int(hbox.get("w", 0)), int(hbox.get("h", 0))
-                                                head_center_x = hx + hw // 2
-                                                head_center_y = hy + hh // 2
-                                                
-                                                # Verify head is within a detected person box
-                                                head_in_person = False
-                                                for pobj in person_boxes:
-                                                    pbox = pobj.get("box") or {}
-                                                    px, py = int(pbox.get("x", 0)), int(pbox.get("y", 0))
-                                                    pw, ph = int(pbox.get("w", 0)), int(pbox.get("h", 0))
-                                                    if px <= head_center_x <= px + pw and py <= head_center_y <= py + ph:
-                                                        head_in_person = True
-                                                        break
-                                                
-                                                if head_in_person:
-                                                    head_face = {
-                                                        "score": head_box_data.get("confidence", 0.5),
-                                                        "box": hbox,
-                                                        "method": "movenet",
-                                                        "keypoints_used": keypoints_used,
-                                                    }
-                                                    
-                                                    # Generate embedding
-                                                    if frame_img is not None and embed_flag == "1":
-                                                        try:
-                                                            hx2 = min(hx + hw, frame_img.width)
-                                                            hy2 = min(hy + hh, frame_img.height)
-                                                            head_crop = frame_img.crop((hx, hy, hx2, hy2))
-                                                            head_buf = io.BytesIO()
-                                                            head_crop.save(head_buf, format="JPEG", quality=85)
-                                                            head_bytes = head_buf.getvalue()
-                                                            
-                                                            embed_form = aiohttp.FormData()
-                                                            embed_form.add_field("file", head_bytes, filename="head.jpg", content_type="image/jpeg")
-                                                            embed_form.add_field("device", device)
-                                                            async with session.post(f"{face_url.rstrip('/')}/embed_face", data=embed_form, timeout=30) as embed_resp:
-                                                                if embed_resp.status == 200:
-                                                                    embed_data = await embed_resp.json()
-                                                                    if embed_data.get("embedding"):
-                                                                        head_face["embedding"] = embed_data["embedding"]
-                                                                        head_face["embedding_source"] = "movenet"
-                                                        except Exception as embed_err:
-                                                            _LOGGER.debug("MoveNet head embedding failed: %s", embed_err)
-                                                    
-                                                    faces.append(head_face)
-                                                    _LOGGER.debug("MoveNet detected head with %d keypoints (validated in person box)", keypoints_used)
-                                except Exception as movenet_err:
-                                    _LOGGER.debug("MoveNet fallback failed: %s", movenet_err)
+                            movenet_face = await _try_movenet_head_detection(
+                                session=session,
+                                face_url=face_url,
+                                frame_bytes=frame_bytes,
+                                frame_path=frame_path,
+                                frame_img=frame_img,
+                                person_boxes=person_boxes,
+                                device=device,
+                                embed_flag=embed_flag,
+                            )
+                            if movenet_face:
+                                faces.append(movenet_face)
 
                         if frame_w and frame_h:
                             result["frame_width"] = frame_w
