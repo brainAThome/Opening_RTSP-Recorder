@@ -4,7 +4,12 @@ All notable changes to RTSP Recorder will be documented in this file.
 
 ## [1.1.2] - 2026-02-05
 
-### 🔧 Configuration Changes
+### � Bug Fixes
+- **Fixed**: Batch analysis `auto_device` undefined error
+  - `_analyze_batch` now uses correct `device` parameter
+  - "Alle Aufnahmen analysieren" works again
+
+### �🔧 Configuration Changes
 - **Removed SQLite Toggle**: SQLite is now always enabled (hardcoded)
   - Removed `use_sqlite` option from config flow
   - Cleaner settings UI without unnecessary toggle

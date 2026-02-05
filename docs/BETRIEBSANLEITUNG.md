@@ -1,6 +1,6 @@
 # RTSP Recorder – Betriebsanleitung
 
-![Version](https://img.shields.io/badge/Version-1.1.1%20BETA-brightgreen)
+![Version](https://img.shields.io/badge/Version-1.1.2%20BETA-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 
 > [!NOTE]
@@ -53,7 +53,7 @@ Die Hauptoberfläche besteht aus drei Bereichen:
 ### 1. Kopfzeile
 | Element | Beschreibung |
 |---------|--------------|
-| **Kamera Archiv** | Titel mit Versionsanzeige (BETA v1.1.1) |
+| **Kamera Archiv** | Titel mit Versionsanzeige (BETA v1.1.2) |
 | **Letzte 24 Std** | Zeitfilter für die Aufnahmen |
 | **Kameras** | Kameraauswahl-Dropdown |
 | **Menue** | Öffnet die Einstellungen |

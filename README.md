@@ -14,7 +14,10 @@ A complete video surveillance solution with AI-powered object detection using Co
 
 ## What's New in v1.1.2
 
-### � Configuration Improvements
+### 🐛 Bug Fixes
+- **Fixed**: Batch analysis `auto_device` undefined error - "Alle Aufnahmen analysieren" works again
+
+### 🔧 Configuration Improvements
 - **SQLite Always Enabled**: Removed unnecessary toggle from settings
 - **New Setting**: `analysis_max_concurrent` slider (1-4 parallel tasks)
 - **HACS Support**: Easy installation and automatic update notifications
