@@ -26,8 +26,9 @@ A complete video surveillance solution with AI-powered object detection using Co
 - **Cyclomatic Complexity**: `analyze_recording` reduced from CC=140 to CC=23 (-84%)
 - **Exception Handling**: 7 silent `except:pass` blocks now have debug logging
 - **Security Documentation**: New `SECURITY.md` with biometric data policy
-- **ISO 25010 Score**: 95↖96/100
-- **Maintainability Score**: 85↖90/100
+- **Flake8 Cleanup**: Removed unused globals (F824) and imports (F401)
+- **ISO 25010 Score**: 95→96/100
+- **Maintainability Score**: 85→90/100
 
 ---
 

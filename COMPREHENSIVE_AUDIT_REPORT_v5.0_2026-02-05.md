@@ -82,15 +82,15 @@ Files Analyzed: 18 Python modules
 | W293 | 1,094 | Low | Blank line contains whitespace |
 | E501 | 65 | Low | Line too long (>120 chars) |
 | W291 | 60 | Low | Trailing whitespace |
-| F401 | 12 | Medium | Unused imports |
+| ~~F401~~ | ~~12~~ → 9 | ~~Medium~~ | ✅ Fixed: Unused imports |
 | F541 | 11 | Low | F-string missing placeholders |
 | F841 | 7 | Medium | Assigned but unused variable |
 | E302/E128 | 10 | Low | Formatting issues |
-| **F824** | 4 | **Medium** | Unused global statement |
+| ~~F824~~ | ~~4~~ → 0 | ~~Medium~~ | ✅ Fixed: Unused global statement |
 
 ### Critical Findings:
-- ⚠️ **F824**: `global _cpu_history` unused in helpers.py (4 occurrences)
-- ⚠️ **F401**: Unused imports in websocket_handlers.py (DOMAIN, _update_person_centroid)
+- ✅ **F824**: ~~`global _cpu_history` unused~~ → **FIXED** (Commit `4a05b70`)
+- ✅ **F401**: ~~Unused imports~~ → **FIXED** (DOMAIN, _update_person_centroid, _update_all_face_matches removed)
 - ℹ️ **W293**: 1,094 whitespace issues (cosmetic, auto-fixable)
 
 ---

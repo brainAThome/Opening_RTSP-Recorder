@@ -33,6 +33,19 @@
 
 ---
 
+### 0b. Flake8 Code Style Fixes (v1.2.1) ✅
+**Session:** 05.02.2026, 23:30 Uhr
+
+**Behoben:**
+- **F824**: `global _cpu_history, _ram_history` entfernt (helpers.py) - Python Listen werden in-place modifiziert, global unnötig
+- **F401**: Unused imports entfernt (websocket_handlers.py): `DOMAIN`, `_update_person_centroid`, `_update_all_face_matches`
+
+**Commit:** `4a05b70` - fix(flake8): Remove unused global statements and imports (F824, F401)
+
+**Status:** ✅ DEPLOYED
+
+---
+
 ### 1. Multi-Sensor Feature (NEU in v1.2.0) ✅
 **Anforderung:** Mehrere Trigger-Sensoren pro Kamera
 

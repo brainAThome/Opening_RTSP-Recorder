@@ -22,6 +22,11 @@ All notable changes to RTSP Recorder will be documented in this file.
 **Generic Exception Analysis (MEDIUM-001):**
 - 30 handlers analyzed - all properly logged or acceptable patterns
 
+**Flake8 Code Style (F824, F401):**
+- Removed unused `global _cpu_history, _ram_history` in helpers.py
+- Removed unused imports in websocket_handlers.py: `DOMAIN`, `_update_person_centroid`, `_update_all_face_matches`
+- Commit: `4a05b70`
+
 ### 📁 New Files
 - `SECURITY.md` - Security policy and responsible disclosure
 - `MEDIUM_FINDINGS_REMEDIATION.md` - Session documentation
