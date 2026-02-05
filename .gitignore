@@ -9,9 +9,9 @@ dist/
 build/
 *.egg-info/
 
-# Personal/Internal files (keep on GitHub for agent handover)
-# AGENT_PROMPT*.md
-# HANDOVER*.md
+# Personal/Internal files (local only, not public)
+AGENT_PROMPT*.md
+HANDOVER*.md
 AUDIT_REPORT*.md
 DEEP_ANALYSIS*.md
 
