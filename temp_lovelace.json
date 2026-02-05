@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "lovelace.rtsp_recordings",
+  "data": {
+    "config": {
+      "views": [
+        {
+          "path": "",
+          "cards": [
+            {
+              "type": "custom:rtsp-recorder-card"
+            }
+          ],
+          "title": "RTSP Recordings",
+          "icon": "mdi:cctv",
+          "panel": true
+        }
+      ]
+    }
+  }
+}

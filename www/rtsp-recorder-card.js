@@ -1,5 +1,5 @@
-// ===== RTSP Recorder Card v1.1.2 BETA =====
-console.log("[RTSP-Recorder] Card Version: 1.1.2 BETA");
+// ===== RTSP Recorder Card v1.2.0 BETA =====
+console.log("[RTSP-Recorder] Card Version: 1.2.0 BETA");
 // MED-008 Fix: Debug logging behind feature flag
 const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
 const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
@@ -1186,9 +1186,9 @@ class RtspRecorderCard extends HTMLElement {
                 }
             </style>
             
-            <div class="fm-container animated" id="container" role="application" aria-label="RTSP Recorder">
+            <div class="fm-container animated" id="container" role="application" aria-label="RTSP Recorder Kamera Archiv">
                 <div class="fm-header" role="banner">
-                    <div class="fm-title"><img src="/local/icon.png" alt="RTSP Recorder" style="height:42px; vertical-align:middle; margin-right:10px; border-radius:8px;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.2.0</span></div>
+                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.2.0</span></div>
                     <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
                         <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>
