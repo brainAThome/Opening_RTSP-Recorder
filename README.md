@@ -2,7 +2,7 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.1.2-brightgreen)
+![Version](https://img.shields.io/badge/version-1.2.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%25-brightgreen)
@@ -12,15 +12,24 @@ A complete video surveillance solution with AI-powered object detection using Co
 
 📋 **[Audit Report v4.0](COMPREHENSIVE_AUDIT_REPORT_v4.0_2026-02-03.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
 
-## What's New in v1.1.2
+## What's New in v1.2.0
 
-### 🐛 Bug Fixes
-- **Fixed**: Batch analysis `auto_device` undefined error - "Alle Aufnahmen analysieren" works again
+### 🚀 Multi-Sensor Trigger Support
+**You can now select multiple sensors to trigger recording for each camera!**
+
+- Motion sensor selector in config flow now allows multi-select
+- Backward compatible: legacy `sensor_{camera}` configs still work
+- New format: `sensors_{camera}` stores a list of entities
+- Both camera config and manual camera steps support multi-sensors
+
+### 🐛 Bug Fixes (from v1.1.2)
+**Fixed**: Batch analysis `auto_device` undefined error - "Alle Aufnahmen analysieren" works again
 
 ### 🔧 Configuration Improvements
-- **SQLite Always Enabled**: Removed unnecessary toggle from settings
-- **New Setting**: `analysis_max_concurrent` slider (1-4 parallel tasks)
-- **HACS Support**: Easy installation and automatic update notifications
+**SQLite Always Enabled**: Removed unnecessary toggle from settings
+**New Setting**: `analysis_max_concurrent` slider (1-4 parallel tasks)
+**Multi-Sensor Trigger**: Select multiple binary_sensors per camera (motion, doorbell, etc.)
+**HACS Support**: Easy installation and automatic update notifications
 
 ### 🖼️ Branding & UI
 - **Integration Icon**: Custom icon for Home Assistant integrations page
@@ -33,24 +42,24 @@ A complete video surveillance solution with AI-powered object detection using Co
 
 ## Version Comparison
 
-| Feature | v1.0.9 STABLE | v1.1.2 |
-|---------|---------------|--------|
-| **Recording** | Sequential | ⚡ Parallel |
-| **Timeline Update** | After save | ⚡ Immediate |
-| **Time per Recording** | +5-6s | ⚡ +1-2s |
-| **TPU Load Display** | ❌ | ✅ Real-time |
-| **Performance Metrics** | ❌ | ✅ METRIC logging |
-| **Recording Progress** | ❌ | ✅ Footer display |
-| **Rate Limiter** | ❌ | ✅ DoS protection |
-| **Custom Exceptions** | ❌ | ✅ 29 types |
-| **Type Hints** | ~40% | ✅ 88.2% |
-| **Languages** | 2 | ✅ 5 |
-| **Analysis Cleanup** | ❌ | ✅ Automatic |
-| **Person Detail Popup** | ❌ | ✅ Full features |
-| **Person Entities** | ❌ | ✅ HA automations |
-| **ISO 25010 Score** | 92% | ✅ 93% |
-| **ISO 27001 Score** | 85% | ✅ 85% |
-| **Production Ready** | ✅ | ✅ |
+| Feature | v1.0.9 STABLE | v1.1.2 | v1.2.0 |
+|---------|---------------|--------|--------|
+| **Recording** | Sequential | ⚡ Parallel | ⚡ Parallel |
+| **Timeline Update** | After save | ⚡ Immediate | ⚡ Immediate |
+| **Time per Recording** | +5-6s | ⚡ +1-2s | ⚡ +1-2s |
+| **TPU Load Display** | ❌ | ✅ Real-time | ✅ Real-time |
+| **Performance Metrics** | ❌ | ✅ METRIC logging | ✅ METRIC logging |
+| **Recording Progress** | ❌ | ✅ Footer display | ✅ Footer display |
+| **Rate Limiter** | ❌ | ✅ DoS protection | ✅ DoS protection |
+| **Custom Exceptions** | ❌ | ✅ 29 types | ✅ 29 types |
+| **Type Hints** | ~40% | ✅ 88.2% | ✅ 88.2% |
+| **Languages** | 2 | ✅ 5 | ✅ 5 |
+| **Analysis Cleanup** | ❌ | ✅ Automatic | ✅ Automatic |
+| **Person Detail Popup** | ❌ | ✅ Full features | ✅ Full features |
+| **Person Entities** | ❌ | ✅ HA automations | ✅ HA automations |
+| **ISO 25010 Score** | 92% | ✅ 93% | ✅ 93% |
+| **ISO 27001 Score** | 85% | ✅ 85% | ✅ 85% |
+| **Production Ready** | ✅ | ✅ | ✅ |
 
 ### ⚡ Performance Optimizations
 - **Parallel Snapshots**: Thumbnails captured DURING recording
