@@ -1,5 +1,5 @@
-// ===== RTSP Recorder Card v1.1.1 (XSS Hardening) =====
-console.log("[RTSP-Recorder] Card Version: 1.1.1 (XSS Hardening)");
+// ===== RTSP Recorder Card v1.1.2 BETA =====
+console.log("[RTSP-Recorder] Card Version: 1.1.2 BETA");
 // MED-008 Fix: Debug logging behind feature flag
 const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
 const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
@@ -8,7 +8,7 @@ const rtspWarn = (...args) => console.warn('[RTSP]', ...args);  // Warnings alwa
 const rtspError = (...args) => console.error('[RTSP]', ...args);  // Errors always shown
 
 if (RTSP_DEBUG) {
-    console.info("%c RTSP RECORDER CARD \\n%c v1.1.0 BETA (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #27ae60;");
+    console.info("%c RTSP RECORDER CARD \\n%c v1.1.2 BETA (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #27ae60;");
 }
 
 class RtspRecorderCard extends HTMLElement {

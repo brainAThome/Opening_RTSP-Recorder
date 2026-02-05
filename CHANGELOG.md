@@ -2,6 +2,28 @@
 
 All notable changes to RTSP Recorder will be documented in this file.
 
+## [1.1.2] - 2026-02-05
+
+### 🔧 Configuration Changes
+- **Removed SQLite Toggle**: SQLite is now always enabled (hardcoded)
+  - Removed `use_sqlite` option from config flow
+  - Cleaner settings UI without unnecessary toggle
+  
+### 🌐 Translations
+- **New Setting**: Added `analysis_max_concurrent` slider to all 5 languages
+  - Controls maximum parallel analysis tasks (1-4)
+  - German, English, Spanish, French, Dutch translations
+
+### 🖼️ Branding
+- **Integration Icon**: Added icon.png and logo.png for HA integration
+- **HACS Support**: Added hacs_images/icon.png for HACS display
+
+### 📦 HACS Compatibility
+- Added as custom repository for easy installation/updates
+- Proper version tracking via GitHub releases
+
+---
+
 ## [1.1.1] - 2026-02-03
 
 ### 🔍 Quality & Security Audit v4.0

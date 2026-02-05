@@ -2,7 +2,7 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.1.1-brightgreen)
+![Version](https://img.shields.io/badge/version-1.1.2-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%25-brightgreen)
@@ -12,22 +12,25 @@ A complete video surveillance solution with AI-powered object detection using Co
 
 📋 **[Audit Report v4.0](COMPREHENSIVE_AUDIT_REPORT_v4.0_2026-02-03.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
 
-## What's New in v1.1.1
+## What's New in v1.1.2
 
-### 🔍 Quality & Security Audit v4.0
-- **ISO 25010 Score**: 93/100 (EXCELLENT) ⬆️ +1
+### � Configuration Improvements
+- **SQLite Always Enabled**: Removed unnecessary toggle from settings
+- **New Setting**: `analysis_max_concurrent` slider (1-4 parallel tasks)
+- **HACS Support**: Easy installation and automatic update notifications
+
+### 🖼️ Branding & UI
+- **Integration Icon**: Custom icon for Home Assistant integrations page
+- **5 Languages**: German, English, Spanish, French, Dutch
+
+### 📊 Quality Metrics (unchanged from v1.1.1)
+- **ISO 25010 Score**: 93/100 (EXCELLENT)
 - **ISO 27001 Score**: 85/100 (GOOD)
-- **10 Hardcore Security Tests**: All passed ✅
 - **Type Hints Coverage**: 88.2% (134/152 functions)
-
-### 📝 Type Hints Coverage
-All core modules now have comprehensive type hints:
-- `analysis.py`: 100% | `database.py`: 100% | `exceptions.py`: 100%
-- `config_flow.py`: 100% | `helpers.py`: 88% | `services.py`: 50%
 
 ## Version Comparison
 
-| Feature | v1.0.9 STABLE | v1.1.1 |
+| Feature | v1.0.9 STABLE | v1.1.2 |
 |---------|---------------|--------|
 | **Recording** | Sequential | ⚡ Parallel |
 | **Timeline Update** | After save | ⚡ Immediate |
