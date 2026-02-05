@@ -721,12 +721,16 @@ async def analyze_recording(
         db = get_database()
         if db:
             # Extract camera name from video path (e.g., /recordings/camera_name/video.mp4)
+            # Supports both /recordings/ and /ring_recordings/ paths
             path_parts = video_path.replace("\\", "/").split("/")
             extracted_camera = None
             for i, part in enumerate(path_parts):
-                if part == "recordings" and i + 1 < len(path_parts):
-                    extracted_camera = path_parts[i + 1]
-                    break
+                if part in ("recordings", "ring_recordings") and i + 1 < len(path_parts):
+                    # Skip _analysis folder if that's the next part
+                    next_part = path_parts[i + 1]
+                    if next_part != "_analysis":
+                        extracted_camera = next_part
+                        break
             if not extracted_camera:
                 extracted_camera = "unknown"
             
@@ -1140,6 +1144,17 @@ async def analyze_recording(
             try:
                 db = get_database()
                 if db:
+                    # Extract unique objects and count persons from detections
+                    unique_objects = set()
+                    persons_count = 0
+                    for det in result.get("detections", []):
+                        for obj in det.get("objects", []):
+                            label = obj.get("label", "")
+                            if label:
+                                unique_objects.add(label)
+                                if label == "person":
+                                    persons_count += 1
+                    
                     db.update_analysis_run(
                         run_id=analysis_run_id,
                         status="completed",
@@ -1147,6 +1162,8 @@ async def analyze_recording(
                         faces_detected=result.get("faces_detected", 0),
                         faces_matched=result.get("faces_matched", 0),
                         processing_time_sec=result.get("processing_time_seconds"),
+                        objects_found=",".join(sorted(unique_objects)) if unique_objects else None,
+                        persons_detected=persons_count,
                     )
             except Exception as db_err:
                 _LOGGER.warning("Could not update analysis_run: %s", db_err)
