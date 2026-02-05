@@ -1188,7 +1188,7 @@ class RtspRecorderCard extends HTMLElement {
             
             <div class="fm-container animated" id="container" role="application" aria-label="RTSP Recorder">
                 <div class="fm-header" role="banner">
-                    <div class="fm-title"><img src="/local/logo.png" alt="RTSP Recorder" style="height:28px; vertical-align:middle; margin-right:8px;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.2.0</span></div>
+                    <div class="fm-title"><img src="/local/icon.png" alt="RTSP Recorder" style="height:42px; vertical-align:middle; margin-right:10px; border-radius:8px;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.2.0</span></div>
                     <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
                         <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>
