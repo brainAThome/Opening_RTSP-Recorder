@@ -1056,9 +1056,8 @@ All code, documentation, and architecture were created entirely through AI pair 
 - **IDE**: Visual Studio Code with GitHub Copilot
 - **AI Models Used**:
   - Claude Opus 4.5 (Anthropic) - Primary development
-  - Claude Codex 5.2 (Anthropic) - Code review & optimization
+  - GPT-5.2-Codex (OpenAI) - Code generation & optimization
   - Gemini 3 Pro (Google via Antigravity) - Architecture decisions
-  - Gemini Opus (Google via Antigravity) - Complex problem solving
 
 *"Vibe Coding" - Der Mensch gibt die Vision vor, die KI setzt um.* 🚀
 
