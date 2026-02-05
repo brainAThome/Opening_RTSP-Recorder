@@ -65,7 +65,6 @@
                     "analysis_face_confidence": "👁️ Umbral de detección facial",
                     "analysis_face_match_threshold": "🎚️ Umbral de coincidencia",
                     "person_entities_enabled": "🏠 Crear entidades de personas",
-                    "use_sqlite": "🗄️ Usar SQLite",
                     "analysis_auto_enabled": "🔄 Automatización activa",
                     "analysis_auto_mode": "📋 Modo",
                     "analysis_auto_time": "🕐 Hora (HH:MM)",

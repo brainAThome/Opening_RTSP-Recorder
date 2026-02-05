@@ -65,7 +65,6 @@
                     "analysis_face_confidence": "👁️ Gezichtsdrempel",
                     "analysis_face_match_threshold": "🎚️ Matchdrempel",
                     "person_entities_enabled": "🏠 Persoon-entiteiten maken",
-                    "use_sqlite": "🗄️ SQLite gebruiken",
                     "analysis_auto_enabled": "🔄 Automatisering actief",
                     "analysis_auto_mode": "📋 Modus",
                     "analysis_auto_time": "🕐 Tijd (UU:MM)",

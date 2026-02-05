@@ -617,8 +617,6 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 self.config_cache["analysis_overlay_smoothing"] = bool(user_input.get("analysis_overlay_smoothing", False))
                 self.config_cache["analysis_overlay_smoothing_alpha"] = float(user_input.get("analysis_overlay_smoothing_alpha", 0.35))
                 self.config_cache["person_entities_enabled"] = bool(user_input.get("person_entities_enabled", False))
-                # SQLite Backend (v1.0.9+)
-                self.config_cache["use_sqlite"] = bool(user_input.get("use_sqlite", False))
                 self.config_cache["analysis_auto_enabled"] = auto_enabled
                 self.config_cache["analysis_auto_mode"] = auto_mode
                 self.config_cache["analysis_auto_time"] = auto_time or "03:00"
@@ -717,9 +715,6 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         cur_overlay_smoothing = bool(self.config_cache.get("analysis_overlay_smoothing", False))
         cur_overlay_alpha = float(self.config_cache.get("analysis_overlay_smoothing_alpha", 0.35))
         cur_person_entities = bool(self.config_cache.get("person_entities_enabled", False))
-        # SQLite Backend (v1.0.9+)
-        cur_use_sqlite = bool(self.config_cache.get("use_sqlite", False))
-
         schema = vol.Schema({
             vol.Required("analysis_enabled", default=cur_enabled): selector.BooleanSelector(),
             vol.Required("analysis_device", default=cur_device): selector.SelectSelector(
@@ -756,8 +751,6 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 selector.NumberSelectorConfig(min=0.1, max=0.9, step=0.05, mode=selector.NumberSelectorMode.SLIDER)
             ),
             vol.Required("person_entities_enabled", default=cur_person_entities): selector.BooleanSelector(),
-            # SQLite Backend (v1.0.9+)
-            vol.Required("use_sqlite", default=cur_use_sqlite): selector.BooleanSelector(),
             vol.Required("analysis_auto_enabled", default=cur_auto_enabled): selector.BooleanSelector(),
             vol.Required("analysis_auto_new", default=cur_auto_new): selector.BooleanSelector(),
             vol.Required("analysis_auto_mode", default=cur_auto_mode): selector.SelectSelector(

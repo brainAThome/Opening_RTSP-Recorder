@@ -65,7 +65,6 @@
                     "analysis_face_confidence": "👁️ Seuil de détection faciale",
                     "analysis_face_match_threshold": "🎚️ Seuil de correspondance",
                     "person_entities_enabled": "🏠 Créer entités personnes",
-                    "use_sqlite": "🗄️ Utiliser SQLite",
                     "analysis_auto_enabled": "🔄 Automatisation active",
                     "analysis_auto_mode": "📋 Mode",
                     "analysis_auto_time": "🕐 Heure (HH:MM)",
