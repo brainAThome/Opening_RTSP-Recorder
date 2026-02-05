@@ -50,6 +50,8 @@ class RtspRecorderCard extends HTMLElement {
         this._lastOverlayKey = null;  // v1.1.0h: Throttle overlay redraws
         this._overlayRAF = null;  // v1.1.0k: requestAnimationFrame ID for smooth overlay
         this._overlayDebounce = null;  // v1.1.0k: Debounce timer for overlay updates
+        this._overlayCtx = null;  // v1.2.0: Cached canvas context for performance
+        this._detectionsIndex = null;  // v1.2.0: Indexed detections for O(1) lookup
         this._runningAnalyses = new Map();  // v1.1.0L: Map of video_path -> {camera, started_at} - pure event-driven
         this._runningRecordings = new Map();  // v1.1.0m: Map of video_path -> {camera, duration, started_at} - pure event-driven
         this._lastOverlaySize = null;  // v1.1.0h: Track size changes
@@ -1186,9 +1188,9 @@ class RtspRecorderCard extends HTMLElement {
                 }
             </style>
             
-            <div class="fm-container animated" id="container" role="application" aria-label="RTSP Recorder Kamera Archiv">
+            <div class="fm-container animated" id="container" role="application" aria-label="Opening RTSP-Recorder">
                 <div class="fm-header" role="banner">
-                    <div class="fm-title">Kamera Archiv <span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.2.0</span></div>
+                    <div class="fm-title"><img src="/local/opening_logo4.png" alt="Opening RTSP-Recorder" style="height:50px; vertical-align:middle; background:transparent;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.2.0</span></div>
                     <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
                         <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>
@@ -3582,9 +3584,11 @@ class RtspRecorderCard extends HTMLElement {
 
     async loadDetectionsForCurrentVideo() {
         if (!this._currentEvent || !this._overlayEnabled) return;
-        // v1.1.0h: Reset overlay cache when loading new video
+        // v1.2.0: Reset overlay cache when loading new video
         this._lastOverlayKey = null;
         this._lastOverlaySize = null;
+        this._overlayCtx = null;  // v1.2.0: Reset cached context
+        this._detectionsIndex = null;  // v1.2.0: Reset index
         try {
             const data = await this._hass.callWS({
                 type: 'rtsp_recorder/get_analysis_result',
@@ -3597,6 +3601,11 @@ class RtspRecorderCard extends HTMLElement {
                     width: data.frame_width || null,
                     height: data.frame_height || null
                 };
+                // v1.2.0: Build index for O(1) frame lookup (instead of Array.find)
+                this._detectionsIndex = {};
+                for (const d of data.detections) {
+                    this._detectionsIndex[d.time_s] = d;
+                }
                 this.drawOverlay();
             } else {
                 this._analysisDetections = null;
@@ -3619,8 +3628,11 @@ class RtspRecorderCard extends HTMLElement {
     clearOverlay() {
         const canvas = this.shadowRoot.querySelector('#overlay-canvas');
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
+        // v1.2.0: Use cached context if available
+        const ctx = this._overlayCtx || canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // v1.2.0: Reset index on clear
+        this._detectionsIndex = null;
     }
 
     updateOverlayStates() {
@@ -3854,9 +3866,26 @@ class RtspRecorderCard extends HTMLElement {
         `;
     }
 
-    // v1.1.0L: Schedule overlay update - immediate via requestAnimationFrame (no debounce = responsive)
+    // v1.2.0: Schedule overlay update - throttled to reduce CPU load
     _scheduleOverlayUpdate() {
-        // Use requestAnimationFrame for smooth, immediate updates synced to display refresh
+        // v1.2.0: Quick bail-out before RAF if we know nothing changed
+        if (!this._overlayEnabled || !this._analysisDetections) {
+            return;
+        }
+        
+        const video = this.shadowRoot.querySelector('#main-video');
+        if (!video || !video.videoWidth) {
+            return;
+        }
+        
+        // v1.2.0: Pre-check if frame changed BEFORE scheduling RAF
+        const t = video.currentTime;
+        const key = Math.floor(t / this._analysisInterval) * this._analysisInterval;
+        if (this._lastOverlayKey === key && this._lastOverlaySize === `${video.clientWidth}x${video.clientHeight}`) {
+            return; // Skip RAF entirely - same frame
+        }
+        
+        // Use requestAnimationFrame for smooth updates synced to display refresh
         if (this._overlayRAF) {
             cancelAnimationFrame(this._overlayRAF);
         }
@@ -3869,22 +3898,33 @@ class RtspRecorderCard extends HTMLElement {
         const video = this.shadowRoot.querySelector('#main-video');
         if (!canvas || !video || !video.videoWidth) return;
 
-        // v1.1.0h: Throttle overlay drawing - only redraw when frame changes
+        // v1.2.0: Throttle overlay drawing - only redraw when frame changes
         const t = video.currentTime;
-        // v1.1.0k: Use floor and round to nearest interval for stable frame matching
         const key = Math.floor(t / this._analysisInterval) * this._analysisInterval;
         const sizeKey = `${video.clientWidth}x${video.clientHeight}`;
         
-        // v1.1.0k: Skip if same frame AND same size (prevents redundant redraws)
+        // v1.2.0: Skip if same frame AND same size (prevents redundant redraws)
         if (this._lastOverlayKey === key && this._lastOverlaySize === sizeKey) {
             return; // Same frame, no need to redraw
         }
+        
+        const sizeChanged = this._lastOverlaySize !== sizeKey;
         this._lastOverlayKey = key;
         this._lastOverlaySize = sizeKey;
 
-        this.resizeOverlay();
+        // v1.2.0: Only resize canvas when size actually changed (avoids costly reflow)
+        if (sizeChanged) {
+            canvas.width = video.clientWidth;
+            canvas.height = video.clientHeight;
+            // Invalidate cached context when canvas resizes
+            this._overlayCtx = null;
+        }
 
-        const ctx = canvas.getContext('2d');
+        // v1.2.0: Cache canvas context (avoid getContext call every frame)
+        if (!this._overlayCtx) {
+            this._overlayCtx = canvas.getContext('2d');
+        }
+        const ctx = this._overlayCtx;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         const frameSize = this._analysisFrameSize || { width: video.videoWidth, height: video.videoHeight };
@@ -3912,7 +3952,9 @@ class RtspRecorderCard extends HTMLElement {
         const scaleX = drawW / fw;
         const scaleY = drawH / fh;
 
-        const frame = this._analysisDetections.find(d => d.time_s === key);
+        // v1.2.0: Use indexed lookup instead of Array.find() for O(1) access
+        const frame = this._detectionsIndex ? this._detectionsIndex[key] 
+            : this._analysisDetections.find(d => d.time_s === key);
         if (!frame || (!frame.objects && !frame.faces)) return;
 
         ctx.strokeStyle = '#00e5ff';

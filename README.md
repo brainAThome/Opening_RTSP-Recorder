@@ -32,6 +32,8 @@ A complete video surveillance solution with AI-powered object detection using Co
 **HACS Support**: Easy installation and automatic update notifications
 
 ### 🖼️ Branding & UI
+- **Dashboard Logo**: Opening logo in card header (replaces text)
+- **Version Badge**: "BETA v1.2.0" badge for version visibility
 - **Integration Icon**: Custom icon for Home Assistant integrations page
 - **5 Languages**: German, English, Spanish, French, Dutch
 

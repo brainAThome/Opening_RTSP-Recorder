@@ -15,10 +15,15 @@ Previously each camera could only have one motion sensor as trigger. Now you can
 - **New Format**: `sensors_{camera}` stores list of entities
 - **Both Steps**: Camera config + Manual camera support multi-sensors
 
+### �️ UI/Branding
+- **Dashboard Logo**: Opening logo replaces "Kamera Archiv" text in card header
+- **Version Badge**: "BETA v1.2.0" badge in header for version visibility
+
 ### 🔧 Technical Changes
 - `config_flow.py`: EntitySelector with `multiple=True`
 - `__init__.py`: Listener registration iterates over sensor list
 - `strings.json` & translations: Updated labels (de, en)
+- `rtsp-recorder-card.js`: Logo integration with transparent PNG
 
 ---
 
