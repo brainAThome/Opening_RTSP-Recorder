@@ -128,6 +128,8 @@ def register_services(
     analysis_face_enabled: bool,
     analysis_face_confidence: float,
     analysis_face_match_threshold: float,
+    analysis_overlay_smoothing: bool,
+    analysis_overlay_smoothing_alpha: float,
     analysis_face_store_embeddings: bool,
     person_entities_enabled: bool,
     get_sensor_snapshot_func: Callable,
@@ -154,6 +156,8 @@ def register_services(
         analysis_face_enabled: Face detection enabled
         analysis_face_confidence: Face detection confidence
         analysis_face_match_threshold: Face match threshold
+        analysis_overlay_smoothing: Enable overlay smoothing
+        analysis_overlay_smoothing_alpha: Overlay smoothing alpha
         analysis_face_store_embeddings: Store face embeddings
         person_entities_enabled: Person entities enabled
         get_sensor_snapshot_func: Function to get sensor snapshot
@@ -461,6 +465,7 @@ def register_services(
                         })
                         
                         perf_snapshot = get_sensor_snapshot_func()
+                        semaphore = _get_analysis_semaphore()
 
                         cam_objects_key = f"analysis_objects_{cam_name}"
                         cam_specific_objects = config_data.get(cam_objects_key, [])
@@ -477,22 +482,25 @@ def register_services(
                         people_data = await _load_people_db()
                         people = people_data.get("people", [])
                         auto_device = await resolve_auto_device_func()
-                        result = await analyze_recording(
-                            video_path=path,
-                            output_root=analysis_output_path,
-                            objects=objects_to_use,
-                            device=auto_device,
-                            interval_s=analysis_frame_interval,
-                            perf_snapshot=perf_snapshot,
-                            detector_url=analysis_detector_url,
-                            detector_confidence=detector_conf_to_use,
-                            face_enabled=analysis_face_enabled,
-                            face_confidence=face_conf_to_use,
-                            face_match_threshold=face_threshold_to_use,
-                            face_store_embeddings=analysis_face_store_embeddings,
-                            people_db=people,
-                            face_detector_url=analysis_detector_url,
-                        )
+                        async with semaphore:
+                            result = await analyze_recording(
+                                video_path=path,
+                                output_root=analysis_output_path,
+                                objects=objects_to_use,
+                                device=auto_device,
+                                interval_s=analysis_frame_interval,
+                                perf_snapshot=perf_snapshot,
+                                detector_url=analysis_detector_url,
+                                detector_confidence=detector_conf_to_use,
+                                face_enabled=analysis_face_enabled,
+                                face_confidence=face_conf_to_use,
+                                face_match_threshold=face_threshold_to_use,
+                                overlay_smoothing=analysis_overlay_smoothing,
+                                overlay_smoothing_alpha=analysis_overlay_smoothing_alpha,
+                                face_store_embeddings=analysis_face_store_embeddings,
+                                people_db=people,
+                                face_detector_url=analysis_detector_url,
+                            )
                         if person_entities_enabled:
                             try:
                                 updated = update_person_entities_func(result or {})
@@ -603,7 +611,7 @@ def register_services(
                         video_path=path,
                         output_root=analysis_output_path,
                         objects=objects_to_use,
-                        device=device,
+                        device=auto_device,
                         interval_s=analysis_frame_interval,
                         perf_snapshot=perf_snapshot,
                         detector_url=analysis_detector_url,
@@ -611,6 +619,8 @@ def register_services(
                         face_enabled=analysis_face_enabled,
                         face_confidence=face_conf_to_use,
                         face_match_threshold=face_threshold_to_use,
+                        overlay_smoothing=analysis_overlay_smoothing,
+                        overlay_smoothing_alpha=analysis_overlay_smoothing_alpha,
                         face_store_embeddings=analysis_face_store_embeddings,
                         people_db=people,
                         face_detector_url=analysis_detector_url,
@@ -690,22 +700,26 @@ def register_services(
                     perf_snapshot = get_sensor_snapshot_func()
                     people_data = await _load_people_db()
                     people = people_data.get("people", [])
-                    result = await analyze_recording(
-                        video_path=video_path,
-                        output_root=output_dir,
-                        objects=objects_to_use,
-                        device=device,
-                        interval_s=analysis_frame_interval,
-                        perf_snapshot=perf_snapshot,
-                        detector_url=analysis_detector_url,
-                        detector_confidence=detector_conf_to_use,
-                        face_enabled=analysis_face_enabled,
-                        face_confidence=face_conf_to_use,
-                        face_match_threshold=face_threshold_to_use,
-                        face_store_embeddings=analysis_face_store_embeddings,
-                        people_db=people,
-                        face_detector_url=analysis_detector_url,
-                    )
+                    semaphore = _get_analysis_semaphore()
+                    async with semaphore:
+                        result = await analyze_recording(
+                            video_path=video_path,
+                            output_root=output_dir,
+                            objects=objects_to_use,
+                            device=device,
+                            interval_s=analysis_frame_interval,
+                            perf_snapshot=perf_snapshot,
+                            detector_url=analysis_detector_url,
+                            detector_confidence=detector_conf_to_use,
+                            face_enabled=analysis_face_enabled,
+                            face_confidence=face_conf_to_use,
+                            face_match_threshold=face_threshold_to_use,
+                            overlay_smoothing=analysis_overlay_smoothing,
+                            overlay_smoothing_alpha=analysis_overlay_smoothing_alpha,
+                            face_store_embeddings=analysis_face_store_embeddings,
+                            people_db=people,
+                            face_detector_url=analysis_detector_url,
+                        )
                     if person_entities_enabled and result:
                         updated = update_person_entities_func(result)
                         if not updated:

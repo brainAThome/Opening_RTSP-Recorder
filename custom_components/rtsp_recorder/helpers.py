@@ -29,14 +29,29 @@ _LOGGER = logging.getLogger(__name__)
 
 # ===== Rate Limiting (MED-004 Fix) =====
 _analysis_semaphore: asyncio.Semaphore | None = None
+_analysis_semaphore_limit: int | None = None
 
 
 def _get_analysis_semaphore() -> asyncio.Semaphore:
     """Get or create the analysis semaphore."""
     global _analysis_semaphore
+    limit = _analysis_semaphore_limit or MAX_CONCURRENT_ANALYSES
     if _analysis_semaphore is None:
-        _analysis_semaphore = asyncio.Semaphore(MAX_CONCURRENT_ANALYSES)
+        _analysis_semaphore = asyncio.Semaphore(limit)
     return _analysis_semaphore
+
+
+def _set_analysis_semaphore_limit(limit: int) -> None:
+    """Set the max concurrent analyses limit and reset semaphore if needed."""
+    global _analysis_semaphore, _analysis_semaphore_limit
+    try:
+        new_limit = max(1, int(limit))
+    except Exception:
+        new_limit = MAX_CONCURRENT_ANALYSES
+
+    if _analysis_semaphore_limit != new_limit:
+        _analysis_semaphore_limit = new_limit
+        _analysis_semaphore = asyncio.Semaphore(new_limit)
 
 
 # ===== Inference Stats Tracker =====

@@ -43,6 +43,8 @@ from .const import (
     DEFAULT_FACE_CONFIDENCE,
     DEFAULT_FACE_MATCH_THRESHOLD,
     DEFAULT_ANALYSIS_FRAME_INTERVAL,
+    DEFAULT_OVERLAY_SMOOTHING,
+    DEFAULT_OVERLAY_SMOOTHING_ALPHA,
 )
 
 # Import database for analysis runs tracking
@@ -547,6 +549,108 @@ def _annotate_frame(frame_path: str, detections: list[dict[str, Any]], out_path:
     img.save(out_path, "JPEG", quality=90)
 
 
+def _bbox_iou(box_a: dict[str, Any], box_b: dict[str, Any]) -> float:
+    """Compute IoU for two boxes with keys x, y, w, h."""
+    try:
+        ax1 = float(box_a.get("x", 0))
+        ay1 = float(box_a.get("y", 0))
+        ax2 = ax1 + float(box_a.get("w", 0))
+        ay2 = ay1 + float(box_a.get("h", 0))
+        bx1 = float(box_b.get("x", 0))
+        by1 = float(box_b.get("y", 0))
+        bx2 = bx1 + float(box_b.get("w", 0))
+        by2 = by1 + float(box_b.get("h", 0))
+    except Exception:
+        return 0.0
+
+    inter_x1 = max(ax1, bx1)
+    inter_y1 = max(ay1, by1)
+    inter_x2 = min(ax2, bx2)
+    inter_y2 = min(ay2, by2)
+
+    inter_w = max(0.0, inter_x2 - inter_x1)
+    inter_h = max(0.0, inter_y2 - inter_y1)
+    inter_area = inter_w * inter_h
+    if inter_area <= 0:
+        return 0.0
+
+    area_a = max(0.0, (ax2 - ax1)) * max(0.0, (ay2 - ay1))
+    area_b = max(0.0, (bx2 - bx1)) * max(0.0, (by2 - by1))
+    union = area_a + area_b - inter_area
+    if union <= 0:
+        return 0.0
+    return inter_area / union
+
+
+def _smooth_boxes(
+    current: list[dict[str, Any]],
+    previous: list[dict[str, Any]],
+    alpha: float,
+    match_label: bool = True,
+) -> list[dict[str, Any]]:
+    """Smooth boxes using EMA with optional label matching."""
+    if not current:
+        return []
+    if not previous:
+        return current
+
+    smoothed: list[dict[str, Any]] = []
+    for obj in current:
+        cur_box = obj.get("box") or {}
+        best_prev = None
+        best_iou = 0.0
+        for prev in previous:
+            if match_label and prev.get("label") != obj.get("label"):
+                continue
+            iou = _bbox_iou(cur_box, prev.get("box") or {})
+            if iou > best_iou:
+                best_iou = iou
+                best_prev = prev
+
+        if best_prev and best_iou > 0:
+            prev_box = best_prev.get("box") or {}
+            new_box = {
+                "x": int(round(alpha * float(cur_box.get("x", 0)) + (1 - alpha) * float(prev_box.get("x", 0)))),
+                "y": int(round(alpha * float(cur_box.get("y", 0)) + (1 - alpha) * float(prev_box.get("y", 0)))),
+                "w": int(round(alpha * float(cur_box.get("w", 0)) + (1 - alpha) * float(prev_box.get("w", 0)))),
+                "h": int(round(alpha * float(cur_box.get("h", 0)) + (1 - alpha) * float(prev_box.get("h", 0)))),
+            }
+            new_obj = dict(obj)
+            new_obj["box"] = new_box
+            smoothed.append(new_obj)
+        else:
+            smoothed.append(obj)
+    return smoothed
+
+
+def _smooth_detections_for_overlay(detections: list[dict[str, Any]], alpha: float) -> list[dict[str, Any]]:
+    """Apply EMA smoothing to object/face boxes for overlay rendering."""
+    if not detections:
+        return detections
+
+    smoothed: list[dict[str, Any]] = []
+    prev_objects: list[dict[str, Any]] = []
+    prev_faces: list[dict[str, Any]] = []
+
+    for det in detections:
+        objects = det.get("objects", []) or []
+        faces = det.get("faces", []) or []
+
+        smoothed_objects = _smooth_boxes(objects, prev_objects, alpha, match_label=True)
+        smoothed_faces = _smooth_boxes(faces, prev_faces, alpha, match_label=False)
+
+        det_copy = dict(det)
+        det_copy["objects"] = smoothed_objects
+        if "faces" in det_copy:
+            det_copy["faces"] = smoothed_faces
+
+        smoothed.append(det_copy)
+        prev_objects = smoothed_objects
+        prev_faces = smoothed_faces
+
+    return smoothed
+
+
 async def _render_annotated_video(
     frames: list[str],
     detections: list[dict[str, Any]],
@@ -618,9 +722,11 @@ async def _render_annotated_video(
     
     # v1.1.2: Clean up annotated frames after video creation to save disk space
     # The video is the final output, individual frames are no longer needed
+    # Run blocking I/O in executor to avoid blocking event loop
     try:
         if os.path.isdir(annotated_dir):
-            shutil.rmtree(annotated_dir)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, shutil.rmtree, annotated_dir)
     except OSError:
         pass  # Best effort cleanup, don't fail if frames can't be deleted
     
@@ -687,6 +793,8 @@ async def analyze_recording(
     people_db: list[dict[str, Any]] | None = None,
     face_detector_url: str | None = None,
     no_face_embeddings: list[dict[str, Any]] | None = None,
+    overlay_smoothing: bool = DEFAULT_OVERLAY_SMOOTHING,
+    overlay_smoothing_alpha: float = DEFAULT_OVERLAY_SMOOTHING_ALPHA,
 ) -> dict:
     """Offline analysis stub: extracts frames and writes a results JSON.
 
@@ -718,6 +826,8 @@ async def analyze_recording(
         "perf_snapshot": perf_snapshot or {},
         "frames": [],
         "detections": [],
+        "overlay_smoothing": bool(overlay_smoothing),
+        "overlay_smoothing_alpha": float(overlay_smoothing_alpha),
         "face_enabled": bool(face_enabled),
         "face_confidence": float(face_confidence),
         "face_match_threshold": float(face_match_threshold),
@@ -844,7 +954,12 @@ async def analyze_recording(
                 result["frame_height"] = frame_h
 
                 try:
-                    annotated_video = await _render_annotated_video(frames, detections, job_dir, interval_s, video_path)
+                    overlay_detections = detections
+                    if overlay_smoothing and detections:
+                        alpha = max(0.05, min(float(overlay_smoothing_alpha or DEFAULT_OVERLAY_SMOOTHING_ALPHA), 0.95))
+                        overlay_detections = _smooth_detections_for_overlay(detections, alpha)
+                        result["overlay_smoothing_alpha"] = alpha
+                    annotated_video = await _render_annotated_video(frames, overlay_detections, job_dir, interval_s, video_path)
                     result["annotated_video"] = annotated_video
                 except Exception as e:
                     result["annotated_video_error"] = str(e)
@@ -865,6 +980,13 @@ async def analyze_recording(
 
                 async with aiohttp.ClientSession() as session:
                     for idx, frame_path in enumerate(frames):
+                        # Only run face detection when a person is detected in this frame
+                        person_boxes = []
+                        if idx < len(detections):
+                            person_boxes = [o for o in (detections[idx].get("objects") or []) if o.get("label") == "person"]
+                        if not person_boxes:
+                            continue
+
                         # Skip remaining frames if too many consecutive errors
                         if consecutive_face_errors >= max_consecutive_errors:
                             _LOGGER.warning("Face detection: Skipping remaining frames after %d consecutive errors", max_consecutive_errors)
@@ -1005,8 +1127,7 @@ async def analyze_recording(
 
                         # MoveNet fallback: Use pose estimation for head detection if no faces found
                         # Only use if keypoints are actually detected AND head is within a person box
-                        if not faces and idx < len(detections):
-                            person_boxes = [o for o in (detections[idx].get("objects") or []) if o.get("label") == "person"]
+                        if not faces:
                             if person_boxes:
                                 try:
                                     movenet_form = aiohttp.FormData()

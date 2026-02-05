@@ -35,11 +35,13 @@ from .analysis import detect_available_devices
 # Modularized Imports
 from .const import (
     DOMAIN,
+    DEFAULT_MAX_CONCURRENT_ANALYSES,
 )
 from .helpers import (
     log_to_file,
     _validate_person_name,
     _parse_hhmm,
+    _set_analysis_semaphore_limit,
 )
 from .people_db import (
     _load_people_db,
@@ -126,11 +128,14 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
     analysis_objects = config_data.get("analysis_objects", ["person"])
     analysis_output_path = config_data.get("analysis_output_path", os.path.join(storage_path, "_analysis"))
     analysis_frame_interval = int(config_data.get("analysis_frame_interval", 2))
+    analysis_max_concurrent = int(config_data.get("analysis_max_concurrent", DEFAULT_MAX_CONCURRENT_ANALYSES))
     analysis_detector_url = config_data.get("analysis_detector_url", "")
     analysis_detector_confidence = float(config_data.get("analysis_detector_confidence", 0.4))
     analysis_face_enabled = bool(config_data.get("analysis_face_enabled", False))
     analysis_face_confidence = float(config_data.get("analysis_face_confidence", 0.2))
     analysis_face_match_threshold = float(config_data.get("analysis_face_match_threshold", 0.35))
+    analysis_overlay_smoothing = bool(config_data.get("analysis_overlay_smoothing", False))
+    analysis_overlay_smoothing_alpha = float(config_data.get("analysis_overlay_smoothing_alpha", 0.35))
     analysis_face_store_embeddings = bool(config_data.get("analysis_face_store_embeddings", True))
     analysis_auto_enabled = config_data.get("analysis_auto_enabled", False)
     analysis_auto_mode = config_data.get("analysis_auto_mode", "daily")
@@ -145,14 +150,19 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
     analysis_perf_cpu_entity = config_data.get("analysis_perf_cpu_entity")
     analysis_perf_igpu_entity = config_data.get("analysis_perf_igpu_entity")
     analysis_perf_coral_entity = config_data.get("analysis_perf_coral_entity")
+
+    # Apply max concurrent analyses limit
+    _set_analysis_semaphore_limit(analysis_max_concurrent)
     
     # Build override map for per-camera retention
     known_settings = [
         "storage_path", "snapshot_path", "retention_days", "snapshot_retention_days",
         "retention_hours", "camera_filter", "analysis_enabled", "analysis_device",
         "analysis_objects", "analysis_output_path", "analysis_frame_interval",
+        "analysis_max_concurrent",
         "analysis_detector_url", "analysis_detector_confidence", "analysis_face_enabled",
         "analysis_face_confidence", "analysis_face_match_threshold",
+        "analysis_overlay_smoothing", "analysis_overlay_smoothing_alpha",
         "analysis_face_store_embeddings", "analysis_auto_enabled",
         "analysis_auto_mode", "analysis_auto_time", "analysis_auto_interval_hours",
         "analysis_auto_since_days", "analysis_auto_limit", "analysis_auto_skip_existing",
@@ -375,6 +385,8 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             analysis_face_enabled=analysis_face_enabled,
             analysis_face_confidence=analysis_face_confidence,
             analysis_face_match_threshold=analysis_face_match_threshold,
+            analysis_overlay_smoothing=analysis_overlay_smoothing,
+            analysis_overlay_smoothing_alpha=analysis_overlay_smoothing_alpha,
             analysis_face_store_embeddings=analysis_face_store_embeddings,
             person_entities_enabled=person_entities_enabled,
             get_sensor_snapshot_func=_sensor_snapshot,
