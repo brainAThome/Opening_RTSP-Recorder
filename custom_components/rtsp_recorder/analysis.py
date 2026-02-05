@@ -84,6 +84,34 @@ except Exception:
     tflite = None
 
 
+async def _get_video_fps(video_path: str) -> float:
+    """Get the FPS of a video file using ffprobe.
+    
+    Returns the detected FPS or 15.0 as fallback.
+    """
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=r_frame_rate",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await process.communicate()
+        if stdout:
+            fps_str = stdout.decode().strip()
+            if "/" in fps_str:
+                num, den = fps_str.split("/")
+                return float(num) / float(den)
+            return float(fps_str)
+    except Exception as e:
+        _LOGGER.debug("Failed to get video FPS: %s", e)
+    return 15.0  # Fallback to 15 FPS
+
+
 def _safe_mkdir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
@@ -512,7 +540,14 @@ async def _render_annotated_video(
     detections: list[dict[str, Any]],
     output_dir: str,
     interval_s: int,
+    video_path: str | None = None,
 ) -> str:
+    """Render annotated video from frames with bounding boxes.
+    
+    v1.1.2: Uses original video FPS for smooth playback.
+    Frames are duplicated to match the original FPS, creating
+    smooth transitions instead of 0.5 FPS stuttering.
+    """
     if not frames:
         raise RuntimeError("No frames to annotate")
     if Image is None or ImageDraw is None:
@@ -528,19 +563,27 @@ async def _render_annotated_video(
         await asyncio.to_thread(_annotate_frame, frame_path, dets, out_path, faces)
 
     output_video = os.path.join(output_dir, "annotated.mp4")
-    fps = 1 / max(1, int(interval_s))
-
+    
+    # v1.1.2: Get original video FPS for smooth playback
+    original_fps = 15.0  # Default fallback
+    if video_path:
+        original_fps = await _get_video_fps(video_path)
+    
+    # Calculate input framerate (how often we extracted frames)
+    input_fps = 1 / max(1, int(interval_s))
+    
+    # Use ffmpeg to create video with original FPS
+    # -framerate: input frame rate (our extracted frames)
+    # -r: output frame rate (original video FPS for smooth playback)
+    # This duplicates frames to match the original FPS
     process = await asyncio.create_subprocess_exec(
         "ffmpeg",
         "-y",
-        "-framerate",
-        str(fps),
-        "-i",
-        os.path.join(annotated_dir, "frame_%04d.jpg"),
-        "-c:v",
-        "libx264",
-        "-pix_fmt",
-        "yuv420p",
+        "-framerate", str(input_fps),
+        "-i", os.path.join(annotated_dir, "frame_%04d.jpg"),
+        "-c:v", "libx264",
+        "-r", str(original_fps),
+        "-pix_fmt", "yuv420p",
         output_video,
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
@@ -748,7 +791,7 @@ async def analyze_recording(
                 result["frame_height"] = frame_h
 
                 try:
-                    annotated_video = await _render_annotated_video(frames, detections, job_dir, interval_s)
+                    annotated_video = await _render_annotated_video(frames, detections, job_dir, interval_s, video_path)
                     result["annotated_video"] = annotated_video
                 except Exception as e:
                     result["annotated_video_error"] = str(e)
