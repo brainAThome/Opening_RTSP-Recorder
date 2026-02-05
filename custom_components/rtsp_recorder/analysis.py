@@ -1049,6 +1049,53 @@ async def _finalize_analysis_run(
         _LOGGER.warning("Could not update analysis_run: %s", db_err)
 
 
+def _update_analysis_run_error(
+    analysis_run_id: int | None,
+    status: str,
+    error_message: str,
+) -> None:
+    """Update analysis run in database with error status.
+    
+    Args:
+        analysis_run_id: Database ID of the analysis run
+        status: Status string ("error", "cancelled")
+        error_message: Error message to store
+    """
+    if not analysis_run_id:
+        return
+    try:
+        db = get_database()
+        if db:
+            db.update_analysis_run(
+                run_id=analysis_run_id,
+                status=status,
+                error_message=error_message,
+            )
+    except Exception:
+        pass
+
+
+def _get_person_boxes(
+    detections: list[dict[str, Any]],
+    frame_idx: int,
+) -> list[dict[str, Any]]:
+    """Get person bounding boxes from detections for a specific frame.
+    
+    Args:
+        detections: List of detection results per frame
+        frame_idx: Frame index to get person boxes for
+        
+    Returns:
+        List of bounding box dicts for persons
+    """
+    if frame_idx >= len(detections):
+        return []
+    return [
+        o for o in (detections[frame_idx].get("objects") or [])
+        if o.get("label") == "person"
+    ]
+
+
 def _is_point_in_box(
     point_x: int,
     point_y: int,
@@ -1408,6 +1455,131 @@ async def _try_detect_faces_in_person_crops(
     return extra_faces
 
 
+async def _run_object_detection_remote(
+    session: Any,
+    detector_url: str,
+    frames: list[str],
+    objects: list[str],
+    device: str,
+    detector_confidence: float,
+    interval_s: int,
+) -> tuple[list[dict[str, Any]], int | None, int | None]:
+    """Run object detection via remote detector API.
+    
+    Args:
+        session: aiohttp session
+        detector_url: URL of the detector service
+        frames: List of frame file paths
+        objects: List of object labels to detect
+        device: Detection device
+        detector_confidence: Minimum confidence threshold
+        interval_s: Frame interval in seconds
+        
+    Returns:
+        Tuple of (detections list, frame_width, frame_height)
+    """
+    detections: list[dict[str, Any]] = []
+    frame_w = frame_h = None
+    
+    for idx, frame_path in enumerate(frames):
+        frame_bytes = await asyncio.to_thread(lambda p=frame_path: open(p, "rb").read())
+        form = aiohttp.FormData()
+        form.add_field(
+            "file", frame_bytes,
+            filename=os.path.basename(frame_path),
+            content_type="image/jpeg"
+        )
+        form.add_field("objects", json.dumps(objects))
+        form.add_field("device", device)
+        form.add_field("confidence", str(detector_confidence))
+        
+        _detect_start = time.perf_counter()
+        async with session.post(
+            f"{detector_url.rstrip('/')}/detect",
+            data=form,
+            timeout=30
+        ) as resp:
+            if resp.status != 200:
+                raise RuntimeError(f"Detector error {resp.status}")
+            data = await resp.json()
+        
+        _detect_ms = (time.perf_counter() - _detect_start) * 1000
+        _used_device = data.get("device", device)
+        _stats = _get_inference_stats()
+        if _stats:
+            _stats.record(_used_device, _detect_ms, 1)
+        
+        dets = data.get("objects", [])
+        if objects:
+            dets = [d for d in dets if d.get("label") in objects]
+        
+        time_s = idx * interval_s
+        detections.append({"time_s": time_s, "objects": dets})
+        frame_w = data.get("frame_width")
+        frame_h = data.get("frame_height")
+    
+    return detections, frame_w, frame_h
+
+
+async def _run_object_detection_local(
+    frames: list[str],
+    objects: list[str],
+    device: str,
+    detector_confidence: float,
+    interval_s: int,
+    output_root: str,
+) -> tuple[list[dict[str, Any]], int | None, int | None]:
+    """Run object detection using local TFLite interpreter.
+    
+    Args:
+        frames: List of frame file paths
+        objects: List of object labels to detect
+        device: Detection device (coral_usb, cpu)
+        detector_confidence: Minimum confidence threshold
+        interval_s: Frame interval in seconds
+        output_root: Root directory for models
+        
+    Returns:
+        Tuple of (detections list, frame_width, frame_height)
+    """
+    if tflite is None or np is None or Image is None:
+        raise RuntimeError("Missing dependencies: tflite-runtime, numpy, Pillow")
+    
+    model_path, labels = await asyncio.to_thread(_ensure_models, output_root, device)
+    interpreter = await asyncio.to_thread(
+        _build_interpreter,
+        model_path,
+        device if device in ("coral_usb",) else "cpu",
+    )
+    await asyncio.to_thread(interpreter.allocate_tensors)
+    
+    detections: list[dict[str, Any]] = []
+    frame_w = frame_h = None
+    
+    for idx, frame_path in enumerate(frames):
+        _detect_start = time.perf_counter()
+        dets, (fw, fh) = await asyncio.to_thread(
+            _run_detection,
+            frame_path,
+            interpreter,
+            labels,
+            score_threshold=detector_confidence,
+        )
+        _detect_ms = (time.perf_counter() - _detect_start) * 1000
+        _stats = _get_inference_stats()
+        if _stats:
+            _stats.record(device, _detect_ms, 1)
+        
+        if objects:
+            dets = [d for d in dets if d["label"] in objects]
+        
+        time_s = idx * interval_s
+        detections.append({"time_s": time_s, "objects": dets})
+        frame_w, frame_h = fw, fh
+    
+    return detections, frame_w, frame_h
+
+
 async def analyze_recording(
     video_path: str,
     output_root: str,
@@ -1493,64 +1665,27 @@ async def analyze_recording(
         # Run object detection on extracted frames (optional)
         if frames and objects:
             try:
-                frame_w = frame_h = None
+                # v1.2.0 Refactor: Use helper functions for object detection
                 if detector_url:
                     async with aiohttp.ClientSession() as session:
-                        for idx, frame_path in enumerate(frames):
-                            # v1.1.0 fix: Read file in executor to avoid blocking event loop
-                            frame_bytes = await asyncio.to_thread(lambda p=frame_path: open(p, "rb").read())
-                            form = aiohttp.FormData()
-                            form.add_field("file", frame_bytes, filename=os.path.basename(frame_path), content_type="image/jpeg")
-                            form.add_field("objects", json.dumps(objects))
-                            form.add_field("device", device)
-                            form.add_field("confidence", str(detector_confidence))
-                            _detect_start = time.perf_counter()
-                            async with session.post(f"{detector_url.rstrip('/')}/detect", data=form, timeout=30) as resp:
-                                if resp.status != 200:
-                                    raise RuntimeError(f"Detector error {resp.status}")
-                                data = await resp.json()
-                            _detect_ms = (time.perf_counter() - _detect_start) * 1000
-                            _used_device = data.get("device", device)
-                            _stats = _get_inference_stats()
-                            if _stats:
-                                _stats.record(_used_device, _detect_ms, 1)
-                            dets = data.get("objects", [])
-                            if objects:
-                                dets = [d for d in dets if d.get("label") in objects]
-                            time_s = idx * interval_s
-                            detections.append({"time_s": time_s, "objects": dets})
-                            frame_w = data.get("frame_width")
-                            frame_h = data.get("frame_height")
-                else:
-                    if tflite is None or np is None or Image is None:
-                        raise RuntimeError("Missing dependencies: tflite-runtime, numpy, Pillow")
-
-                    model_path, labels = await asyncio.to_thread(_ensure_models, output_root, device)
-                    interpreter = await asyncio.to_thread(
-                        _build_interpreter,
-                        model_path,
-                        device if device in ("coral_usb",) else "cpu",
-                    )
-                    await asyncio.to_thread(interpreter.allocate_tensors)
-
-                    for idx, frame_path in enumerate(frames):
-                        _detect_start = time.perf_counter()
-                        dets, (fw, fh) = await asyncio.to_thread(
-                            _run_detection,
-                            frame_path,
-                            interpreter,
-                            labels,
-                            score_threshold=detector_confidence,
+                        detections, frame_w, frame_h = await _run_object_detection_remote(
+                            session=session,
+                            detector_url=detector_url,
+                            frames=frames,
+                            objects=objects,
+                            device=device,
+                            detector_confidence=detector_confidence,
+                            interval_s=interval_s,
                         )
-                        _detect_ms = (time.perf_counter() - _detect_start) * 1000
-                        _stats = _get_inference_stats()
-                        if _stats:
-                            _stats.record(device, _detect_ms, 1)
-                        if objects:
-                            dets = [d for d in dets if d["label"] in objects]
-                        time_s = idx * interval_s
-                        detections.append({"time_s": time_s, "objects": dets})
-                        frame_w, frame_h = fw, fh
+                else:
+                    detections, frame_w, frame_h = await _run_object_detection_local(
+                        frames=frames,
+                        objects=objects,
+                        device=device,
+                        detector_confidence=detector_confidence,
+                        interval_s=interval_s,
+                        output_root=output_root,
+                    )
 
                 result["detections"] = detections
                 result["frame_width"] = frame_w
@@ -1584,9 +1719,8 @@ async def analyze_recording(
                 async with aiohttp.ClientSession() as session:
                     for idx, frame_path in enumerate(frames):
                         # Only run face detection when a person is detected in this frame
-                        person_boxes = []
-                        if idx < len(detections):
-                            person_boxes = [o for o in (detections[idx].get("objects") or []) if o.get("label") == "person"]
+                        # v1.2.0: Use helper function
+                        person_boxes = _get_person_boxes(detections, idx)
                         if not person_boxes:
                             continue
 
@@ -1643,8 +1777,8 @@ async def analyze_recording(
                         frame_h = data.get("frame_height")
 
                         # v1.2.0 Refactor: Use helper for person crop face detection
+                        # Note: person_boxes already calculated at start of loop via _get_person_boxes
                         if not faces and frame_img is not None and idx < len(detections):
-                            person_boxes = [o for o in (detections[idx].get("objects") or []) if o.get("label") == "person"]
                             extra_faces = await _try_detect_faces_in_person_crops(
                                 session=session,
                                 face_url=face_url,
@@ -1731,34 +1865,14 @@ async def analyze_recording(
     except asyncio.CancelledError:
         result["status"] = "cancelled"
         result["error"] = "analysis_cancelled"
-        # v1.1.2: Update analysis run on cancellation
-        if analysis_run_id:
-            try:
-                db = get_database()
-                if db:
-                    db.update_analysis_run(
-                        run_id=analysis_run_id,
-                        status="cancelled",
-                        error_message="analysis_cancelled"
-                    )
-            except Exception:
-                pass
+        # v1.2.0: Use helper function for DB update
+        _update_analysis_run_error(analysis_run_id, "cancelled", "analysis_cancelled")
         await _write_json_async(result_path, result)
         raise
     except Exception as e:
         result["status"] = "error"
         result["error"] = str(e)
-        # v1.1.2: Update analysis run on error
-        if analysis_run_id:
-            try:
-                db = get_database()
-                if db:
-                    db.update_analysis_run(
-                        run_id=analysis_run_id,
-                        status="error",
-                        error_message=str(e)
-                    )
-            except Exception:
-                pass
+        # v1.2.0: Use helper function for DB update
+        _update_analysis_run_error(analysis_run_id, "error", str(e))
         await _write_json_async(result_path, result)
         return result
