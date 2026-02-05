@@ -174,7 +174,6 @@ _CPU_HISTORY_SIZE = 10  # Average over last 10 readings (20s at 2s polling)
 
 def _get_system_stats_sync() -> dict[str, Any]:
     """Read system stats (Linux: /proc, other platforms: defaults)."""
-    global _cpu_history, _ram_history
     
     stats = {
         "cpu_percent": 0.0,

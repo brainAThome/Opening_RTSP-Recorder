@@ -13,9 +13,8 @@ import voluptuous as vol
 
 from homeassistant.components import websocket_api
 
-from .const import DOMAIN
 from .helpers import log_to_file, get_system_stats, get_inference_stats
-from .face_matching import _normalize_embedding_simple, _update_person_centroid, _cosine_similarity_simple
+from .face_matching import _normalize_embedding_simple, _cosine_similarity_simple
 from .people_db import (
     _load_people_db, 
     _public_people_view, 
@@ -30,7 +29,6 @@ from .analysis_helpers import (
     _read_analysis_results,
     _find_analysis_for_video,
     _summarize_analysis,
-    _update_all_face_matches,
 )
 from .analysis import detect_available_devices
 from .services import get_batch_analysis_progress, get_single_analysis_progress, get_recording_progress
