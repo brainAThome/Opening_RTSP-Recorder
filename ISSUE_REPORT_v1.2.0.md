@@ -8,6 +8,7 @@
 
 ## Behobene Issues in dieser Session
 
+
 ### 1. Mobile Portrait-Ansicht (v1.2.2) ✅
 **Session:** 06.02.2026, 10:00-12:00 Uhr
 
@@ -19,6 +20,10 @@
 - Status-Indikatoren mobil ausgeblendet
 - Vollständige @media-Queries für 768px/480px
 - Getestet auf Android/iOS
+
+---
+
+### 0. MEDIUM Findings Remediation (v1.2.1) ✅
 **Session:** 05.02.2026, 22:30-23:10 Uhr
 
 **Behoben:**

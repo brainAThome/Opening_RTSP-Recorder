@@ -31,7 +31,11 @@ A complete video surveillance solution with AI-powered object detection using Co
 - Vollständige @media-Queries für 768px/480px
 - Getestet auf Android/iOS
 
-### 🔧 Code Quality Improvements (MEDIUM Findings Remediation)
+---
+
+## What's New in v1.2.1
+
+### 🛠 Code Quality Improvements (MEDIUM Findings Remediation)
 **Major refactoring and code quality improvements!**
 
 - **Cyclomatic Complexity**: `analyze_recording` reduced from CC=140 to CC=23 (-84%)

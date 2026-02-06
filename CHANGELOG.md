@@ -14,8 +14,11 @@ All notable changes to RTSP Recorder will be documented in this file.
 - Vollständige @media-Queries für 768px/480px
 - Getestet auf Android/iOS
 
+---
 
-### 🔧 Code Quality: MEDIUM Findings Remediation
+## [1.2.1] - 2026-02-05
+
+### 🛠 Code Quality: MEDIUM Findings Remediation
 
 **Cyclomatic Complexity (CODE-001):**
 - `analyze_recording`: CC 140→23 (-84%, Grade F→D)
