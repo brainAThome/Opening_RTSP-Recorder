@@ -21,9 +21,9 @@ A complete video surveillance solution with AI-powered object detection using Co
 
 ## What's New in v1.2.2
 
-### 📱 Mobile Portrait-Ansicht (Ring-Style)
+### 📱 Mobile Portrait-Ansicht
 **Optimierte Mobile-Version für Lovelace Card:**
-- Portrait-Layout mit Timeline-Karten im Ring-Stil
+- Portrait-Layout mit Timeline-Karten
 - Footer und Tabs mobil scrollbar und kompakt
 - Video-Controls auf Mobile ausgeblendet, stattdessen Download/Löschen im Footer
 - Leistungsanzeige und Checkboxen mobil optimiert
