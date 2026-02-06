@@ -2,6 +2,65 @@
 
 All notable changes to RTSP Recorder will be documented in this file.
 
+## [1.2.3] - PLANNED
+
+### 📲 Push Notifications bei Personen-Erkennung
+
+**Sofortige Benachrichtigung wenn bekannte Personen erkannt werden!**
+
+**Geplante Features:**
+- **Event**: `rtsp_recorder_person_detected` mit allen Daten
+- **Event-Daten**:
+  - `person_name`: Name der erkannten Person
+  - `similarity`: Erkennungs-Konfidenz (0-100%)
+  - `camera`: Kamera-Name
+  - `video_path`: Pfad zur Aufzeichnung
+  - `timestamp`: Zeitstempel der Erkennung
+- **Actionable Notifications**: Klick auf Push öffnet direkt das Video
+- **Beispiel-Automation**: In README dokumentiert
+- **Kompatibilität**: HA Companion App (iOS/Android)
+
+**Technische Umsetzung:**
+```python
+# In _set_person_entity() (after entity update)
+hass.bus.async_fire("rtsp_recorder_person_detected", {
+    "person_name": name,
+    "similarity": similarity,
+    "camera": camera,
+    "video_path": video_path,
+    "timestamp": datetime.now(datetime.timezone.utc).isoformat()
+})
+```
+
+**Beispiel-Automation für User:**
+```yaml
+automation:
+  - alias: "RTSP Recorder - Person Push Notification"
+    trigger:
+      - platform: event
+        event_type: rtsp_recorder_person_detected
+        event_data:
+          person_name: "Sven"  # Optional: alle Personen wenn weggelassen
+    action:
+      - service: notify.mobile_app_iphone
+        data:
+          title: "{{ trigger.event.data.person_name }} erkannt!"
+          message: "{{ trigger.event.data.camera }} ({{ (trigger.event.data.similarity * 100) | round(0) }}%)"
+          data:
+            url: "/rtsp-recorder?video={{ trigger.event.data.video_path }}"
+            actions:
+              - action: "VIEW"
+                title: "Video ansehen"
+```
+
+**Optional (v1.2.3+):**
+- [ ] Cooldown pro Person (vermeidet Spam bei längerer Anwesenheit)
+- [ ] Config-Option zum Aktivieren/Deaktivieren
+- [ ] Minimum Similarity Threshold für Notifications
+- [ ] Thumbnail im Push (Snapshot bei Erkennung)
+
+---
+
 ## [1.2.2] - 2026-02-06
 
 ### 📱 Mobile Portrait-Ansicht (Ring-Style)
