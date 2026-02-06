@@ -1,5 +1,5 @@
-// ===== RTSP Recorder Card v1.2.0 BETA =====
-console.log("[RTSP-Recorder] Card Version: 1.2.0 BETA");
+// ===== RTSP Recorder Card v1.2.2 BETA =====
+console.log("[RTSP-Recorder] Card Version: 1.2.2 BETA");
 // MED-008 Fix: Debug logging behind feature flag
 const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
 const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
@@ -50,13 +50,13 @@ class RtspRecorderCard extends HTMLElement {
         this._lastOverlayKey = null;  // v1.1.0h: Throttle overlay redraws
         this._overlayRAF = null;  // v1.1.0k: requestAnimationFrame ID for smooth overlay
         this._overlayDebounce = null;  // v1.1.0k: Debounce timer for overlay updates
-        this._overlayCtx = null;  // v1.2.0: Cached canvas context for performance
-        this._detectionsIndex = null;  // v1.2.0: Indexed detections for O(1) lookup
-        this._overlaySmoothingEnabled = false;  // v1.2.0: Overlay box smoothing
-        this._overlaySmoothingAlpha = 0.35;  // v1.2.0: Smoothing alpha (lerp factor)
-        this._smoothedBoxes = {};  // v1.2.0: Current smoothed positions per detection
-        this._lastSmoothTime = null;  // v1.2.0: Last animation timestamp
-        this._smoothingRAF = null;  // v1.2.0: Continuous RAF for smoothing
+        this._overlayCtx = null;  // v1.2.2: Cached canvas context for performance
+        this._detectionsIndex = null;  // v1.2.2: Indexed detections for O(1) lookup
+        this._overlaySmoothingEnabled = false;  // v1.2.2: Overlay box smoothing
+        this._overlaySmoothingAlpha = 0.35;  // v1.2.2: Smoothing alpha (lerp factor)
+        this._smoothedBoxes = {};  // v1.2.2: Current smoothed positions per detection
+        this._lastSmoothTime = null;  // v1.2.2: Last animation timestamp
+        this._smoothingRAF = null;  // v1.2.2: Continuous RAF for smoothing
         this._runningAnalyses = new Map();  // v1.1.0L: Map of video_path -> {camera, started_at} - pure event-driven
         this._runningRecordings = new Map();  // v1.1.0m: Map of video_path -> {camera, duration, started_at} - pure event-driven
         this._lastOverlaySize = null;  // v1.1.0h: Track size changes
@@ -810,7 +810,7 @@ class RtspRecorderCard extends HTMLElement {
                 this._basePath = config.storage_path;
                 console.log('[RTSP-Recorder] Using storage_path from integration:', this._basePath);
             }
-            // v1.2.0: Overlay-Smoothing aus Config laden
+            // v1.2.2: Overlay-Smoothing aus Config laden
             if (config) {
                 this._overlaySmoothingEnabled = config.analysis_overlay_smoothing === true;
                 this._overlaySmoothingAlpha = config.analysis_overlay_smoothing_alpha || 0.35;
@@ -853,6 +853,30 @@ class RtspRecorderCard extends HTMLElement {
                 .fm-thumb-img { width: 100%; height: 100%; object-fit: cover; opacity: 0.8; }
                 /* REMOVED UPPERCASE HERE */
                 .fm-badge-cam { position: absolute; bottom: 12px; left: 12px; background: rgba(0,0,0,0.7); padding: 4px 10px; border-radius: 4px; font-size: 0.7em; color: #fff; font-weight: 700; letter-spacing: 0.5px; text-transform: capitalize; }
+                .fm-badge-time { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px; font-size: 0.7em; color: #fff; }
+                
+                /* Mobile Ring-Style Item Info */
+                .fm-item-info {
+                    display: none; /* Hidden on desktop */
+                    flex-direction: column;
+                    justify-content: center;
+                    flex: 1;
+                    min-width: 0;
+                }
+                .fm-item-cam {
+                    font-size: 0.95em;
+                    font-weight: 600;
+                    color: #fff;
+                    text-transform: capitalize;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                .fm-item-time {
+                    font-size: 0.8em;
+                    color: #888;
+                    margin-top: 2px;
+                }
                 
                 /* v1.1.0: Analyse-Badge für Timeline Items */
                 .fm-item.analyzing { border: 2px solid #4caf50; }
@@ -1063,6 +1087,10 @@ class RtspRecorderCard extends HTMLElement {
                     flex-wrap: nowrap;
                     flex-shrink: 0;
                 }
+                /* Mobile action buttons - hidden on desktop */
+                .fm-mobile-actions {
+                    display: none;
+                }
                 .fm-toggle {
                     display: flex;
                     align-items: center;
@@ -1197,11 +1225,254 @@ class RtspRecorderCard extends HTMLElement {
                     margin-top: 25px;
                     justify-content: center;
                 }
+                
+                /* ========== MOBILE / PORTRAIT LAYOUT (Ring-Style) ========== */
+                @media (max-width: 768px) {
+                    /* Container: Full height on mobile */
+                    .fm-container {
+                        height: 100vh;
+                        border-radius: 0;
+                    }
+                    
+                    /* Header: Compact mobile header */
+                    .fm-header {
+                        height: 52px;
+                        padding: 0 12px;
+                    }
+                    .fm-header .fm-title img {
+                        height: 36px;
+                    }
+                    .fm-header .fm-title span {
+                        display: none; /* Hide BETA badge on mobile */
+                    }
+                    .fm-toolbar {
+                        gap: 6px;
+                    }
+                    .fm-btn {
+                        padding: 6px 10px;
+                        font-size: 0.8em;
+                    }
+                    
+                    /* Main: Stack vertically instead of side-by-side */
+                    .fm-main {
+                        flex-direction: column;
+                    }
+                    
+                    /* Video Player: Top 45% */
+                    .fm-player-col {
+                        flex: none;
+                        height: 45%;
+                        min-height: 180px;
+                    }
+                    .fm-overlay-tl, .fm-overlay-tr {
+                        padding: 4px 8px;
+                        font-size: 0.75em;
+                        top: 8px;
+                    }
+                    .fm-overlay-tl { left: 8px; }
+                    .fm-overlay-tr { right: 8px; }
+                    
+                    /* Video Controls: Hide completely on mobile */
+                    .fm-video-controls {
+                        display: none;
+                    }
+                    
+                    /* Mobile Action Buttons in Footer */
+                    .fm-mobile-actions {
+                        display: flex;
+                        gap: 8px;
+                        margin-left: auto;
+                    }
+                    .fm-mobile-btn {
+                        background: #2a2a2a;
+                        border: 1px solid #444;
+                        color: #ccc;
+                        padding: 6px 10px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        gap: 4px;
+                        font-size: 0.7em;
+                    }
+                    .fm-mobile-btn.danger {
+                        border-color: #f44336;
+                        color: #f44336;
+                    }
+                    .fm-mobile-btn svg {
+                        width: 14px;
+                        height: 14px;
+                    }
+                    
+                    /* Player Footer: Compact mobile version */
+                    .fm-player-footer {
+                        margin: 4px 8px;
+                        padding: 6px 8px;
+                        flex-direction: column;
+                        gap: 6px;
+                    }
+                    .fm-footer-left {
+                        flex-wrap: nowrap;
+                        gap: 8px;
+                        font-size: 0.75em;
+                        width: 100%;
+                        justify-content: flex-start;
+                    }
+                    .fm-footer-left .fm-toggle {
+                        gap: 4px;
+                        white-space: nowrap;
+                    }
+                    /* Hide recording/analysis status on mobile - too big */
+                    #footer-recording-status,
+                    #footer-analysis-status {
+                        display: none !important;
+                    }
+                    /* Perf panel: Show below footer on mobile, compact */
+                    .fm-footer-right {
+                        width: 100%;
+                        margin-top: 6px;
+                        font-size: 0.7em;
+                        flex-wrap: wrap;
+                        gap: 6px;
+                    }
+                    .fm-footer-right .fm-perf-card {
+                        padding: 4px 8px;
+                        font-size: 1em;
+                        min-width: auto;
+                    }
+                    
+                    /* Sidebar: Bottom 55%, full width */
+                    .fm-sidebar {
+                        width: 100%;
+                        height: 55%;
+                        border-left: none;
+                        border-top: 1px solid #222;
+                    }
+                    
+                    /* Hide ruler on mobile (saves space) */
+                    .fm-ruler {
+                        display: none;
+                    }
+                    
+                    /* Timeline Items: Ring-Style horizontal cards */
+                    .fm-item {
+                        height: 80px;
+                        padding: 8px;
+                        display: flex;
+                        flex-direction: row;
+                        gap: 12px;
+                        align-items: center;
+                    }
+                    .fm-item.selected {
+                        height: 72px;
+                    }
+                    
+                    /* Thumbnail: Square on left side */
+                    .fm-thumb-wrap {
+                        width: 100px;
+                        height: 64px;
+                        flex-shrink: 0;
+                        border-radius: 8px;
+                    }
+                    
+                    /* Hide inline badges on mobile */
+                    .fm-badge-cam,
+                    .fm-badge-time {
+                        display: none;
+                    }
+                    
+                    /* Show mobile info section */
+                    .fm-item-info {
+                        display: flex;
+                    }
+                    
+                    /* Menu overlay: Fullscreen on mobile */
+                    .fm-menu-card {
+                        width: 100%;
+                        max-width: 100%;
+                        height: 100%;
+                        max-height: 100%;
+                        border-radius: 0;
+                    }
+                    .fm-menu-header {
+                        padding: 12px 16px;
+                    }
+                    .fm-menu-title {
+                        font-size: 1.1em;
+                    }
+                    .fm-menu-content {
+                        padding: 16px;
+                    }
+                    
+                    /* Mobile Tabs: Scrollable, compact */
+                    .fm-tabs {
+                        overflow-x: auto;
+                        overflow-y: hidden;
+                        -webkit-overflow-scrolling: touch;
+                        flex-wrap: nowrap;
+                    }
+                    .fm-tab {
+                        flex: none;
+                        padding: 12px 10px;
+                        font-size: 0.7em;
+                        white-space: nowrap;
+                        min-width: auto;
+                    }
+                    
+                    /* Popups: Full width on mobile */
+                    .fm-popup {
+                        position: fixed;
+                        top: auto;
+                        bottom: 0;
+                        left: 0;
+                        right: 0;
+                        width: 100%;
+                        border-radius: 16px 16px 0 0;
+                    }
+                }
+                
+                /* Extra small phones (< 480px) */
+                @media (max-width: 480px) {
+                    .fm-header {
+                        height: 48px;
+                        padding: 0 8px;
+                    }
+                    .fm-header .fm-title img {
+                        height: 28px;
+                    }
+                    .fm-btn {
+                        padding: 5px 8px;
+                        font-size: 0.75em;
+                    }
+                    .fm-player-col {
+                        height: 40%;
+                    }
+                    .fm-sidebar {
+                        height: 60%;
+                    }
+                    .fm-item {
+                        height: 72px;
+                        padding: 6px;
+                        gap: 10px;
+                    }
+                    .fm-thumb-wrap {
+                        width: 80px;
+                        height: 56px;
+                    }
+                    /* Even smaller tabs for tiny phones */
+                    .fm-tab {
+                        padding: 10px 8px;
+                        font-size: 0.65em;
+                    }
+                    .fm-menu-content {
+                        padding: 12px;
+                    }
+                }
             </style>
             
             <div class="fm-container animated" id="container" role="application" aria-label="Opening RTSP-Recorder">
                 <div class="fm-header" role="banner">
-                    <div class="fm-title"><img src="/local/opening_logo4.png" alt="Opening RTSP-Recorder" style="height:50px; vertical-align:middle; background:transparent;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.2.1</span></div>
+                    <div class="fm-title"><img src="/local/opening_logo4.png" alt="Opening RTSP-Recorder" style="height:50px; vertical-align:middle; background:transparent;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.2.2</span></div>
                     <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
                         <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>
@@ -1253,6 +1524,15 @@ class RtspRecorderCard extends HTMLElement {
                                 <!-- Analysis status indicator (always visible when running) -->
                                 <div id="footer-analysis-status" style="display:none; margin-left:10px; padding:2px 8px; background:rgba(76,175,80,0.2); border:1px solid #4caf50; border-radius:4px;">
                                     <span style="color:#4caf50; font-size:0.75em;">🔄 <span id="analysis-status-text">Analyse läuft...</span></span>
+                                </div>
+                                <!-- Mobile-only action buttons -->
+                                <div class="fm-mobile-actions" id="mobile-actions">
+                                    <button class="fm-mobile-btn" id="mobile-download" title="Download">
+                                        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+                                    </button>
+                                    <button class="fm-mobile-btn danger" id="mobile-delete" title="Löschen">
+                                        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                                    </button>
                                 </div>
                             </div>
                             <div class="fm-footer-right" id="footer-perf-panel"></div>
@@ -1320,6 +1600,13 @@ class RtspRecorderCard extends HTMLElement {
         // Video Controls
         root.querySelector('#btn-download').onclick = () => { this.downloadCurrentVideo(); };
         root.querySelector('#btn-delete').onclick = () => { this.showDeleteConfirm(); };
+        
+        // Mobile Action Buttons (in footer)
+        const mobileDownload = root.querySelector('#mobile-download');
+        const mobileDelete = root.querySelector('#mobile-delete');
+        if (mobileDownload) mobileDownload.onclick = () => { this.downloadCurrentVideo(); };
+        if (mobileDelete) mobileDelete.onclick = () => { this.showDeleteConfirm(); };
+        
         const overlayBtn = root.querySelector('#btn-overlay');
         if (overlayBtn) {
             overlayBtn.onclick = () => {
@@ -2963,7 +3250,7 @@ class RtspRecorderCard extends HTMLElement {
         }
     }
 
-    // v1.2.0: Person Detail Popup with quality scores, outlier detection and bulk selection
+    // v1.2.2: Person Detail Popup with quality scores, outlier detection and bulk selection
     async showPersonDetailPopup(personId) {
         try {
             // Load person details with quality scores from backend
@@ -3073,7 +3360,7 @@ class RtspRecorderCard extends HTMLElement {
                         </div>
                     </div>
                     
-                    <!-- v1.2.0: Quality Stats Row -->
+                    <!-- v1.2.2: Quality Stats Row -->
                     <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-bottom:20px;">
                         <div style="background:#222; padding:12px; border-radius:10px; text-align:center;">
                             <div style="font-size:1.4em; font-weight:bold; color:${details.avg_quality >= 80 ? '#27ae60' : details.avg_quality >= 60 ? '#f39c12' : '#e74c3c'};">${details.avg_quality || 0}%</div>
@@ -3094,7 +3381,7 @@ class RtspRecorderCard extends HTMLElement {
                         📅 Erstellt: ${formatDate(details.created_at)}
                     </div>
                     
-                    <!-- v1.2.0: Bulk Actions -->
+                    <!-- v1.2.2: Bulk Actions -->
                     <div id="bulk-actions" style="display:none; background:#1a3a5a; padding:12px; border-radius:10px; margin-bottom:15px; border:1px solid #2a5a8a;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <div>
@@ -3192,7 +3479,7 @@ class RtspRecorderCard extends HTMLElement {
                 btn.onmouseout = () => { btn.style.opacity = '0.85'; btn.style.transform = 'scale(1)'; };
             });
             
-            // v1.2.0: Checkbox handlers for bulk selection
+            // v1.2.2: Checkbox handlers for bulk selection
             const bulkActionsDiv = popup.querySelector('#bulk-actions');
             const selectedCountSpan = popup.querySelector('#selected-count');
             
@@ -3784,11 +4071,11 @@ class RtspRecorderCard extends HTMLElement {
 
     async loadDetectionsForCurrentVideo() {
         if (!this._currentEvent || !this._overlayEnabled) return;
-        // v1.2.0: Reset overlay cache when loading new video
+        // v1.2.2: Reset overlay cache when loading new video
         this._lastOverlayKey = null;
         this._lastOverlaySize = null;
-        this._overlayCtx = null;  // v1.2.0: Reset cached context
-        this._detectionsIndex = null;  // v1.2.0: Reset index
+        this._overlayCtx = null;  // v1.2.2: Reset cached context
+        this._detectionsIndex = null;  // v1.2.2: Reset index
         try {
             const data = await this._hass.callWS({
                 type: 'rtsp_recorder/get_analysis_result',
@@ -3801,7 +4088,7 @@ class RtspRecorderCard extends HTMLElement {
                     width: data.frame_width || null,
                     height: data.frame_height || null
                 };
-                // v1.2.0: Build index for O(1) frame lookup (instead of Array.find)
+                // v1.2.2: Build index for O(1) frame lookup (instead of Array.find)
                 this._detectionsIndex = {};
                 for (const d of data.detections) {
                     this._detectionsIndex[d.time_s] = d;
@@ -3828,12 +4115,12 @@ class RtspRecorderCard extends HTMLElement {
     clearOverlay() {
         const canvas = this.shadowRoot.querySelector('#overlay-canvas');
         if (!canvas) return;
-        // v1.2.0: Use cached context if available
+        // v1.2.2: Use cached context if available
         const ctx = this._overlayCtx || canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // v1.2.0: Reset index on clear
+        // v1.2.2: Reset index on clear
         this._detectionsIndex = null;
-        // v1.2.0: Stop smoothing loop and clear smoothed boxes
+        // v1.2.2: Stop smoothing loop and clear smoothed boxes
         this._stopSmoothingLoop();
         this._smoothedBoxes = new Map();
     }
@@ -4690,7 +4977,11 @@ class RtspRecorderCard extends HTMLElement {
                     <img src="${this._escapeHtml(ev.thumb)}" class="fm-thumb-img" onerror="this.style.display='none'">
                     ${statusBadge}
                     <div class="fm-badge-cam">${this._escapeHtml(displayName)}</div>
-                    <div style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.5);padding:2px 6px;border-radius:4px;font-size:0.7em;">${this._escapeHtml(time)}</div>
+                    <div class="fm-badge-time">${this._escapeHtml(time)}</div>
+                </div>
+                <div class="fm-item-info">
+                    <div class="fm-item-cam">${this._escapeHtml(displayName)}</div>
+                    <div class="fm-item-time">${this._escapeHtml(time)}</div>
                 </div>
             `;
             item.onclick = async () => {

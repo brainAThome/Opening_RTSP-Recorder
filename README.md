@@ -6,7 +6,7 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.2.1-brightgreen)
+![Version](https://img.shields.io/badge/version-1.2.2-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-96%25-brightgreen)
@@ -19,7 +19,17 @@ A complete video surveillance solution with AI-powered object detection using Co
 📋 **[Audit Report v5.1](COMPREHENSIVE_AUDIT_REPORT_v5.0_2026-02-05.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (05.02.2026)
 🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
 
-## What's New in v1.2.1
+## What's New in v1.2.2
+
+### 📱 Mobile Portrait-Ansicht (Ring-Style)
+**Optimierte Mobile-Version für Lovelace Card:**
+- Portrait-Layout mit Timeline-Karten im Ring-Stil
+- Footer und Tabs mobil scrollbar und kompakt
+- Video-Controls auf Mobile ausgeblendet, stattdessen Download/Löschen im Footer
+- Leistungsanzeige und Checkboxen mobil optimiert
+- Status-Indikatoren mobil ausgeblendet
+- Vollständige @media-Queries für 768px/480px
+- Getestet auf Android/iOS
 
 ### 🔧 Code Quality Improvements (MEDIUM Findings Remediation)
 **Major refactoring and code quality improvements!**
@@ -1008,7 +1018,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
 See [COMPREHENSIVE_AUDIT_REPORT_v5.1](COMPREHENSIVE_AUDIT_REPORT_v5.0_2026-02-05.md) for the comprehensive ISO 25010 + ISO 27001 audit report.
 
-### Audit Summary v1.2.1
+### Audit Summary v1.2.2
 
 | Category | Score | Status |
 |----------|-------|--------|

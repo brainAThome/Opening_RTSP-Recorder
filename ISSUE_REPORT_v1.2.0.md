@@ -1,14 +1,24 @@
 # ISSUE REPORT v1.2.0
 
 **Datum:** 05. Februar 2026  
-**Version:** v1.2.1 BETA  
+**Version:** v1.2.2 BETA  
 **Status:** Produktionsreif - MEDIUM Findings behoben
 
 ---
 
 ## Behobene Issues in dieser Session
 
-### 0. MEDIUM Findings Remediation (v1.2.1) ✅
+### 1. Mobile Portrait-Ansicht (v1.2.2) ✅
+**Session:** 06.02.2026, 10:00-12:00 Uhr
+
+**Behoben/Implementiert:**
+- Mobile Portrait-Layout (Ring-Style)
+- Footer und Tabs mobil scrollbar und kompakt
+- Video-Controls auf Mobile ausgeblendet, stattdessen Download/Löschen im Footer
+- Leistungsanzeige und Checkboxen mobil optimiert
+- Status-Indikatoren mobil ausgeblendet
+- Vollständige @media-Queries für 768px/480px
+- Getestet auf Android/iOS
 **Session:** 05.02.2026, 22:30-23:10 Uhr
 
 **Behoben:**

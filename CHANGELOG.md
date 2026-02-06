@@ -2,7 +2,18 @@
 
 All notable changes to RTSP Recorder will be documented in this file.
 
-## [1.2.1] - 2026-02-05
+## [1.2.2] - 2026-02-06
+
+### 📱 Mobile Portrait-Ansicht (Ring-Style)
+**Optimierte Mobile-Version für Lovelace Card:**
+- Portrait-Layout mit Timeline-Karten im Ring-Stil
+- Footer und Tabs mobil scrollbar und kompakt
+- Video-Controls auf Mobile ausgeblendet, stattdessen Download/Löschen im Footer
+- Leistungsanzeige und Checkboxen mobil optimiert
+- Status-Indikatoren mobil ausgeblendet
+- Vollständige @media-Queries für 768px/480px
+- Getestet auf Android/iOS
+
 
 ### 🔧 Code Quality: MEDIUM Findings Remediation
 
