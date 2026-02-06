@@ -98,29 +98,34 @@ A complete video surveillance solution with AI-powered object detection using Co
 
 ## Version Comparison
 
-| Feature | v1.0.9 STABLE | v1.1.2 | v1.2.0 |
-|---------|---------------|--------|--------|
-| **Recording** | Sequential | ⚡ Parallel | ⚡ Parallel |
-| **Timeline Update** | After save | ⚡ Immediate | ⚡ Immediate |
-| **Time per Recording** | +5-6s | ⚡ +1-2s | ⚡ +1-2s |
-| **TPU Load Display** | ❌ | ✅ Real-time | ✅ Real-time |
-| **Performance Metrics** | ❌ | ✅ METRIC logging | ✅ METRIC logging |
-| **Recording Progress** | ❌ | ✅ Footer display | ✅ Footer display |
-| **Rate Limiter** | ❌ | ✅ DoS protection | ✅ DoS protection |
-| **Custom Exceptions** | ❌ | ✅ 29 types | ✅ 29 types |
-| **Type Hints** | ~40% | ✅ 88.2% | ✅ 88.2% |
-| **Languages** | 2 | ✅ 5 | ✅ 5 |
-| **Analysis Cleanup** | ❌ | ✅ Automatic | ✅ Automatic |
-| **Person Detail Popup** | ❌ | ✅ Full features | ✅ Full features |
-| **Person Entities** | ❌ | ✅ HA automations | ✅ HA automations |
-| **Multi-Sensor Trigger** | ❌ | ❌ | ✅ NEW |
-| **Sample Quality Scores** | ❌ | ❌ | ✅ NEW |
-| **Outlier Detection** | ❌ | ❌ | ✅ NEW |
-| **Bulk Sample Delete** | ❌ | ❌ | ✅ NEW |
-| **Overlay Smoothing** | ❌ | ❌ | ✅ NEW |
-| **ISO 25010 Score** | 92% | ✅ 93% | ✅ **96%** |
-| **ISO 27001 Score** | 85% | ✅ 85% | ✅ **88%** |
-| **Production Ready** | ✅ | ✅ | ✅ |
+| Feature | v1.0.9 STABLE | v1.1.2 | v1.2.0 | v1.2.1 | v1.2.2 |
+|---------|---------------|--------|--------|--------|--------|
+| **Recording** | Sequential | ⚡ Parallel | ⚡ Parallel | ⚡ Parallel | ⚡ Parallel |
+| **Timeline Update** | After save | ⚡ Immediate | ⚡ Immediate | ⚡ Immediate | ⚡ Immediate |
+| **Time per Recording** | +5-6s | ⚡ +1-2s | ⚡ +1-2s | ⚡ +1-2s | ⚡ +1-2s |
+| **TPU Load Display** | ❌ | ✅ Real-time | ✅ Real-time | ✅ Real-time | ✅ Real-time |
+| **Performance Metrics** | ❌ | ✅ METRIC logging | ✅ METRIC logging | ✅ METRIC logging | ✅ METRIC logging |
+| **Recording Progress** | ❌ | ✅ Footer display | ✅ Footer display | ✅ Footer display | ✅ Footer display |
+| **Rate Limiter** | ❌ | ✅ DoS protection | ✅ DoS protection | ✅ DoS protection | ✅ DoS protection |
+| **Custom Exceptions** | ❌ | ✅ 29 types | ✅ 29 types | ✅ 29 types | ✅ 29 types |
+| **Type Hints** | ~40% | ✅ 88.2% | ✅ 88.2% | ✅ 88.2% | ✅ 88.2% |
+| **Languages** | 2 | ✅ 5 | ✅ 5 | ✅ 5 | ✅ 5 |
+| **Analysis Cleanup** | ❌ | ✅ Automatic | ✅ Automatic | ✅ Automatic | ✅ Automatic |
+| **Person Detail Popup** | ❌ | ✅ Full features | ✅ Full features | ✅ Full features | ✅ Full features |
+| **Person Entities** | ❌ | ✅ HA automations | ✅ HA automations | ✅ HA automations | ✅ HA automations |
+| **Multi-Sensor Trigger** | ❌ | ❌ | ✅ | ✅ | ✅ |
+| **Sample Quality Scores** | ❌ | ❌ | ✅ | ✅ | ✅ |
+| **Outlier Detection** | ❌ | ❌ | ✅ | ✅ | ✅ |
+| **Bulk Sample Delete** | ❌ | ❌ | ✅ | ✅ | ✅ |
+| **Overlay Smoothing** | ❌ | ❌ | ✅ | ✅ | ✅ |
+| **CC Refactoring** | ❌ | ❌ | ❌ | ✅ NEW | ✅ |
+| **Silent Exception Logging** | ❌ | ❌ | ❌ | ✅ NEW | ✅ |
+| **SECURITY.md** | ❌ | ❌ | ❌ | ✅ NEW | ✅ |
+| **Mobile Portrait Layout** | ❌ | ❌ | ❌ | ❌ | ✅ NEW |
+| **Responsive @media Queries** | ❌ | ❌ | ❌ | ❌ | ✅ NEW |
+| **ISO 25010 Score** | 92% | 93% | 95% | **96%** | **96%** |
+| **ISO 27001 Score** | 85% | 85% | 86% | **88%** | **88%** |
+| **Production Ready** | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### ⚡ Performance Optimizations
 - **Parallel Snapshots**: Thumbnails captured DURING recording
