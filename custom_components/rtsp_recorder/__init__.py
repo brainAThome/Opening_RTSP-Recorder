@@ -628,6 +628,58 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
         # Run initial check after 60 seconds
         hass.loop.call_later(60, lambda: hass.async_create_task(check_camera_health()))
 
+        # ===== v1.2.3: Detector Stats Push (statt Polling) =====
+        
+        async def _fetch_detector_stats_for_push() -> dict:
+            """Fetch stats from detector service for push updates."""
+            if not analysis_detector_url:
+                return {"available": False, "error": "no_detector_url"}
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{analysis_detector_url.rstrip('/')}/stats", timeout=5) as resp:
+                        if resp.status != 200:
+                            return {"available": False, "error": f"http_{resp.status}"}
+                        data = await resp.json()
+                        data["available"] = True
+                        return data
+            except asyncio.TimeoutError:
+                return {"available": False, "error": "timeout"}
+            except Exception as e:
+                return {"available": False, "error": str(e)}
+        
+        async def push_detector_stats(now=None):
+            """Fetch detector stats and push to frontend via event."""
+            try:
+                stats = await _fetch_detector_stats_for_push()
+                # Add system stats from HA sensors
+                system_stats = {}
+                for sensor_type, entity_id in [
+                    ("cpu", analysis_perf_cpu_entity),
+                    ("memory", "sensor.system_monitor_memory_usage_percent"),
+                ]:
+                    if entity_id:
+                        state = hass.states.get(entity_id)
+                        if state and state.state not in ("unknown", "unavailable"):
+                            try:
+                                system_stats[sensor_type] = float(state.state)
+                            except ValueError:
+                                pass
+                
+                stats["system_stats_ha"] = system_stats
+                stats["timestamp"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                
+                # Fire event for frontend subscription
+                hass.bus.async_fire("rtsp_recorder_stats_update", stats)
+            except Exception as e:
+                log_to_file(f"Stats push error: {e}")
+        
+        # Push stats every 2 seconds (replaces frontend polling)
+        unsub_stats_push = async_track_time_interval(hass, push_detector_stats, timedelta(seconds=2))
+        entry.async_on_unload(unsub_stats_push)
+        
+        # Initial push after 5 seconds
+        hass.loop.call_later(5, lambda: hass.async_create_task(push_detector_stats()))
+
         # ===== Register WebSocket Handlers (from websocket_handlers.py) =====
         
         register_websocket_handlers(

@@ -218,6 +218,35 @@ class RtspRecorderCard extends HTMLElement {
                 this._updateAnalysisUI();
             }
         });
+        
+        // v1.2.3: Subscribe to stats updates (PUSH statt Polling)
+        this._subscribeToEvent('rtsp_recorder_stats_update', (event) => {
+            // Update detector stats from push event
+            const stats = event.data || {};
+            if (stats.available !== false) {
+                this._detectorStats = stats;
+                
+                // Update live stats from HA sensors included in push
+                if (stats.system_stats_ha) {
+                    if (!this._liveStats) this._liveStats = {};
+                    if (stats.system_stats_ha.cpu !== undefined) {
+                        this._liveStats.cpu = { state: stats.system_stats_ha.cpu };
+                    }
+                    if (stats.system_stats_ha.memory !== undefined) {
+                        this._liveStats.memory = { state: stats.system_stats_ha.memory };
+                    }
+                }
+                
+                // Update footer immediately
+                this.updatePerfFooter();
+                
+                // Update performance tab if open
+                if (this._activeTab === 'performance') {
+                    const container = this.shadowRoot.querySelector('#menu-content');
+                    if (container) this.renderPerformanceTab(container);
+                }
+            }
+        });
     }
     
     // v1.1.0f: Helper to subscribe to a Home Assistant event
@@ -4223,9 +4252,11 @@ class RtspRecorderCard extends HTMLElement {
 
     startStatsPolling() {
         if (this._statsPolling) return;
+        // v1.2.3: Initial fetch only - main updates come via push event
         this.fetchDetectorStats();
-        // v1.1.0m: Reduced from 5s to 2s for faster TPU load response
-        this._statsPolling = setInterval(() => this.fetchDetectorStats(), 2000);
+        // v1.2.3: Keep a slow fallback poll (10s) for analysis/recording progress
+        // Main detector stats now come via rtsp_recorder_stats_update event
+        this._statsPolling = setInterval(() => this.fetchDetectorStats(), 10000);
     }
 
     stopStatsPolling() {
