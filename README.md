@@ -794,6 +794,13 @@ For AI object detection with Coral USB:
 2. Go to Settings → Add-ons → Add-on Store → ⋮ → Repositories
 3. The add-on should appear after refresh
 4. Install and start the add-on
+5. **Important:** Note the Detector URL from the add-on info page!
+   - Go to the add-on → Info tab
+   - Find the hostname (e.g., `a861495c-rtsp-recorder-detector`)
+   - Your Detector URL is: `http://{SLUG}-rtsp-recorder-detector:5000`
+   - Example: `http://a861495c-rtsp-recorder-detector:5000`
+
+> ⚠️ **Note:** The slug varies per installation. Do NOT use `http://local-rtsp-recorder-detector:5000` - this hostname is not resolvable from Home Assistant.
 
 ### Step 4: Configure the Integration
 1. Go to Settings → Devices & Services
