@@ -21,13 +21,34 @@ A complete video surveillance solution with AI-powered object detection using Co
 
 ## What's New in v1.2.2
 
+### � Statistics Reset
+**Reset detector statistics from the UI:**
+- New "Statistik zurücksetzen" button in Performance Tab
+- Resets all inference counters and uptime
+- WebSocket endpoint: `rtsp_recorder/reset_detector_stats`
+
+### 🐛 Recording Indicator Fix
+**"Aufnahme läuft" display now works correctly with multiple cameras:**
+- Fixed: Indicator no longer disappears when another camera finishes recording
+- Now uses event-driven `_runningRecordings` Map consistently
+- Multi-camera scenarios properly tracked
+
+### 🎬 FPS Display Fix
+**Video player now shows actual video FPS:**
+- Reads `video_fps` from analysis data
+- Falls back to 25 FPS (PAL standard) if unavailable
+
+### 🧹 Removed smooth_video Option
+**Config cleanup:**
+- Removed unused `smooth_video` option from configuration
+- No functional impact (was never used)
+
 ### 📱 Mobile Portrait-Ansicht
 **Optimierte Mobile-Version für Lovelace Card:**
 - Portrait-Layout mit Timeline-Karten
 - Footer und Tabs mobil scrollbar und kompakt
 - Video-Controls auf Mobile ausgeblendet, stattdessen Download/Löschen im Footer
 - Leistungsanzeige und Checkboxen mobil optimiert
-- Status-Indikatoren mobil ausgeblendet
 - Vollständige @media-Queries für 768px/480px
 - Getestet auf Android/iOS
 

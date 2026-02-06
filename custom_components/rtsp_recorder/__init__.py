@@ -42,6 +42,7 @@ from .helpers import (
     _validate_person_name,
     _parse_hhmm,
     _set_analysis_semaphore_limit,
+    get_system_stats,
 )
 from .people_db import (
     _load_people_db,
@@ -134,6 +135,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
     analysis_face_enabled = bool(config_data.get("analysis_face_enabled", False))
     analysis_face_confidence = float(config_data.get("analysis_face_confidence", 0.2))
     analysis_face_match_threshold = float(config_data.get("analysis_face_match_threshold", 0.35))
+    analysis_face_multiscale = bool(config_data.get("analysis_face_multiscale", True))
     analysis_overlay_smoothing = bool(config_data.get("analysis_overlay_smoothing", False))
     analysis_overlay_smoothing_alpha = float(config_data.get("analysis_overlay_smoothing_alpha", 0.35))
     analysis_face_store_embeddings = bool(config_data.get("analysis_face_store_embeddings", True))
@@ -385,6 +387,7 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             analysis_face_enabled=analysis_face_enabled,
             analysis_face_confidence=analysis_face_confidence,
             analysis_face_match_threshold=analysis_face_match_threshold,
+            analysis_face_multiscale=analysis_face_multiscale,
             analysis_overlay_smoothing=analysis_overlay_smoothing,
             analysis_overlay_smoothing_alpha=analysis_overlay_smoothing_alpha,
             analysis_face_store_embeddings=analysis_face_store_embeddings,
@@ -651,21 +654,13 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             """Fetch detector stats and push to frontend via event."""
             try:
                 stats = await _fetch_detector_stats_for_push()
-                # Add system stats from HA sensors
-                system_stats = {}
-                for sensor_type, entity_id in [
-                    ("cpu", analysis_perf_cpu_entity),
-                    ("memory", "sensor.system_monitor_memory_usage_percent"),
-                ]:
-                    if entity_id:
-                        state = hass.states.get(entity_id)
-                        if state and state.state not in ("unknown", "unavailable"):
-                            try:
-                                system_stats[sensor_type] = float(state.state)
-                            except ValueError:
-                                pass
-                
-                stats["system_stats_ha"] = system_stats
+                # v1.2.3: Use direct /proc/stat reading for real-time CPU updates (every second)
+                # HA sensors only update every 5 minutes, so we read /proc/stat directly
+                system_stats = await hass.async_add_executor_job(get_system_stats)
+                stats["system_stats_ha"] = {
+                    "cpu": system_stats.get("cpu_percent", 0),
+                    "memory": system_stats.get("memory_percent", 0),
+                }
                 stats["timestamp"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
                 
                 # Fire event for frontend subscription
@@ -673,8 +668,8 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
             except Exception as e:
                 log_to_file(f"Stats push error: {e}")
         
-        # Push stats every 2 seconds (replaces frontend polling)
-        unsub_stats_push = async_track_time_interval(hass, push_detector_stats, timedelta(seconds=2))
+        # Push stats every 1 second for responsive TPU load display
+        unsub_stats_push = async_track_time_interval(hass, push_detector_stats, timedelta(seconds=1))
         entry.async_on_unload(unsub_stats_push)
         
         # Initial push after 5 seconds

@@ -688,17 +688,27 @@ async def _render_annotated_video(
     # Calculate input framerate (how often we extracted frames)
     input_fps = 1 / max(1, int(interval_s))
     
-    # Use ffmpeg to create video with original FPS
+    # v1.2.3: Use original camera FPS for authentic realtime playback
+    output_fps = original_fps
+    
+    _LOGGER.debug(
+        "Annotated video rendering: original_fps=%.1f, output_fps=%.1f",
+        original_fps, output_fps
+    )
+    
+    # Use ffmpeg to create video with selected FPS
     # -framerate: input frame rate (our extracted frames)
-    # -r: output frame rate (original video FPS for smooth playback)
-    # This duplicates frames to match the original FPS
+    # -r: output frame rate (capped for lower CPU usage)
+    # -preset ultrafast: Fastest encoding, ~5x less CPU
     process = await asyncio.create_subprocess_exec(
         "ffmpeg",
         "-y",
         "-framerate", str(input_fps),
         "-i", os.path.join(annotated_dir, "frame_%04d.jpg"),
         "-c:v", "libx264",
-        "-r", str(original_fps),
+        "-preset", "ultrafast",
+        "-crf", "28",  # Slightly lower quality for faster encoding
+        "-r", str(output_fps),
         "-pix_fmt", "yuv420p",
         output_video,
         stdout=asyncio.subprocess.DEVNULL,
@@ -858,6 +868,7 @@ def _initialize_analysis_result(
         "frame_height": None,
         "frame_count": 0,
         "duration_sec": 0,
+        "video_fps": None,  # v1.2.3: Store original video FPS for frontend display
     }
 
 
@@ -1130,6 +1141,7 @@ async def _run_face_detection_loop(
     face_match_threshold: float,
     no_face_embeddings: list[dict[str, Any]] | None,
     interval_s: int,
+    face_multiscale: bool = True,
 ) -> tuple[int, int, int | None, int | None]:
     """Run face detection on all frames with persons.
     
@@ -1145,6 +1157,7 @@ async def _run_face_detection_loop(
         face_match_threshold: Minimum similarity for match
         no_face_embeddings: Known false positives
         interval_s: Frame interval in seconds
+        face_multiscale: Enable multi-scale face detection (more accurate, more CPU)
         
     Returns:
         Tuple of (faces_detected, faces_matched, frame_w, frame_h)
@@ -1191,6 +1204,7 @@ async def _run_face_detection_loop(
                 device=device,
                 face_confidence=float(face_confidence),
                 embed_flag=embed_flag,
+                face_multiscale=face_multiscale,
             )
             _used_device = data.get("device", device)
             _stats = _get_inference_stats()
@@ -1403,6 +1417,7 @@ async def _detect_faces_with_retry(
     device: str,
     face_confidence: float,
     embed_flag: str,
+    face_multiscale: bool = True,
 ) -> tuple[dict[str, Any], float]:
     """Detect faces in a frame with automatic retry at lower confidence.
     
@@ -1414,10 +1429,13 @@ async def _detect_faces_with_retry(
         device: Detection device
         face_confidence: Minimum confidence threshold
         embed_flag: "1" to generate embeddings
+        face_multiscale: Enable multi-scale detection
         
     Returns:
         Tuple of (response data dict, detection time in ms)
     """
+    multi_scale_val = "1" if face_multiscale else "0"
+    
     form = aiohttp.FormData()
     form.add_field(
         "file", frame_bytes,
@@ -1427,6 +1445,7 @@ async def _detect_faces_with_retry(
     form.add_field("device", device)
     form.add_field("confidence", str(face_confidence))
     form.add_field("embed", embed_flag)
+    form.add_field("multi_scale", multi_scale_val)
     
     _detect_start = time.perf_counter()
     async with session.post(
@@ -1450,6 +1469,7 @@ async def _detect_faces_with_retry(
         form_retry.add_field("device", device)
         form_retry.add_field("confidence", str(retry_conf))
         form_retry.add_field("embed", embed_flag)
+        form_retry.add_field("multi_scale", multi_scale_val)
         
         async with session.post(
             f"{face_url.rstrip('/')}/faces",
@@ -1750,6 +1770,7 @@ async def analyze_recording(
     no_face_embeddings: list[dict[str, Any]] | None = None,
     overlay_smoothing: bool = DEFAULT_OVERLAY_SMOOTHING,
     overlay_smoothing_alpha: float = DEFAULT_OVERLAY_SMOOTHING_ALPHA,
+    face_multiscale: bool = True,
 ) -> dict:
     """Offline analysis stub: extracts frames and writes a results JSON.
 
@@ -1806,6 +1827,11 @@ async def analyze_recording(
         start_time = time.monotonic()
         frames = await extract_frames(video_path, frames_dir, interval_s)
         duration_sec = round(time.monotonic() - start_time, 2)
+        
+        # v1.2.3: Get original video FPS and store it
+        video_fps = await _get_video_fps(video_path)
+        result["video_fps"] = video_fps
+        
         result["frames"] = frames
         result["frame_count"] = len(frames)
         result["duration_sec"] = duration_sec
@@ -1877,6 +1903,7 @@ async def analyze_recording(
                         face_match_threshold=face_match_threshold,
                         no_face_embeddings=no_face_embeddings,
                         interval_s=interval_s,
+                        face_multiscale=face_multiscale,
                     )
 
                 if fw and fh:

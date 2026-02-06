@@ -31,7 +31,7 @@ from .analysis_helpers import (
     _summarize_analysis,
 )
 from .analysis import detect_available_devices
-from .services import get_batch_analysis_progress, get_single_analysis_progress, get_recording_progress
+from .services import get_batch_analysis_progress, get_single_analysis_progress, get_recording_progress, cancel_batch_analysis
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -217,6 +217,25 @@ def register_websocket_handlers(
 
     websocket_api.async_register_command(hass, ws_get_analysis_progress)
 
+    # ======== v1.2.3: STOP BATCH ANALYSIS ========
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/stop_batch_analysis",
+    })
+    @websocket_api.async_response
+    async def ws_stop_batch_analysis(hass, connection, msg):
+        """Stop running batch analysis."""
+        try:
+            success = cancel_batch_analysis()
+            connection.send_result(msg["id"], {
+                "success": success,
+                "message": "Batch analysis stop requested" if success else "No batch analysis running"
+            })
+        except Exception as e:
+            log_to_file(f"Error stopping batch analysis: {e}")
+            connection.send_result(msg["id"], {"success": False, "error": str(e)})
+
+    websocket_api.async_register_command(hass, ws_stop_batch_analysis)
+
     # ======== GET SINGLE ANALYSIS PROGRESS ========
     @websocket_api.websocket_command({
         vol.Required("type"): "rtsp_recorder/get_single_analysis_progress",
@@ -315,11 +334,48 @@ def register_websocket_handlers(
             "coral": _sensor_info(analysis_perf_coral_entity),
         }
         stats["perf_sensors"] = perf
-        stats["inference_stats"] = _inference_stats.get_stats()
+        # v1.2.3: Use inference_stats from detector directly instead of local tracker
+        # The detector's /stats endpoint provides the correct values
         stats["system_stats"] = await hass.async_add_executor_job(get_system_stats)
         connection.send_result(msg["id"], stats)
 
     websocket_api.async_register_command(hass, ws_get_detector_stats)
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/reset_detector_stats",
+    })
+    @websocket_api.async_response
+    async def ws_reset_detector_stats(hass, connection, msg):
+        """Reset detector statistics (inference count, timing, etc.)."""
+        result = {"success": False, "message": "Unknown error"}
+        
+        if not analysis_detector_url:
+            result["message"] = "Detector URL not configured"
+            connection.send_result(msg["id"], result)
+            return
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{analysis_detector_url.rstrip('/')}/stats/reset",
+                    timeout=10
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        result["success"] = True
+                        result["message"] = data.get("message", "Statistics reset successfully")
+                    elif resp.status == 404:
+                        result["message"] = "Reset endpoint not supported by detector"
+                    else:
+                        result["message"] = f"HTTP error {resp.status}"
+        except asyncio.TimeoutError:
+            result["message"] = "Connection timeout"
+        except Exception as e:
+            result["message"] = str(e)
+        
+        connection.send_result(msg["id"], result)
+
+    websocket_api.async_register_command(hass, ws_reset_detector_stats)
 
     @websocket_api.websocket_command({
         vol.Required("type"): "rtsp_recorder/test_inference",

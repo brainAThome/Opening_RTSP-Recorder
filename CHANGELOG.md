@@ -4,7 +4,13 @@ All notable changes to RTSP Recorder will be documented in this file.
 
 ## [1.2.3] - PLANNED
 
-### 📲 Push Notifications bei Personen-Erkennung
+### � Fixes
+
+- **Stats-Anzeige korrigiert**: WebSocket-Handler verwendet jetzt die echten Detector-Stats statt lokaler Tracker-Werte
+- **Coral Anteil / TPU Last**: Werte stimmen jetzt mit den tatsächlichen Detector-Statistiken überein
+- **Push-basierte Stats**: Performance-Daten werden alle 2s gepusht (reduziert Polling auf 10s Fallback)
+
+### �📲 Push Notifications bei Personen-Erkennung
 
 **Sofortige Benachrichtigung wenn bekannte Personen erkannt werden!**
 
@@ -61,7 +67,33 @@ automation:
 
 ---
 
-## [1.2.2] - 2026-02-06
+## [1.2.2] - 2026-02-07
+
+### 🔄 Stats Reset Feature
+**Statistiken im Leistungs-Tab zurücksetzen:**
+- Neuer Button "Statistik zurücksetzen" im Performance-Tab
+- WebSocket-Handler: `rtsp_recorder/reset_detector_stats`
+- Detector-Endpoint: `POST /stats/reset`
+- Setzt zurück: Inference-Zähler, Durchschnittszeiten, Uptime
+
+### 🐛 Recording Indicator Fix
+**"Aufnahme läuft" Anzeige bleibt jetzt korrekt:**
+- **Problem**: Anzeige verschwand wenn eine andere Kamera ein Video lieferte
+- **Ursache**: `_restoreStatusIndicators()` verwendete alten Polling-Cache statt Event-Map
+- **Fix**: Alle Status-Updates nutzen jetzt `_updateRecordingUI()` mit `_runningRecordings` Map
+- **Datei**: `www/rtsp-recorder-card.js`
+
+### 🎬 FPS Display Fix
+**Korrekte FPS-Anzeige im Video-Player:**
+- Detector liefert jetzt `video_fps` im Analysis-Response
+- Frontend liest FPS aus Analyse-Daten
+- Fallback: 25 FPS (PAL-Standard) wenn keine Daten
+
+### 🧹 smooth_video Option entfernt
+**Aufräumen nicht verwendeter Optionen:**
+- Option aus Config Flow entfernt
+- Keine Auswirkung auf Funktionalität (wurde nicht genutzt)
+- Betrifft: `config_flow.py`, `__init__.py`, `services.py`, `analysis.py`, `de.json`
 
 ### 📱 Mobile Portrait-Ansicht (Ring-Style)
 **Optimierte Mobile-Version für Lovelace Card:**

@@ -629,6 +629,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 self.config_cache["analysis_face_enabled"] = bool(user_input.get("analysis_face_enabled", False))
                 self.config_cache["analysis_face_confidence"] = float(user_input.get("analysis_face_confidence", 0.2))
                 self.config_cache["analysis_face_match_threshold"] = float(user_input.get("analysis_face_match_threshold", 0.35))
+                self.config_cache["analysis_face_multiscale"] = bool(user_input.get("analysis_face_multiscale", True))
                 # Overlay smoothing for annotations
                 self.config_cache["analysis_overlay_smoothing"] = bool(user_input.get("analysis_overlay_smoothing", False))
                 self.config_cache["analysis_overlay_smoothing_alpha"] = float(user_input.get("analysis_overlay_smoothing_alpha", 0.35))
@@ -727,6 +728,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         cur_face_enabled = bool(self.config_cache.get("analysis_face_enabled", False))
         cur_face_confidence = float(self.config_cache.get("analysis_face_confidence", 0.2))
         cur_face_threshold = float(self.config_cache.get("analysis_face_match_threshold", 0.35))
+        cur_face_multiscale = bool(self.config_cache.get("analysis_face_multiscale", True))
         cur_max_concurrent = int(self.config_cache.get("analysis_max_concurrent", 2))
         cur_overlay_smoothing = bool(self.config_cache.get("analysis_overlay_smoothing", False))
         cur_overlay_alpha = float(self.config_cache.get("analysis_overlay_smoothing_alpha", 0.35))
@@ -746,7 +748,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 selector.NumberSelectorConfig(min=1, max=10, step=1, mode=selector.NumberSelectorMode.SLIDER, unit_of_measurement="Sek")
             ),
             vol.Required("analysis_max_concurrent", default=cur_max_concurrent): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=4, step=1, mode=selector.NumberSelectorMode.SLIDER)
+                selector.NumberSelectorConfig(min=1, max=10, step=1, mode=selector.NumberSelectorMode.SLIDER)
             ),
             vol.Optional("analysis_detector_url", default=cur_detector_url): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
@@ -762,6 +764,7 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             vol.Required("analysis_face_match_threshold", default=cur_face_threshold): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0.2, max=0.9, step=0.05, mode=selector.NumberSelectorMode.SLIDER)
             ),
+            vol.Required("analysis_face_multiscale", default=cur_face_multiscale): selector.BooleanSelector(),
             vol.Required("analysis_overlay_smoothing", default=cur_overlay_smoothing): selector.BooleanSelector(),
             vol.Required("analysis_overlay_smoothing_alpha", default=cur_overlay_alpha): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0.1, max=0.9, step=0.05, mode=selector.NumberSelectorMode.SLIDER)

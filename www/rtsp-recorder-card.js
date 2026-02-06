@@ -1,5 +1,5 @@
-// ===== RTSP Recorder Card v1.2.0 BETA =====
-console.log("[RTSP-Recorder] Card Version: 1.2.0 BETA");
+// ===== RTSP Recorder Card v1.2.2 BETA =====
+console.log("[RTSP-Recorder] Card Version: 1.2.2 BETA");
 // MED-008 Fix: Debug logging behind feature flag
 const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
 const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
@@ -8,7 +8,7 @@ const rtspWarn = (...args) => console.warn('[RTSP]', ...args);  // Warnings alwa
 const rtspError = (...args) => console.error('[RTSP]', ...args);  // Errors always shown
 
 if (RTSP_DEBUG) {
-    console.info("%c RTSP RECORDER CARD \\n%c v1.1.2 BETA (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #27ae60;");
+    console.info("%c RTSP RECORDER CARD \\n%c v1.2.2 BETA (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #27ae60;");
 }
 
 class RtspRecorderCard extends HTMLElement {
@@ -83,6 +83,8 @@ class RtspRecorderCard extends HTMLElement {
         this._statsHistory = [];
         this._maxHistoryPoints = 60;
         this._analysisProgress = null;  // v1.1.0: Analyse-Fortschritt
+        this._lastInferenceAt = null;
+        this._lastTotalInferences = null;
         const now = new Date();
         this._calYear = now.getFullYear();
         this._calMonth = now.getMonth();
@@ -155,7 +157,6 @@ class RtspRecorderCard extends HTMLElement {
                     duration: duration || 0,
                     started_at: new Date().toISOString()
                 });
-                console.log(`[RTSP-Recorder] Running recordings: ${this._runningRecordings.size}`);
                 // Update UI immediately
                 this._updateRecordingUI();
             }
@@ -163,12 +164,11 @@ class RtspRecorderCard extends HTMLElement {
         
         // v1.1.0m: recording_saved fires AFTER video+snapshot are ready
         this._subscribeToEvent('rtsp_recorder_recording_saved', async (event) => {
-            console.log('[RTSP-Recorder] PUSH: Recording saved (video + thumbnail ready)', event.data);
+            console.log('[RTSP-Recorder] PUSH: Recording saved', event.data?.camera);
             const { video_path, camera } = event.data;
             if (video_path) {
                 // Remove from running recordings Map
                 this._runningRecordings.delete(video_path);
-                console.log(`[RTSP-Recorder] Running recordings: ${this._runningRecordings.size}`);
                 // Update UI immediately
                 this._updateRecordingUI();
             }
@@ -190,8 +190,12 @@ class RtspRecorderCard extends HTMLElement {
                 await this.loadData();
             }
             
-            // v1.1.0h: Now that timeline is updated, refresh analysis status from Map
-            this._updateAnalysisUI();
+            // v1.2.4: Re-apply recording status after timeline refresh to prevent disappearing indicator
+            this._updateRecordingUI();
+            
+            // v1.2.3: REMOVED _updateAnalysisUI() call here - it caused race condition
+            // The analysis_started event hasn't been processed yet, so Map is empty
+            // Analysis UI is now purely event-driven via analysis_started/completed events
         });
         
         // v1.1.0L: Subscribe to analysis events - PURE EVENT-DRIVEN (no polling)
@@ -219,12 +223,80 @@ class RtspRecorderCard extends HTMLElement {
             }
         });
         
+        // v1.2.3: Subscribe to batch analysis progress (PUSH statt Polling)
+        this._subscribeToEvent('rtsp_recorder_batch_progress', (event) => {
+            console.log('[RTSP-Recorder] PUSH: Batch progress', event.data);
+            const progress = event.data || {};
+            
+            // Store for UI updates
+            this._batchProgress = progress;
+            
+            // Update progress UI
+            const root = this.shadowRoot;
+            const progressContainer = root.querySelector('#analysis-progress-container');
+            const progressBar = root.querySelector('#analysis-progress-bar');
+            const progressText = root.querySelector('#analysis-progress-text');
+            const btnEl = root.querySelector('#btn-analyze-all');
+            
+            if (progress.message === 'no_files') {
+                // No files to analyze
+                this.showToast('ℹ️ Keine neuen Aufnahmen zu analysieren', 'info');
+                this._stopBatchUI(btnEl, progressContainer);
+            } else if (progress.running && progress.total > 0) {
+                // Analysis running - update progress
+                const percent = Math.round((progress.current / progress.total) * 100);
+                
+                if (progressContainer) progressContainer.style.display = 'block';
+                if (progressBar) progressBar.style.width = percent + '%';
+                if (progressText) {
+                    const fileInfo = progress.current_file ? ` - ${progress.current_file}` : '';
+                    progressText.textContent = `${progress.current} von ${progress.total} analysiert (${percent}%)${fileInfo}`;
+                }
+                if (btnEl) {
+                    // v1.2.3: Button is clickable to stop analysis
+                    btnEl.innerHTML = `⏹️ Stopp (${progress.current}/${progress.total})`;
+                    btnEl.style.background = '#c62828';
+                    btnEl.disabled = false;
+                    btnEl.onclick = () => this._stopBatchAnalysis();
+                }
+                
+                // Fetch stats for live TPU load display
+                this.fetchDetectorStats();
+                this.updatePerfFooter();
+            } else if (progress.cancelled) {
+                // v1.2.3: Cancelled by user
+                this.showToast(`⏹️ Analyse abgebrochen: ${progress.current} von ${progress.total} analysiert`, 'warning');
+                this._stopBatchUI(btnEl, progressContainer);
+            } else if (progress.completed) {
+                // Completed
+                this.showToast(`✅ Analyse abgeschlossen: ${progress.current} Aufnahmen`, 'success');
+                if (progressBar) {
+                    progressBar.style.width = '100%';
+                    progressBar.style.background = '#4caf50';
+                }
+                if (progressText) {
+                    progressText.textContent = `✅ Fertig: ${progress.current} Aufnahmen analysiert`;
+                }
+                setTimeout(() => this._stopBatchUI(btnEl, progressContainer), 3000);
+            }
+        });
+        
         // v1.2.3: Subscribe to stats updates (PUSH statt Polling)
         this._subscribeToEvent('rtsp_recorder_stats_update', (event) => {
             // Update detector stats from push event
             const stats = event.data || {};
             if (stats.available !== false) {
                 this._detectorStats = stats;
+
+                const totalInf = stats.inference_stats?.total_inferences;
+                if (typeof totalInf === 'number') {
+                    if (this._lastTotalInferences == null || totalInf > this._lastTotalInferences) {
+                        this._lastInferenceAt = Date.now();
+                    } else if (totalInf === 0) {
+                        this._lastInferenceAt = null;
+                    }
+                    this._lastTotalInferences = totalInf;
+                }
                 
                 // Update live stats from HA sensors included in push
                 if (stats.system_stats_ha) {
@@ -325,7 +397,6 @@ class RtspRecorderCard extends HTMLElement {
         if (!statusEl) return;
         
         const count = this._runningRecordings.size;
-        console.log(`[RTSP-Recorder] _updateRecordingUI: ${count} running recordings`);
         
         if (count > 0) {
             // Build list of all recording cameras
@@ -462,8 +533,9 @@ class RtspRecorderCard extends HTMLElement {
                 console.log('[RTSP-Recorder] Recording ACTIVE:', progress.recordings);
             }
             
-            // Update ONLY the footer status - NOT the whole view (prevents zapping)
-            this._updateRecordingStatusOnly();
+            // v1.2.4: Update recording status from event-driven Map (not old cache)
+            // The polling is still useful for detecting recording ends, but display comes from Map
+            this._updateRecordingUI();
             
             // v1.1.0L: Analysis status is now pure event-driven - just update UI from Map
             this._updateAnalysisUI();
@@ -793,6 +865,11 @@ class RtspRecorderCard extends HTMLElement {
                 type: 'rtsp_recorder/get_analysis_progress'
             });
             
+            // v1.2.3: Store progress state for tab re-rendering
+            if (progress.running) {
+                this._batchProgress = progress;
+            }
+            
             if (progress.running) {
                 const root = this.shadowRoot;
                 const btnEl = root.querySelector('#btn-analyze-all');
@@ -872,6 +949,8 @@ class RtspRecorderCard extends HTMLElement {
                 #overlay-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
                 .fm-overlay-tl { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.55); padding: 6px 14px; border-radius: 4px; color: #fff; font-size: 0.9em; font-weight: 600; pointer-events: none; }
                 .fm-overlay-tr { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.35); padding: 6px 14px; border-radius: 4px; color: #ccc; font-size: 0.85em; pointer-events: none; }
+                .fm-frame-info { position: absolute; top: 52px; right: 20px; background: rgba(0,0,0,0.65); padding: 4px 10px; border-radius: 4px; color: #0f0; font-size: 0.75em; font-family: 'Consolas', 'Monaco', monospace; pointer-events: none; display: none; letter-spacing: 0.5px; }
+                .fm-frame-info.visible { display: block; }
                 .fm-sidebar { width: 420px; flex-shrink: 0; background: #111; border-left: 1px solid #222; display: flex; flex-direction: column; }
                 .fm-scroll { flex: 1; display: flex; overflow-y: auto; }
                 .fm-list { flex: 1; min-width: 0; background: #0d0d0d; display: flex; flex-direction: column; }
@@ -1513,6 +1592,7 @@ class RtspRecorderCard extends HTMLElement {
                         <div class="fm-player-body">
                             <div class="fm-overlay-tl" id="txt-cam" aria-live="polite">Waehle Aufnahme</div>
                             <div class="fm-overlay-tr" id="txt-date">BETA VERSION</div>
+                            <div class="fm-frame-info" id="txt-frame-info">00:00:00.000 | 0 FPS | Frame 0</div>
                             <video id="main-video" controls autoplay muted playsinline aria-label="Aufnahme Videoplayer"></video>
                             <canvas id="overlay-canvas" aria-hidden="true"></canvas>
                         
@@ -1872,6 +1952,9 @@ class RtspRecorderCard extends HTMLElement {
         const devices = stats.devices || [];
         const hasCoralUsb = devices.includes('coral_usb');
         const history = this._statsHistory || [];
+        // v1.2.3: Prefer HA host stats, fallback to detector stats
+        const hostStats = stats.system_stats_ha || {};
+        const sysStats = stats.system_stats || {};
 
         // Helper for gauge-style cards
         const gaugeCard = (label, value, unit, color, max = 100) => {
@@ -1887,10 +1970,10 @@ class RtspRecorderCard extends HTMLElement {
             `;
         };
 
-        // System stats
-        const cpu = live.cpu?.state ?? 0;
+        // System stats - prefer detector stats, fallback to HA sensors
+        const cpu = hostStats.cpu ?? sysStats.cpu_percent ?? live.cpu?.state ?? 0;
         const cpuColor = cpu > 80 ? '#f44336' : cpu > 50 ? '#ff9800' : '#4caf50';
-        const mem = live.memory?.state ?? 0;
+        const mem = hostStats.memory ?? sysStats.memory_percent ?? live.memory?.state ?? 0;
         const memColor = mem > 80 ? '#f44336' : mem > 60 ? '#ff9800' : '#4caf50';
 
         // Coral stats - v1.2.2: Fixed jumping status by using coral_inferences instead of last_device
@@ -1908,11 +1991,15 @@ class RtspRecorderCard extends HTMLElement {
         const deviceDisplay = hasInf ? (lastDevice === 'coral_usb' ? 'Coral USB' : 'CPU') : '-';
         const deviceColor = hasInf ? (lastDevice === 'coral_usb' ? '#4caf50' : '#ff9800') : '#666';
 
-        // v1.2.2: TPU Load - berechnet aus Inferenz-Zeit / 60s Fenster
+        // v1.2.3: TPU Load - Echtzeit: 0% wenn keine Inferenz in letzten 3 Sekunden
         const ipm = tracker.inferences_per_minute ?? 0;
-        const calculatedTpuLoad = hasInf ? Math.min(100, Math.round((ipm * avgMs) / 600)) : 0;
-        const tpuLoadVal = tracker.tpu_load_pct ?? calculatedTpuLoad;
+        const fallbackSecs = this._lastInferenceAt ? (Date.now() - this._lastInferenceAt) / 1000 : -1;
+        const secsSinceLastInf = tracker.seconds_since_last_inference ?? fallbackSecs;
+        const hasRealtime = secsSinceLastInf >= 0;
+        const isActive = hasRealtime ? secsSinceLastInf < 3 : ipm > 0;
+        const tpuLoadVal = isActive ? Math.min(100, Math.round((ipm * avgMs) / 600)) : 0;
         const tpuLoadDisplay = hasInf ? `${tpuLoadVal}%` : '-';
+        const inferenceMsDisplay = hasInf ? (isActive && avgMs > 0 ? `${avgMs.toFixed(0)}ms` : '0ms') : '-';
         const tpuLoadColor = !hasInf ? '#666' : tpuLoadVal > 25 ? '#f44336' : tpuLoadVal > 5 ? '#ff9800' : '#4caf50';
 
         // Mini sparkline from history
@@ -1978,7 +2065,7 @@ class RtspRecorderCard extends HTMLElement {
                         <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:16px; min-width:160px; flex:1;">
                             <div style="font-size:0.85em; color:#888; margin-bottom:8px;">Inferenzzeit</div>
                             <div style="font-size:1.8em; font-weight:600; color:#03a9f4;">
-                                ${avgMs > 0 ? avgMs.toFixed(0) + 'ms' : '-'}
+                                ${inferenceMsDisplay}
                             </div>
                         </div>
                         <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:16px; min-width:160px; flex:1;">
@@ -1991,9 +2078,12 @@ class RtspRecorderCard extends HTMLElement {
                             Coral-Nutzung wird nur bei aktiver Live-Erkennung oder neuer Videoanalyse gezaehlt.
                         </div>
                     ` : ''}
-                    <div style="margin-top:12px;">
+                    <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                         <button id="test-inference-btn" style="background:#03a9f4; color:#fff; border:none; padding:10px 20px; border-radius:6px; cursor:pointer; font-size:0.95em;">
                             Test-Inferenz starten
+                        </button>
+                        <button id="reset-stats-btn" style="background:#ff9800; color:#fff; border:none; padding:10px 20px; border-radius:6px; cursor:pointer; font-size:0.95em;">
+                            Statistik zurücksetzen
                         </button>
                         <span id="test-inference-status" style="margin-left:10px; color:#888; font-size:0.9em;"></span>
                     </div>
@@ -2028,6 +2118,10 @@ class RtspRecorderCard extends HTMLElement {
             if (btn) {
                 btn.onclick = () => this.runTestInference();
             }
+            const resetBtn = this.shadowRoot.querySelector('#reset-stats-btn');
+            if (resetBtn) {
+                resetBtn.onclick = () => this.resetDetectorStats();
+            }
         }, 50);
     }
 
@@ -2049,6 +2143,30 @@ class RtspRecorderCard extends HTMLElement {
             }
         } catch (e) {
             console.error('[RTSP-Recorder] Test inference failed:', e);
+            if (status) { status.textContent = 'Fehler: ' + (e.message || e); status.style.color = '#f44336'; }
+        }
+        
+        if (btn) btn.disabled = false;
+    }
+
+    async resetDetectorStats() {
+        const btn = this.shadowRoot.querySelector('#reset-stats-btn');
+        const status = this.shadowRoot.querySelector('#test-inference-status');
+        if (btn) btn.disabled = true;
+        if (status) status.textContent = 'Setze zurück...';
+        
+        try {
+            const result = await this._hass.callWS({ type: 'rtsp_recorder/reset_detector_stats' });
+            console.log('[RTSP-Recorder] Reset Stats Result:', result);
+            if (result.success) {
+                if (status) { status.textContent = '✓ Statistik zurückgesetzt'; status.style.color = '#4caf50'; }
+                // Refresh stats after reset
+                await this.fetchDetectorStats();
+            } else {
+                if (status) { status.textContent = 'Fehler: ' + result.message; status.style.color = '#f44336'; }
+            }
+        } catch (e) {
+            console.error('[RTSP-Recorder] Reset stats failed:', e);
             if (status) { status.textContent = 'Fehler: ' + (e.message || e); status.style.color = '#f44336'; }
         }
         
@@ -2420,6 +2538,32 @@ class RtspRecorderCard extends HTMLElement {
         container.querySelector('#btn-analyze-all').onclick = () => {
             this.analyzeAllRecordings();
         };
+        
+        // v1.2.3: Restore batch progress UI if analysis is running
+        if (this._batchProgress && this._batchProgress.running) {
+            const progress = this._batchProgress;
+            const btnEl = container.querySelector('#btn-analyze-all');
+            const progressContainer = container.querySelector('#analysis-progress-container');
+            const progressBar = container.querySelector('#analysis-progress-bar');
+            const progressText = container.querySelector('#analysis-progress-text');
+            
+            if (progress.total > 0) {
+                const percent = Math.round((progress.current / progress.total) * 100);
+                
+                if (progressContainer) progressContainer.style.display = 'block';
+                if (progressBar) progressBar.style.width = percent + '%';
+                if (progressText) {
+                    const fileInfo = progress.current_file ? ` - ${progress.current_file}` : '';
+                    progressText.textContent = `${progress.current} von ${progress.total} analysiert (${percent}%)${fileInfo}`;
+                }
+                if (btnEl) {
+                    btnEl.innerHTML = `⏹️ Stopp (${progress.current}/${progress.total})`;
+                    btnEl.style.background = '#c62828';
+                    btnEl.disabled = false;
+                    btnEl.onclick = () => this._stopBatchAnalysis();
+                }
+            }
+        }
         
         // Pagination event handlers
         container.querySelectorAll('.pagination-btn').forEach(btn => {
@@ -3908,6 +4052,11 @@ class RtspRecorderCard extends HTMLElement {
     }
 
     _startProgressPolling(btnEl, originalText) {
+        // v1.2.3: Progress updates now come via PUSH events (rtsp_recorder_batch_progress)
+        // This function only handles:
+        // 1. Initial UI setup
+        // 2. Stats polling for TPU load display (every 2s during analysis)
+        
         // Clear any existing polling
         if (this._progressPollingInterval) {
             clearInterval(this._progressPollingInterval);
@@ -3916,55 +4065,28 @@ class RtspRecorderCard extends HTMLElement {
         const root = this.shadowRoot;
         const progressContainer = root.querySelector('#analysis-progress-container');
         
-        // Show progress container
+        // Show progress container immediately
         if (progressContainer) {
             progressContainer.style.display = 'block';
         }
         
-        // Track polling attempts to handle startup delay
-        let pollAttempts = 0;
-        const maxStartupAttempts = 10; // Wait up to 20 seconds for analysis to start
+        // Set initial "preparing" state
+        const progressText = root.querySelector('#analysis-progress-text');
+        if (progressText) {
+            progressText.textContent = 'Analyse wird vorbereitet...';
+        }
         
-        // Poll every 2 seconds
-        this._progressPollingInterval = setInterval(async () => {
-            try {
-                const progress = await this._hass.callWS({
-                    type: 'rtsp_recorder/get_analysis_progress'
-                });
-                
-                pollAttempts++;
-                
-                // If analysis is running, update UI
-                if (progress.running) {
-                    this._updateProgressUI(progress, btnEl, originalText, progressContainer);
-                    pollAttempts = maxStartupAttempts; // Reset - analysis started
-                }
-                // If analysis finished (was running, now done)
-                else if (progress.total > 0 && progress.current >= progress.total) {
-                    this._updateProgressUI(progress, btnEl, originalText, progressContainer);
-                    this._stopProgressPolling(btnEl, originalText, progressContainer, progress);
-                }
-                // If not yet started, wait a bit
-                else if (pollAttempts < maxStartupAttempts) {
-                    // Still waiting for analysis to start
-                    const progressText = root.querySelector('#analysis-progress-text');
-                    if (progressText) {
-                        progressText.textContent = 'Analyse wird vorbereitet...';
-                    }
-                }
-                // Timeout - analysis never started (maybe nothing to analyze)
-                else {
-                    this._stopProgressPolling(btnEl, originalText, progressContainer, progress);
-                }
-            } catch (e) {
-                console.error('Progress polling error:', e);
-            }
+        // v1.2.3: Only poll stats for TPU load display - progress comes via PUSH
+        this._progressPollingInterval = setInterval(() => {
+            this.fetchDetectorStats();
+            this.updatePerfFooter();
         }, 2000);
         
-        // Safety timeout - stop after 30 minutes
+        // Safety timeout - stop stats polling after 30 minutes
         setTimeout(() => {
             if (this._progressPollingInterval) {
-                this._stopProgressPolling(btnEl, originalText, progressContainer, null);
+                clearInterval(this._progressPollingInterval);
+                this._progressPollingInterval = null;
             }
         }, 30 * 60 * 1000);
     }
@@ -4010,6 +4132,61 @@ class RtspRecorderCard extends HTMLElement {
             if (progressText) {
                 progressText.textContent = `✅ Fertig: ${progress.current} Aufnahmen analysiert`;
             }
+        }
+    }
+    
+    // v1.2.3: Helper to reset batch UI after completion (used by PUSH event handler)
+    _stopBatchUI(btnEl, progressContainerParam) {
+        const root = this.shadowRoot;
+        const currentBtn = root.querySelector('#btn-analyze-all');
+        const progressContainer = root.querySelector('#analysis-progress-container');
+        
+        // Restore button
+        const btn = currentBtn || btnEl;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = 'Alle Aufnahmen analysieren';
+            btn.style.opacity = '1';
+            btn.style.background = '';
+            // v1.2.3: Reset onclick to original handler (was changed to stop handler during analysis)
+            btn.onclick = null;
+        }
+        
+        // Hide progress container
+        const pc = progressContainer || progressContainerParam;
+        if (pc) {
+            pc.style.display = 'none';
+        }
+        
+        // Reset progress bar
+        const progressBar = root.querySelector('#analysis-progress-bar');
+        if (progressBar) {
+            progressBar.style.width = '0%';
+            progressBar.style.background = '#2196f3';
+        }
+        
+        // Refresh overview to show new analyses
+        this.refreshAnalysisOverview();
+    }
+    
+    // v1.2.3: Stop running batch analysis
+    async _stopBatchAnalysis() {
+        try {
+            const result = await this._hass.callWS({
+                type: 'rtsp_recorder/stop_batch_analysis'
+            });
+            if (result.success) {
+                this.showToast('⏹️ Stopp angefordert...', 'info');
+                // Button deaktivieren während abgebrochen wird
+                const btn = this.shadowRoot.querySelector('#btn-analyze-all');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '⏳ Wird gestoppt...';
+                }
+            }
+        } catch (e) {
+            console.error('Stop batch analysis error:', e);
+            this.showToast('⚠️ Stopp fehlgeschlagen', 'error');
         }
     }
     
@@ -4124,6 +4301,8 @@ class RtspRecorderCard extends HTMLElement {
                     width: data.frame_width || null,
                     height: data.frame_height || null
                 };
+                // v1.2.3: Store video FPS from analysis data for accurate display
+                this._videoFps = data.video_fps || null;
                 // v1.2.0: Build index for O(1) frame lookup (instead of Array.find)
                 this._detectionsIndex = {};
                 for (const d of data.detections) {
@@ -4250,20 +4429,14 @@ class RtspRecorderCard extends HTMLElement {
         }
     }
 
+    // v1.2.3: Stats polling entfernt - alle Updates kommen via PUSH events
     startStatsPolling() {
-        if (this._statsPolling) return;
-        // v1.2.3: Initial fetch only - main updates come via push event
+        // Initial fetch only - main updates come via rtsp_recorder_stats_update event
         this.fetchDetectorStats();
-        // v1.2.3: Keep a slow fallback poll (10s) for analysis/recording progress
-        // Main detector stats now come via rtsp_recorder_stats_update event
-        this._statsPolling = setInterval(() => this.fetchDetectorStats(), 10000);
     }
 
     stopStatsPolling() {
-        if (this._statsPolling) {
-            clearInterval(this._statsPolling);
-            this._statsPolling = null;
-        }
+        // No-op - no polling to stop anymore
     }
 
     updatePerfFooter() {
@@ -4272,36 +4445,45 @@ class RtspRecorderCard extends HTMLElement {
 
         if (!this._showPerfPanel) {
             panel.innerHTML = '';
-            this.stopStatsPolling();
             return;
         }
-
-        // Start polling if not already
-        this.startStatsPolling();
 
         const stats = this._detectorStats || {};
         const live = this._liveStats || {};
         const tracker = stats.inference_stats || {};
         const devices = stats.devices || [];
         const hasCoralUsb = devices.includes('coral_usb');
+        // v1.2.3: Prefer HA host stats, fallback to detector stats and legacy HA sensors
+        const hostStats = stats.system_stats_ha || {};
+        const sysStats = stats.system_stats || {};
 
-        // CPU from live HA sensor
+        // CPU - prefer detector stats, fallback to HA sensor
         let cpuValue = 'n/a';
         let cpuColor = '#888';
-        if (live.cpu && live.cpu.state != null) {
-            const cpuPct = live.cpu.state;
+        const cpuPct = hostStats.cpu ?? sysStats.cpu_percent ?? live.cpu?.state;
+        if (cpuPct != null) {
             cpuValue = cpuPct.toFixed(1) + '%';
             cpuColor = cpuPct > 80 ? '#f44336' : cpuPct > 50 ? '#ff9800' : '#4caf50';
         }
 
-        // Memory from live HA sensor
+        // Memory - prefer detector stats, fallback to HA sensor
         let memValue = 'n/a';
         let memColor = '#888';
-        if (live.memory && live.memory.state != null) {
-            const memPct = live.memory.state;
+        const memPct = hostStats.memory ?? sysStats.memory_percent ?? live.memory?.state;
+        if (memPct != null) {
             memValue = memPct.toFixed(1) + '%';
             memColor = memPct > 80 ? '#f44336' : memPct > 60 ? '#ff9800' : '#4caf50';
         }
+
+        const hasInf = tracker.total_inferences > 0;
+        const ipm = tracker.inferences_per_minute ?? 0;
+        const avgMs = tracker.avg_inference_ms ?? 0;
+        const fallbackSecs = this._lastInferenceAt ? (Date.now() - this._lastInferenceAt) / 1000 : -1;
+        const secsSinceLastInf = tracker.seconds_since_last_inference ?? fallbackSecs;
+        // Zeige 0% wenn länger als 3s keine Inferenz (Fallback: IPM)
+        const hasRealtime = secsSinceLastInf >= 0;
+        const isActive = hasRealtime ? secsSinceLastInf < 3 : ipm > 0;
+        const inferenceMsDisplay = hasInf ? (isActive && avgMs > 0 ? `${avgMs.toFixed(0)}ms` : '0ms') : '-';
 
         // Coral device status
         let coralHtml = '';
@@ -4309,7 +4491,6 @@ class RtspRecorderCard extends HTMLElement {
             // v1.2.2: Use coral_inferences > 0 instead of last_device to prevent jumping status
             const coralActive = tracker.coral_inferences > 0;
             const coralPct = tracker.recent_coral_pct ?? tracker.coral_usage_pct ?? 0;
-            const hasInf = tracker.total_inferences > 0;
             const coralDisplay = hasInf ? `${Math.round(coralPct)}%` : '-';
             const coralColor = !hasInf
                 ? '#666'
@@ -4319,13 +4500,8 @@ class RtspRecorderCard extends HTMLElement {
                         ? '#ff9800'
                         : '#666';
             
-            // v1.2.2: TPU Load - berechnet aus Inferenz-Zeit / 60s Fenster
-            // Fallback: Verwende coral_usage_pct wenn tpu_load_pct nicht existiert
-            // Berechnung: (avg_ms * inferences_per_min) / 60000ms * 100%
-            const ipm = tracker.inferences_per_minute ?? 0;
-            const avgMs = tracker.avg_inference_ms ?? 0;
-            const calculatedTpuLoad = hasInf ? Math.min(100, (ipm * avgMs) / 600) : 0; // Estimate
-            const tpuLoad = tracker.tpu_load_pct ?? calculatedTpuLoad;
+            // v1.2.3: TPU Load - Echtzeit: 0% wenn keine Inferenz in letzten 3 Sekunden
+            const tpuLoad = isActive ? Math.min(100, Math.round((ipm * avgMs) / 600)) : 0;
             const tpuLoadDisplay = hasInf ? `${Math.round(tpuLoad)}%` : '-';
             // Farbkodierung: <5% grün, 5-25% orange, >25% rot
             const tpuLoadColor = !hasInf
@@ -4372,7 +4548,7 @@ class RtspRecorderCard extends HTMLElement {
             inferenceHtml = `
                 <div class="fm-perf-card">
                     <div class="fm-perf-label">Inferenz</div>
-                    <div class="fm-perf-value">${(tracker.avg_inference_ms || 0).toFixed(0)}ms</div>
+                    <div class="fm-perf-value">${inferenceMsDisplay}</div>
                 </div>
                 <div class="fm-perf-card">
                     <div class="fm-perf-label">Gesamt</div>
@@ -4399,8 +4575,55 @@ class RtspRecorderCard extends HTMLElement {
         `;
     }
 
+    // v1.2.3: Update professional frame timecode overlay
+    _updateFrameInfo() {
+        const root = this.shadowRoot;
+        if (!root) return;
+        
+        const video = root.querySelector('#main-video');
+        const frameInfo = root.querySelector('#txt-frame-info');
+        if (!video || !frameInfo) return;
+        
+        // Only show when video is loaded and playing
+        if (!video.videoWidth || video.readyState < 2) {
+            frameInfo.classList.remove('visible');
+            return;
+        }
+        
+        frameInfo.classList.add('visible');
+        
+        const t = video.currentTime;
+        const duration = video.duration || 0;
+        
+        // v1.2.3: Use video FPS from analysis data (stored from ffprobe)
+        // Show "?" if no analysis data available (FPS unknown)
+        const hasFps = this._videoFps !== null && this._videoFps > 0;
+        const fps = hasFps ? this._videoFps : 20;  // Use 20 as estimate for frame display only
+        
+        // Calculate current frame number based on video FPS
+        const frameNum = Math.floor(t * fps);
+        const totalFrames = Math.floor(duration * fps);
+        
+        // Format timecode: HH:MM:SS:FF (SMPTE style)
+        const hours = Math.floor(t / 3600);
+        const mins = Math.floor((t % 3600) / 60);
+        const secs = Math.floor(t % 60);
+        const frames = Math.floor((t % 1) * fps);
+        
+        const timecode = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}:${String(frames).padStart(2, '0')}`;
+        
+        // v1.2.3: Show actual FPS from ffprobe, or "?" if unknown
+        const fpsDisplay = hasFps ? (Number.isInteger(fps) ? fps : fps.toFixed(1)) : '?';
+        
+        // Update display
+        frameInfo.innerHTML = `<span style="color:#0f0">${timecode}</span> | <span style="color:#ff0">${fpsDisplay} FPS</span> | <span style="color:#0ff">F${frameNum}/${totalFrames}</span>`;
+    }
+
     // v1.2.0: Schedule overlay update - throttled to reduce CPU load
     _scheduleOverlayUpdate() {
+        // v1.2.3: Always update frame info when video is playing
+        this._updateFrameInfo();
+        
         // v1.2.0: Quick bail-out before RAF if we know nothing changed
         if (!this._overlayEnabled || !this._analysisDetections) {
             return;
@@ -5034,6 +5257,9 @@ class RtspRecorderCard extends HTMLElement {
                 // Store current event for download/delete
                 this._currentEvent = ev;
                 
+                // v1.2.3: Reset cached video FPS on video change
+                this._videoFps = null;
+                
                 const video = root.querySelector('#main-video');
                 // Add loading state for smooth transition
                 if (this._animationsEnabled) {
@@ -5068,27 +5294,12 @@ class RtspRecorderCard extends HTMLElement {
         // 1. Footer-Sichtbarkeit
         this.updateFooterVisibility();
         
-        // 2. Recording-Status aus gecachtem State wiederherstellen
-        this._updateRecordingStatusOnly();
+        // 2. v1.2.4: Recording-Status aus _runningRecordings Map (event-driven)
+        // War: _updateRecordingStatusOnly() - verwendet alten _recordingProgress Cache
+        this._updateRecordingUI();
         
-        // 3. Analyse-Status: Erst cached State, dann async refresh
-        const progress = this._analysisProgress;
-        const analyses = (progress && progress.single && progress.single.analyses) || [];
-        const isRunning = progress?.single?.running;
-        
-        // Sofort aus Cache wiederherstellen (verhindert Flicker)
-        const statusEl = this.shadowRoot?.querySelector('#footer-analysis-status');
-        const textEl = this.shadowRoot?.querySelector('#analysis-status-text');
-        if (statusEl && isRunning && analyses.length > 0) {
-            statusEl.style.display = 'block';
-            // Kurzer Text für Footer
-            if (textEl) {
-                const count = analyses.filter(a => a.running).length;
-                textEl.textContent = count > 1 ? `${count} Analysen laufen...` : 'Analyse läuft...';
-            }
-        }
-        
-        // 4. v1.1.0L: Update analysis UI from Map (event-driven, no backend call needed)
+        // 3. v1.2.3: Analyse-Status direkt aus _runningAnalyses Map (event-driven)
+        // NICHT aus _analysisProgress Cache - das verursachte Race Conditions
         setTimeout(() => this._updateAnalysisUI(), 100);
     }
 

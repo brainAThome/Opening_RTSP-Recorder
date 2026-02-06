@@ -148,6 +148,12 @@ _tpu_last_check = 0.0  # Last time we checked TPU health
 
 # ===== Inference Metrics =====
 _metrics_lock = threading.Lock()
+# Sliding window for recent IPM calculation (3 second window for realtime display)
+from collections import deque
+_recent_inference_times: deque = deque(maxlen=1000)  # Store timestamps of recent inferences
+_RECENT_WINDOW_SECONDS = 3  # Window for "current" IPM - very short for realtime UI
+_last_inference_timestamp = 0.0  # Track when last inference happened
+
 _inference_metrics = {
     "total_inferences": 0,
     "successful_inferences": 0,
@@ -170,9 +176,13 @@ RETRY_DELAY_MS = 50  # Wait between retries
 # ===== Metrics & Logging Functions =====
 def _update_metrics(success: bool, inference_ms: float, device: str, retried: bool = False):
     """Update inference metrics thread-safely."""
-    global _inference_metrics
+    global _inference_metrics, _recent_inference_times, _last_inference_timestamp
     with _metrics_lock:
         _inference_metrics["total_inferences"] += 1
+        # Track timestamp for sliding window IPM and realtime display
+        now = time.time()
+        _recent_inference_times.append(now)
+        _last_inference_timestamp = now
         if success:
             _inference_metrics["successful_inferences"] += 1
         else:
@@ -1349,14 +1359,25 @@ def stats():
         # Calculate recent coral usage (from last 10 inferences approximation)
         recent_coral_pct = coral_pct  # Simplified - use overall percentage
         
-        # Calculate inferences per minute
-        uptime = time.time() - _startup_time if '_startup_time' in globals() else 0
-        ipm = round(total / (uptime / 60), 1) if uptime > 60 else 0
+        # Calculate inferences per minute using sliding window (last 60 seconds)
+        # Optimized: prune old entries first, then count remaining
+        now = time.time()
+        cutoff = now - _RECENT_WINDOW_SECONDS
+        # Remove old timestamps from the left (deque is ordered by time)
+        while _recent_inference_times and _recent_inference_times[0] < cutoff:
+            _recent_inference_times.popleft()
+        # All remaining entries are within the window
+        recent_count = len(_recent_inference_times)
+        ipm = round(recent_count * (60 / _RECENT_WINDOW_SECONDS), 1)
+        
+        # Also calculate uptime for reference
+        uptime = now - _startup_time if '_startup_time' in globals() else 0
         
         # Get system stats (optional - psutil may not be available)
         try:
             import psutil
-            cpu_percent = psutil.cpu_percent(interval=None)
+            # v1.2.3: Use interval=0.1 for actual measurement (interval=None returns 0 on first call)
+            cpu_percent = psutil.cpu_percent(interval=0.1)
             memory = psutil.virtual_memory()
             memory_percent = memory.percent
             memory_used_mb = round(memory.used / 1024 / 1024)
@@ -1403,6 +1424,8 @@ def stats():
                 "last_inference_ms": _inference_metrics["last_inference_ms"],
                 "coral_usage_pct": coral_pct,
                 "recent_coral_pct": recent_coral_pct,
+                "last_inference_timestamp": _last_inference_timestamp,
+                "seconds_since_last_inference": round(now - _last_inference_timestamp, 1) if _last_inference_timestamp > 0 else -1,
             },
             "system_stats": {
                 "cpu_percent": cpu_percent,
@@ -1411,6 +1434,47 @@ def stats():
                 "memory_total_mb": memory_total_mb,
             }
         }
+
+
+@app.post("/stats/reset")
+def stats_reset():
+    """Reset inference statistics counters.
+    
+    Resets all counters to zero but preserves:
+    - Device detection
+    - TPU health status
+    
+    Call this endpoint to start fresh statistics.
+    """
+    global _inference_metrics, _recent_inference_times, _last_inference_timestamp, _startup_time
+    
+    with _metrics_lock:
+        old_total = _inference_metrics["total_inferences"]
+        old_coral = _inference_metrics["tpu_inferences"]
+        old_cpu = _inference_metrics["cpu_inferences"]
+        
+        # Reset counters
+        _inference_metrics["total_inferences"] = 0
+        _inference_metrics["successful_inferences"] = 0
+        _inference_metrics["failed_inferences"] = 0
+        _inference_metrics["tpu_inferences"] = 0
+        _inference_metrics["cpu_inferences"] = 0
+        _inference_metrics["avg_inference_ms"] = 0
+        _inference_metrics["last_inference_ms"] = 0
+        _inference_metrics["last_device"] = None
+        
+        # Clear recent inference times
+        _recent_inference_times.clear()
+        _last_inference_timestamp = 0
+        
+        # Reset startup time for uptime calculation
+        _startup_time = time.time()
+    
+    return {
+        "success": True,
+        "message": f"Statistics reset. Previous: {old_total} total ({old_coral} Coral, {old_cpu} CPU)",
+        "reset_at": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
 
 
 # Track startup time for uptime calculation

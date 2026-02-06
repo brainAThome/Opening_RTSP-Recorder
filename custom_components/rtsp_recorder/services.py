@@ -71,6 +71,9 @@ _batch_analysis_progress = {
     "started_at": None,
 }
 
+# v1.2.3: Batch analysis cancel flag
+_batch_analysis_cancelled = False
+
 # Global single analysis progress tracking
 _single_analysis_progress = {
     "running": False,
@@ -88,6 +91,16 @@ _active_recordings = {}
 def get_batch_analysis_progress() -> dict:
     """Get current batch analysis progress (for WebSocket handler)."""
     return dict(_batch_analysis_progress)
+
+
+def cancel_batch_analysis() -> bool:
+    """Cancel the running batch analysis (for WebSocket handler)."""
+    global _batch_analysis_cancelled
+    if _batch_analysis_progress.get("running"):
+        _batch_analysis_cancelled = True
+        log_to_file("Batch analysis: Cancel requested")
+        return True
+    return False
 
 
 def get_single_analysis_progress() -> dict:
@@ -128,6 +141,7 @@ def register_services(
     analysis_face_enabled: bool,
     analysis_face_confidence: float,
     analysis_face_match_threshold: float,
+    analysis_face_multiscale: bool,
     analysis_overlay_smoothing: bool,
     analysis_overlay_smoothing_alpha: float,
     analysis_face_store_embeddings: bool,
@@ -156,6 +170,7 @@ def register_services(
         analysis_face_enabled: Face detection enabled
         analysis_face_confidence: Face detection confidence
         analysis_face_match_threshold: Face match threshold
+        analysis_face_multiscale: Multi-scale face detection
         analysis_overlay_smoothing: Enable overlay smoothing
         analysis_overlay_smoothing_alpha: Overlay smoothing alpha
         analysis_face_store_embeddings: Store face embeddings
@@ -500,6 +515,7 @@ def register_services(
                                 face_store_embeddings=analysis_face_store_embeddings,
                                 people_db=people,
                                 face_detector_url=analysis_detector_url,
+                                face_multiscale=analysis_face_multiscale,
                             )
                         if person_entities_enabled:
                             try:
@@ -578,20 +594,52 @@ def register_services(
             "current": 0,
             "current_file": "",
             "started_at": datetime.datetime.now().isoformat(),
+            "message": "",
         }
+
+        # Early exit if no files to analyze
+        if len(files) == 0:
+            log_to_file("Batch analysis: No files to analyze")
+            _batch_analysis_progress["running"] = False
+            _batch_analysis_progress["message"] = "no_files"
+            # v1.2.3: PUSH no-files event
+            hass.bus.async_fire("rtsp_recorder_batch_progress", {
+                "running": False,
+                "current": 0,
+                "total": 0,
+                "message": "no_files",
+            })
+            return 0
+
+        # v1.2.3: PUSH batch started event
+        hass.bus.async_fire("rtsp_recorder_batch_progress", {
+            "running": True,
+            "current": 0,
+            "total": len(files),
+            "current_file": "",
+        })
 
         people_data = await _load_people_db()
         people = people_data.get("people", [])
 
         semaphore = _get_analysis_semaphore()
-
-        processed = 0
-        for path in files:
-            # Update progress
-            _batch_analysis_progress["current"] = processed
-            _batch_analysis_progress["current_file"] = os.path.basename(path)
+        total_files = len(files)
+        processed_counter = {"count": 0}  # Mutable container for closure
+        
+        # v1.2.3: Reset cancel flag at start
+        global _batch_analysis_cancelled
+        _batch_analysis_cancelled = False
+        
+        async def analyze_single(path: str) -> bool:
+            """Analyze a single file with semaphore limiting."""
+            # v1.2.3: Check cancel flag before acquiring semaphore
+            if _batch_analysis_cancelled:
+                return False
             
             async with semaphore:
+                # v1.2.3: Check cancel flag again after acquiring
+                if _batch_analysis_cancelled:
+                    return False
                 try:
                     perf_snapshot = get_sensor_snapshot_func()
                     
@@ -624,20 +672,56 @@ def register_services(
                         face_store_embeddings=analysis_face_store_embeddings,
                         people_db=people,
                         face_detector_url=analysis_detector_url,
+                        face_multiscale=analysis_face_multiscale,
                     )
                     if person_entities_enabled and result:
                         updated = update_person_entities_func(result)
                         if not updated:
                             await update_person_entities_for_video_func(result.get("video_path"))
-                    processed += 1
+                    
+                    # Update counter and push progress
+                    processed_counter["count"] += 1
+                    _batch_analysis_progress["current"] = processed_counter["count"]
+                    _batch_analysis_progress["current_file"] = os.path.basename(path)
+                    
+                    # v1.2.3: PUSH batch progress to frontend
+                    hass.bus.async_fire("rtsp_recorder_batch_progress", {
+                        "running": True,
+                        "current": processed_counter["count"],
+                        "total": total_files,
+                        "current_file": os.path.basename(path),
+                    })
+                    return True
                 except Exception as e:
                     log_to_file(f"Batch analysis error for {path}: {e}")
-            await asyncio.sleep(0)
+                    return False
+        
+        # v1.2.3: Run all analyses in parallel (limited by semaphore)
+        tasks = [analyze_single(path) for path in files]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        processed = sum(1 for r in results if r is True)
+        
+        # v1.2.3: Check if cancelled
+        was_cancelled = _batch_analysis_cancelled
+        _batch_analysis_cancelled = False  # Reset for next run
 
         # Mark progress as complete
         _batch_analysis_progress["current"] = processed
         _batch_analysis_progress["running"] = False
         _batch_analysis_progress["current_file"] = ""
+        
+        # v1.2.3: PUSH completion/cancelled event
+        hass.bus.async_fire("rtsp_recorder_batch_progress", {
+            "running": False,
+            "current": processed,
+            "total": total_files,
+            "current_file": "",
+            "completed": not was_cancelled,
+            "cancelled": was_cancelled,
+        })
+        
+        if was_cancelled:
+            log_to_file(f"Batch analysis cancelled after {processed} of {total_files} files")
         
         return processed
 
@@ -719,6 +803,7 @@ def register_services(
                             face_store_embeddings=analysis_face_store_embeddings,
                             people_db=people,
                             face_detector_url=analysis_detector_url,
+                            face_multiscale=analysis_face_multiscale,
                         )
                     if person_entities_enabled and result:
                         updated = update_person_entities_func(result)
