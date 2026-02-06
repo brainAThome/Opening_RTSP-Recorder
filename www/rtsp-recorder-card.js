@@ -1864,9 +1864,9 @@ class RtspRecorderCard extends HTMLElement {
         const mem = live.memory?.state ?? 0;
         const memColor = mem > 80 ? '#f44336' : mem > 60 ? '#ff9800' : '#4caf50';
 
-        // Coral stats
-        const coralPct = tracker.recent_coral_pct ?? 0;
-        const coralActive = tracker.last_device === 'coral_usb';
+        // Coral stats - v1.2.2: Fixed jumping status by using coral_inferences instead of last_device
+        const coralPct = tracker.recent_coral_pct ?? tracker.coral_usage_pct ?? 0;
+        const coralActive = tracker.coral_inferences > 0;  // Stable: true if ever used Coral
         const lastDevice = tracker.last_device || 'keine';
         const avgMs = tracker.avg_inference_ms || 0;
         const totalInf = tracker.total_inferences || 0;
@@ -1874,10 +1874,17 @@ class RtspRecorderCard extends HTMLElement {
         const coralColor = hasInf
             ? (coralPct > 50 ? '#4caf50' : coralPct > 0 ? '#ff9800' : '#666')
             : '#666';
-        const coralDisplay = hasInf ? `${coralPct}%` : '-';
+        const coralDisplay = hasInf ? `${Math.round(coralPct)}%` : '-';
         // Device display
         const deviceDisplay = hasInf ? (lastDevice === 'coral_usb' ? 'Coral USB' : 'CPU') : '-';
         const deviceColor = hasInf ? (lastDevice === 'coral_usb' ? '#4caf50' : '#ff9800') : '#666';
+
+        // v1.2.2: TPU Load - berechnet aus Inferenz-Zeit / 60s Fenster
+        const ipm = tracker.inferences_per_minute ?? 0;
+        const calculatedTpuLoad = hasInf ? Math.min(100, Math.round((ipm * avgMs) / 600)) : 0;
+        const tpuLoadVal = tracker.tpu_load_pct ?? calculatedTpuLoad;
+        const tpuLoadDisplay = hasInf ? `${tpuLoadVal}%` : '-';
+        const tpuLoadColor = !hasInf ? '#666' : tpuLoadVal > 25 ? '#f44336' : tpuLoadVal > 5 ? '#ff9800' : '#4caf50';
 
         // Mini sparkline from history
         let sparklineSvg = '';
@@ -1934,8 +1941,8 @@ class RtspRecorderCard extends HTMLElement {
                             </div>
                             <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:16px; min-width:160px; flex:1;" title="Wie viel der TPU-Zeit ist mit Inferenzen belegt (60s Fenster)">
                                 <div style="font-size:0.85em; color:#888; margin-bottom:8px;">TPU Last</div>
-                                <div style="font-size:1.8em; font-weight:600; color:${(tracker.tpu_load_pct ?? 0) > 25 ? '#f44336' : (tracker.tpu_load_pct ?? 0) > 5 ? '#ff9800' : '#4caf50'};">
-                                    ${hasInf ? (tracker.tpu_load_pct ?? 0) + '%' : '-'}
+                                <div style="font-size:1.8em; font-weight:600; color:${tpuLoadColor};">
+                                    ${tpuLoadDisplay}
                                 </div>
                             </div>
                         ` : ''}
@@ -4268,10 +4275,11 @@ class RtspRecorderCard extends HTMLElement {
         // Coral device status
         let coralHtml = '';
         if (hasCoralUsb) {
-            const coralActive = tracker.last_device === 'coral_usb';
-            const coralPct = tracker.recent_coral_pct ?? 0;
+            // v1.2.2: Use coral_inferences > 0 instead of last_device to prevent jumping status
+            const coralActive = tracker.coral_inferences > 0;
+            const coralPct = tracker.recent_coral_pct ?? tracker.coral_usage_pct ?? 0;
             const hasInf = tracker.total_inferences > 0;
-            const coralDisplay = hasInf ? `${coralPct}%` : '-';
+            const coralDisplay = hasInf ? `${Math.round(coralPct)}%` : '-';
             const coralColor = !hasInf
                 ? '#666'
                 : coralPct > 50
@@ -4280,10 +4288,14 @@ class RtspRecorderCard extends HTMLElement {
                         ? '#ff9800'
                         : '#666';
             
-            // v1.1.0: TPU Load - berechnete Chip-Auslastung
-            // Formel: (Summe Coral-Inferenz-Zeit / Zeitfenster) × 100
-            const tpuLoad = tracker.tpu_load_pct ?? 0;
-            const tpuLoadDisplay = hasInf ? `${tpuLoad}%` : '-';
+            // v1.2.2: TPU Load - berechnet aus Inferenz-Zeit / 60s Fenster
+            // Fallback: Verwende coral_usage_pct wenn tpu_load_pct nicht existiert
+            // Berechnung: (avg_ms * inferences_per_min) / 60000ms * 100%
+            const ipm = tracker.inferences_per_minute ?? 0;
+            const avgMs = tracker.avg_inference_ms ?? 0;
+            const calculatedTpuLoad = hasInf ? Math.min(100, (ipm * avgMs) / 600) : 0; // Estimate
+            const tpuLoad = tracker.tpu_load_pct ?? calculatedTpuLoad;
+            const tpuLoadDisplay = hasInf ? `${Math.round(tpuLoad)}%` : '-';
             // Farbkodierung: <5% grün, 5-25% orange, >25% rot
             const tpuLoadColor = !hasInf
                 ? '#666'
