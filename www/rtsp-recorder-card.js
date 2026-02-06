@@ -1,5 +1,5 @@
-// ===== RTSP Recorder Card v1.2.2 BETA =====
-console.log("[RTSP-Recorder] Card Version: 1.2.2 BETA");
+// ===== RTSP Recorder Card v1.2.0 BETA =====
+console.log("[RTSP-Recorder] Card Version: 1.2.0 BETA");
 // MED-008 Fix: Debug logging behind feature flag
 const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
 const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
@@ -50,13 +50,13 @@ class RtspRecorderCard extends HTMLElement {
         this._lastOverlayKey = null;  // v1.1.0h: Throttle overlay redraws
         this._overlayRAF = null;  // v1.1.0k: requestAnimationFrame ID for smooth overlay
         this._overlayDebounce = null;  // v1.1.0k: Debounce timer for overlay updates
-        this._overlayCtx = null;  // v1.2.2: Cached canvas context for performance
-        this._detectionsIndex = null;  // v1.2.2: Indexed detections for O(1) lookup
-        this._overlaySmoothingEnabled = false;  // v1.2.2: Overlay box smoothing
-        this._overlaySmoothingAlpha = 0.35;  // v1.2.2: Smoothing alpha (lerp factor)
-        this._smoothedBoxes = {};  // v1.2.2: Current smoothed positions per detection
-        this._lastSmoothTime = null;  // v1.2.2: Last animation timestamp
-        this._smoothingRAF = null;  // v1.2.2: Continuous RAF for smoothing
+        this._overlayCtx = null;  // v1.2.0: Cached canvas context for performance
+        this._detectionsIndex = null;  // v1.2.0: Indexed detections for O(1) lookup
+        this._overlaySmoothingEnabled = false;  // v1.2.0: Overlay box smoothing
+        this._overlaySmoothingAlpha = 0.35;  // v1.2.0: Smoothing alpha (lerp factor)
+        this._smoothedBoxes = {};  // v1.2.0: Current smoothed positions per detection
+        this._lastSmoothTime = null;  // v1.2.0: Last animation timestamp
+        this._smoothingRAF = null;  // v1.2.0: Continuous RAF for smoothing
         this._runningAnalyses = new Map();  // v1.1.0L: Map of video_path -> {camera, started_at} - pure event-driven
         this._runningRecordings = new Map();  // v1.1.0m: Map of video_path -> {camera, duration, started_at} - pure event-driven
         this._lastOverlaySize = null;  // v1.1.0h: Track size changes
@@ -810,7 +810,7 @@ class RtspRecorderCard extends HTMLElement {
                 this._basePath = config.storage_path;
                 console.log('[RTSP-Recorder] Using storage_path from integration:', this._basePath);
             }
-            // v1.2.2: Overlay-Smoothing aus Config laden
+            // v1.2.0: Overlay-Smoothing aus Config laden
             if (config) {
                 this._overlaySmoothingEnabled = config.analysis_overlay_smoothing === true;
                 this._overlaySmoothingAlpha = config.analysis_overlay_smoothing_alpha || 0.35;
@@ -3250,7 +3250,7 @@ class RtspRecorderCard extends HTMLElement {
         }
     }
 
-    // v1.2.2: Person Detail Popup with quality scores, outlier detection and bulk selection
+    // v1.2.0: Person Detail Popup with quality scores, outlier detection and bulk selection
     async showPersonDetailPopup(personId) {
         try {
             // Load person details with quality scores from backend
@@ -3360,7 +3360,7 @@ class RtspRecorderCard extends HTMLElement {
                         </div>
                     </div>
                     
-                    <!-- v1.2.2: Quality Stats Row -->
+                    <!-- v1.2.0: Quality Stats Row -->
                     <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-bottom:20px;">
                         <div style="background:#222; padding:12px; border-radius:10px; text-align:center;">
                             <div style="font-size:1.4em; font-weight:bold; color:${details.avg_quality >= 80 ? '#27ae60' : details.avg_quality >= 60 ? '#f39c12' : '#e74c3c'};">${details.avg_quality || 0}%</div>
@@ -3381,7 +3381,7 @@ class RtspRecorderCard extends HTMLElement {
                         📅 Erstellt: ${formatDate(details.created_at)}
                     </div>
                     
-                    <!-- v1.2.2: Bulk Actions -->
+                    <!-- v1.2.0: Bulk Actions -->
                     <div id="bulk-actions" style="display:none; background:#1a3a5a; padding:12px; border-radius:10px; margin-bottom:15px; border:1px solid #2a5a8a;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <div>
@@ -3479,7 +3479,7 @@ class RtspRecorderCard extends HTMLElement {
                 btn.onmouseout = () => { btn.style.opacity = '0.85'; btn.style.transform = 'scale(1)'; };
             });
             
-            // v1.2.2: Checkbox handlers for bulk selection
+            // v1.2.0: Checkbox handlers for bulk selection
             const bulkActionsDiv = popup.querySelector('#bulk-actions');
             const selectedCountSpan = popup.querySelector('#selected-count');
             
@@ -4071,11 +4071,11 @@ class RtspRecorderCard extends HTMLElement {
 
     async loadDetectionsForCurrentVideo() {
         if (!this._currentEvent || !this._overlayEnabled) return;
-        // v1.2.2: Reset overlay cache when loading new video
+        // v1.2.0: Reset overlay cache when loading new video
         this._lastOverlayKey = null;
         this._lastOverlaySize = null;
-        this._overlayCtx = null;  // v1.2.2: Reset cached context
-        this._detectionsIndex = null;  // v1.2.2: Reset index
+        this._overlayCtx = null;  // v1.2.0: Reset cached context
+        this._detectionsIndex = null;  // v1.2.0: Reset index
         try {
             const data = await this._hass.callWS({
                 type: 'rtsp_recorder/get_analysis_result',
@@ -4088,7 +4088,7 @@ class RtspRecorderCard extends HTMLElement {
                     width: data.frame_width || null,
                     height: data.frame_height || null
                 };
-                // v1.2.2: Build index for O(1) frame lookup (instead of Array.find)
+                // v1.2.0: Build index for O(1) frame lookup (instead of Array.find)
                 this._detectionsIndex = {};
                 for (const d of data.detections) {
                     this._detectionsIndex[d.time_s] = d;
@@ -4115,12 +4115,12 @@ class RtspRecorderCard extends HTMLElement {
     clearOverlay() {
         const canvas = this.shadowRoot.querySelector('#overlay-canvas');
         if (!canvas) return;
-        // v1.2.2: Use cached context if available
+        // v1.2.0: Use cached context if available
         const ctx = this._overlayCtx || canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // v1.2.2: Reset index on clear
+        // v1.2.0: Reset index on clear
         this._detectionsIndex = null;
-        // v1.2.2: Stop smoothing loop and clear smoothed boxes
+        // v1.2.0: Stop smoothing loop and clear smoothed boxes
         this._stopSmoothingLoop();
         this._smoothedBoxes = new Map();
     }
