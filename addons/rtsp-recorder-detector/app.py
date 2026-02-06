@@ -13,7 +13,7 @@ from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 import tflite_runtime.interpreter as tflite
 
-# Use Frigate's tested models (mobiledet - much better than old mobilenet)
+# Use tested models (mobiledet - much better than old mobilenet)
 MODEL_CPU_URL = "https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess.tflite"
 MODEL_CORAL_URL = "https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess_edgetpu.tflite"
 LABELS_URL = "https://github.com/google-coral/test_data/raw/master/coco_labels.txt"

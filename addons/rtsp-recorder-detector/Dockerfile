@@ -1,5 +1,5 @@
 # Dockerfile for RTSP Recorder Detector Add-on
-# With proper Coral USB EdgeTPU support (like Frigate uses)
+# With proper Coral USB EdgeTPU support
 # Uses libedgetpu-max for maximum performance
 
 FROM ghcr.io/home-assistant/amd64-base-debian:bookworm
