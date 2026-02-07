@@ -145,20 +145,24 @@ Das Detector Add-on ermöglicht KI-Analyse mit Coral USB EdgeTPU.
 
 > ⚠️ **Dieser Schritt ist optional aber empfohlen für KI-Objekterkennung und Gesichtserkennung!**
 
-### 4.1 Add-on Dateien kopieren
-
-1. Zugriff auf deinen Home Assistant Config-Ordner (via SSH, Samba, oder File Editor)
-2. Erstelle den Ordner `/addons/rtsp-recorder-detector/` falls er nicht existiert
-3. Kopiere alle Dateien aus `addons/rtsp-recorder-detector/` dorthin
-
-### 4.2 Add-on installieren
+### 4.1 Add-on Repository hinzufügen
 
 1. Gehe zu **Einstellungen** → **Add-ons**
 2. Klicke **Add-on Store** (unten rechts)
-3. Klicke **⋮** (drei Punkte oben rechts) → **Nach Updates suchen**
-4. Scrolle runter zu **"Lokale Add-ons"**
-5. Finde **"RTSP Recorder Detector"** und klicke darauf
-6. Klicke **Installieren** und warte (das kann 5-10 Minuten dauern)
+3. Klicke auf das **⋮** (Drei-Punkte-Menü) oben rechts
+4. Wähle **Repositories**
+5. Füge hinzu:
+   ```
+   https://github.com/brainAThome/Opening_RTSP-Recorder
+   ```
+6. Klicke **Hinzufügen** und dann **Schließen**
+
+### 4.2 Add-on installieren
+
+1. Klicke **⋮** → **Nach Updates suchen** (Seite aktualisiert sich)
+2. Scrolle runter - du siehst nun den Abschnitt **"Opening RTSP Recorder"**
+3. Klicke auf **"RTSP Recorder Detector"**
+4. Klicke **Installieren** und warte (das kann 5-10 Minuten dauern)
 
 ### 4.3 USB-Zugriff konfigurieren (für Coral)
 
