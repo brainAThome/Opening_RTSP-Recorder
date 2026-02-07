@@ -1,6 +1,6 @@
 # Ring Kamera - Amazon Datenfluss Analyse
 
-**Datum:** 07. Februar 2026  
+**Datum:** 06. Februar 2026  
 **Status:** Dokumentiert  
 **Projekt:** RTSP Recorder - Lokale Aufnahme ohne Cloud-Abhängigkeit
 
