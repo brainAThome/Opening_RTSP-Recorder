@@ -3,6 +3,7 @@
     "name": "RTSP Recorder",
     "config_flow": true,
     "version": "1.2.3",
+    "homeassistant": "2026.2.0",
     "documentation": "https://github.com/brainAThome/RTSP-Recorder",
     "dependencies": [
         "ffmpeg"
