@@ -249,10 +249,11 @@ Replace expensive cloud subscriptions (Ring €200/yr, Nest €100/yr, Arlo €1
 
 ### Recording & Storage
 - 🎥 **Motion-triggered recording** from RTSP cameras
+- � **Multi-Sensor Trigger** support (motion, doorbell, etc.)
+- ⚡ **Parallel recording & snapshot capture** for instant timeline updates
 - 📁 **Automatic retention management** for recordings, snapshots, and analysis
 - ⏱️ **Configurable recording duration** and snapshot delay
 - 🗂️ **Per-camera retention settings** override global defaults
-- 📷 **Automatic thumbnail generation** for each recording
 - 🧹 **Configurable cleanup interval** (1-24 hours)
 
 ### AI Detection
@@ -266,6 +267,8 @@ Replace expensive cloud subscriptions (Ring €200/yr, Nest €100/yr, Arlo €1
 
 ### Person Management
 - 👤 **Person database** with training workflow
+- 📲 **Push Notifications** with images for known persons
+- 📊 **Sample Quality Analysis** with outlier detection
 - ✅ **Positive samples** for face matching
 - ❌ **Negative samples** to prevent false matches (threshold: 75%)
 - 🚦 **Optional person entities** for Home Assistant automations
@@ -280,9 +283,10 @@ Replace expensive cloud subscriptions (Ring €200/yr, Nest €100/yr, Arlo €1
 
 ### Dashboard
 - 🎛️ **Beautiful Lovelace card** with video playback
+- 📱 **Mobile-optimized portrait layout** with timeline
 - 🖼️ **Timeline view** with thumbnails
-- 🔴 **Detection overlay** showing bounding boxes
-- 👥 **Persons tab** with training workflow
+- 🔴 **Detection overlay** with smooth animations
+- 👥 **Persons tab** with quality scores and bulk management
 - ⚡ **Real-time detector stats** panel
 - 📊 **Movement profile** with recognition history
 
@@ -304,7 +308,7 @@ flowchart TB
         end
         
         subgraph Dashboard["Lovelace Card"]
-            CARD["rtsp-recorder-card.js<br/>4,328 LOC"]
+            CARD["rtsp-recorder-card.js<br/>5,306 LOC"]
         end
         
         WS["WebSocket API<br/>20 Handlers"]
@@ -317,7 +321,7 @@ flowchart TB
             DETECT["MobileDet<br/>Object Detection"]
             FACE["MobileNet V2<br/>Face Detection"]
             EMBED["EfficientNet-S<br/>Face Embeddings"]
-            POSE["MoveNet<br/>Pose Estimation"]
+            POSE["MoveNet SinglePose<br/>Pose Estimation"]
         end
         CORAL["Coral EdgeTPU"]
         CPU["CPU Fallback"]
