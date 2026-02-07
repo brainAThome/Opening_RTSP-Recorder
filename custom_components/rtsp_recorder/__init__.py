@@ -117,6 +117,66 @@ class ThumbnailView(HomeAssistantView):
             return web.Response(status=500, text="Internal error")
 
 
+async def _install_dashboard_card(hass) -> bool:
+    """Install the dashboard card JS file to /config/www/ and register as Lovelace resource.
+    
+    This ensures the card is automatically available after HACS installation
+    without requiring manual file copying.
+    """
+    import shutil
+    from pathlib import Path
+    
+    # Source: JS file bundled with the integration
+    source_file = Path(__file__).parent / "rtsp-recorder-card.js"
+    
+    # Destination: /config/www/rtsp-recorder-card.js
+    www_dir = Path(hass.config.path("www"))
+    dest_file = www_dir / "rtsp-recorder-card.js"
+    
+    try:
+        # Create www directory if it doesn't exist
+        www_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Check if source exists
+        if not source_file.exists():
+            _LOGGER.warning(f"Dashboard card source not found: {source_file}")
+            return False
+        
+        # Copy file if it doesn't exist or is different (update)
+        source_size = source_file.stat().st_size
+        needs_copy = True
+        
+        if dest_file.exists():
+            dest_size = dest_file.stat().st_size
+            if dest_size == source_size:
+                # Same size, likely same file - skip copy
+                needs_copy = False
+                _LOGGER.debug("Dashboard card already installed (same size)")
+        
+        if needs_copy:
+            # Run file copy in executor to avoid blocking
+            def _do_copy():
+                shutil.copy2(source_file, dest_file)
+            
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _do_copy)
+            _LOGGER.info(f"Dashboard card installed to {dest_file}")
+        
+        # Register as Lovelace resource (idempotent - won't duplicate)
+        resource_url = "/local/rtsp-recorder-card.js"
+        
+        # Use add_extra_js_url for automatic registration
+        # This is the simplest approach - HA handles deduplication
+        add_extra_js_url(hass, resource_url)
+        _LOGGER.debug(f"Dashboard card registered as frontend resource: {resource_url}")
+        
+        return True
+        
+    except Exception as e:
+        _LOGGER.error(f"Failed to install dashboard card: {e}")
+        return False
+
+
 async def async_setup(hass, config) -> bool:
     """Set up the RTSP Recorder component."""
     return True
@@ -125,6 +185,9 @@ async def async_setup(hass, config) -> bool:
 async def async_setup_entry(hass, entry: ConfigEntry) -> bool:
     """Set up RTSP Recorder from a config entry."""
     log_to_file(f"START: Setting up RTSP Recorder entry {entry.entry_id}")
+    
+    # v1.2.5: Auto-install dashboard card
+    await _install_dashboard_card(hass)
     
     # Merge data and options
     config_data = {**entry.data, **entry.options}
