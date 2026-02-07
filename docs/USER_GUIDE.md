@@ -2,7 +2,7 @@
 
 > 🇩🇪 **[Deutsche Version / German Version](USER_GUIDE_DE.md)**
 
-**Version:** 1.2.2  
+**Version:** 1.2.5  
 **Date:** February 2026  
 **Compatibility:** Home Assistant 2024.1+
 
@@ -34,14 +34,14 @@
 
 RTSP Recorder is a comprehensive video surveillance solution for Home Assistant with AI-powered object detection and face recognition.
 
-### What's New in v1.2.2?
+### What's New in v1.2.5?
 
 | Feature | Description |
 |---------|-------------|
+| 🎥 **Correct Video FPS** | Recordings now have correct framerate metadata |
 | 📊 **Statistics Reset** | Reset detector statistics from UI |
 | 🔴 **Recording Indicator Fix** | Multi-camera display fixed |
-| 🎬 **FPS Display** | Shows actual video FPS |
-| 📖 **Ring Privacy Docs** | Amazon data flow documentation |
+| 📖 **Improved Documentation** | Beginner-friendly installation guide |
 
 ### Main Features
 
@@ -65,51 +65,16 @@ RTSP Recorder is a comprehensive video surveillance solution for Home Assistant 
 
 ## 2. Installation
 
-### 2.1 Installation via HACS (Recommended)
+For detailed step-by-step installation instructions, see the **[Installation Guide](INSTALLATION.md)**.
 
-1. **Open HACS** in Home Assistant
-2. Click **⋮** (three-dot menu) → **Custom repositories**
-3. Enter repository URL:
-   ```
-   https://github.com/brainAThome/Opening_RTSP-Recorder
-   ```
-4. Category: **Integration**
-5. Click **Add**
-6. Search for "RTSP Recorder" and click **Download**
-7. **Restart Home Assistant**
+### Quick Overview
 
-### 2.2 Manual Installation
+1. **Install via HACS:** Add repository, download, restart HA
+2. **Install Detector Add-on:** For AI analysis (optional but recommended)
+3. **Add Integration:** Settings → Devices & Services → Add Integration
+4. **Setup Dashboard:** Create card with Panel mode
 
-1. **Copy integration:**
-   ```
-   custom_components/rtsp_recorder/ → /config/custom_components/rtsp_recorder/
-   ```
-
-2. **Copy dashboard card:**
-   ```
-   www/rtsp-recorder-card.js → /config/www/rtsp-recorder-card.js
-   ```
-
-3. **Add Lovelace resource:**
-   
-   Settings → Dashboards → Resources → Add Resource:
-   ```yaml
-   URL: /local/rtsp-recorder-card.js
-   Type: JavaScript Module
-   ```
-
-4. **Restart Home Assistant**
-
-### 2.3 Detector Add-on (Optional, for Coral USB)
-
-The Detector Add-on enables hardware-accelerated AI analysis.
-
-1. Copy `addons/rtsp-recorder-detector/` to `/addons/`
-2. Settings → Add-ons → Add-on Store
-3. Click **⋮** → **Repositories** (auto-detected)
-4. Install "RTSP Recorder Detector"
-5. Configure USB passthrough for Coral
-6. Start the add-on
+> ⚠️ **Important:** The Detector URL varies per installation! Check the [Installation Guide](INSTALLATION.md#45-find-your-detector-url-critical) for how to find your correct URL.
 
 ---
 
@@ -135,15 +100,42 @@ In the configuration wizard:
 
 ### 3.3 Add Dashboard Card
 
-1. Edit dashboard → **+ Add Card**
-2. Choose **Manual** (YAML)
-3. Add:
+**Step 1: Create a new Dashboard (recommended)**
+
+1. Go to **Settings** → **Dashboards**
+2. Click **+ Add Dashboard**
+3. Name it "RTSP Recorder", choose icon `mdi:cctv`
+4. Click **Create**
+
+**Step 2: Add the Card**
+
+1. Open your new dashboard
+2. Click **✏️** (Edit) in the top right
+3. Click **+ Add Card**
+4. Scroll down and click **"Manual"**
+5. Delete any existing content and paste:
 
 ```yaml
 type: custom:rtsp-recorder-card
-base_path: /media/rtsp_recordings
+base_path: /media/rtsp_recorder/ring_recordings
 thumb_path: /local/thumbnails
 ```
+
+6. Click **Save**
+
+**Step 3: Set to Panel Mode (IMPORTANT for best display!)**
+
+1. While in edit mode, click the **✏️** next to the view name at the top (e.g., "Default View")
+2. Find **"View type"**
+3. Change from "Masonry" to **"Panel (1 card)"**
+4. Click **Save**
+5. Click **Done** (top right)
+
+The card now fills the entire screen!
+
+**Step 4: Refresh Browser**
+
+Press `Ctrl + Shift + R` (Windows/Linux) or `Cmd + Shift + R` (Mac) to force-refresh.
 
 ---
 
