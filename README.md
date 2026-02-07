@@ -758,7 +758,7 @@ The main Home Assistant integration that handles:
 
 ### 2. Dashboard Card (`/www/rtsp-recorder-card.js`)
 
-**4,328 Lines of Code**
+**5,306 Lines of Code**
 
 A feature-rich Lovelace card providing:
 - Video playback with timeline navigation
