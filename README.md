@@ -1242,10 +1242,10 @@ All code, documentation, and architecture were created entirely through AI pair 
 
 <div align="center">
 
-*Built with ❤️ by a Smart Home Enthusiast and Tech Nerd,  
+*Built with ❤️ (and millions of AI tokens) by a Smart Home Enthusiast and Tech Nerd,  
 for everyone who loves technology as much as we do.*
 
-*Dieses Projekt wurde mit viel Liebe von einem Smarthome-Liebhaber und Tech-Nerd  
+*Dieses Projekt wurde mit viel Liebe (und sehr vielen Tokens) von einem Smarthome-Liebhaber und Tech-Nerd  
 für alle entwickelt, die Technik genauso im Herzen tragen.*
 
 </div>
