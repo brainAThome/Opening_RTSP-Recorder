@@ -16,7 +16,7 @@ A complete video surveillance solution with AI-powered object detection using Co
 ![Tests](https://img.shields.io/badge/Tests-139%20passed-brightgreen)
 ![Vibe Coded](https://img.shields.io/badge/Vibe%20Coded-100%25%20AI-blueviolet)
 
-📋 **[Audit Report v1.2.2](docs/FINAL_AUDIT_REPORT_v1.2.2.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.2.2_DE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (07.02.2026)
+📋 **[Audit Report v1.2.3](docs/FINAL_AUDIT_REPORT_v1.2.3.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.2.3_DE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (07.02.2026)
 🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
 
 ## What's New in v1.2.3
