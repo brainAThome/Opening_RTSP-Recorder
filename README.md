@@ -1185,6 +1185,24 @@ See [FINAL_AUDIT_REPORT_v1.2.2](docs/FINAL_AUDIT_REPORT_v1.2.2.md) for the compr
 | Path Traversal | ✅ realpath + prefix validation |
 | Hardcore Tests | ✅ 10/10 passed |
 
+## Legal Disclaimer
+
+**Usage Responsibility:**
+This software allows video recording and facial recognition. The user is solely responsible for ensuring that the use of this software complies with all applicable local, state, and federal laws regarding video surveillance and biometric data processing (e.g., GDPR/DSGVO in Europe).
+
+- **Privacy:** Do not record public areas or your neighbors' property without permission.
+- **Notice:** You may be legally required to post visible notice (signs) that recording is in progress.
+- **Consent:** Collection of biometric data (face embeddings) may require explicit consent from the individuals being recorded.
+- **Liability:** The developers of RTSP Recorder accept no liability for illegal use of this software.
+
+## Trademarks
+
+- **Home Assistant** is a trademark of Nabu Casa Inc.
+- **Ring** is a trademark of Amazon.com, Inc. or its affiliates.
+- **Nest** and **Google** are trademarks of Google LLC.
+- **Arlo** is a trademark of Arlo Technologies, Inc.
+- **RTSP Recorder** is an independent open-source project and is not affiliated with any of the companies mentioned above.
+
 ## License
 
 MIT License - See [LICENSE](LICENSE) file for details.
