@@ -189,9 +189,56 @@ class OptimizedRecorder:
             # Cleanup from registry
             _active_jobs.pop(job.output_path, None)
     
+    async def _detect_stream_fps(self, rtsp_url: str) -> Optional[float]:
+        """Detect FPS from RTSP stream using ffprobe.
+        
+        This ensures video files are saved with correct FPS metadata
+        matching the camera's actual framerate, preventing issues where
+        container metadata shows higher FPS than camera supports.
+        
+        Returns:
+            Detected FPS as float, or None if detection fails.
+        """
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-rtsp_transport", "tcp",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=r_frame_rate",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            rtsp_url,
+        ]
+        
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+            fps_str = stdout.decode().strip()
+            
+            if "/" in fps_str:
+                num, den = fps_str.split("/")
+                detected_fps = float(num) / float(den)
+            else:
+                detected_fps = float(fps_str)
+            
+            _LOGGER.debug("Detected stream FPS for %s: %.2f", rtsp_url[:50], detected_fps)
+            return detected_fps
+        except asyncio.TimeoutError:
+            _LOGGER.warning("FPS detection timed out for stream")
+            return None
+        except (ValueError, OSError) as e:
+            _LOGGER.warning("Could not detect stream FPS: %s", e)
+            return None
+
     async def _start_ffmpeg(self, job: RecordingJob) -> Optional[asyncio.subprocess.Process]:
         """Start FFmpeg process for recording."""
         os.makedirs(os.path.dirname(job.output_path), exist_ok=True)
+        
+        # Detect stream FPS to ensure correct container metadata
+        detected_fps = await self._detect_stream_fps(job.rtsp_url)
         
         cmd = [
             "ffmpeg",
@@ -202,9 +249,19 @@ class OptimizedRecorder:
             "-t", str(job.duration),
             "-c:v", "copy",
             "-c:a", "aac",
+        ]
+        
+        # Add FPS to output if detected - fixes container metadata
+        if detected_fps:
+            # Round to reasonable value and set container framerate
+            fps_rounded = round(detected_fps, 2)
+            cmd.extend(["-r", str(fps_rounded)])
+            _LOGGER.info("Recording %s with detected FPS: %.2f", job.camera_name, fps_rounded)
+        
+        cmd.extend([
             "-movflags", "+faststart",  # Web-optimized
             job.tmp_path,
-        ]
+        ])
         
         try:
             process = await asyncio.create_subprocess_exec(
