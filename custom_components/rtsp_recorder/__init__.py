@@ -105,12 +105,12 @@ class ThumbnailView(HomeAssistantView):
             return web.Response(status=500, text="Internal error")
 
 
-async def async_setup(hass, config):
+async def async_setup(hass, config) -> bool:
     """Set up the RTSP Recorder component."""
     return True
 
 
-async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
+async def async_setup_entry(hass, entry: ConfigEntry) -> bool:
     """Set up RTSP Recorder from a config entry."""
     log_to_file(f"START: Setting up RTSP Recorder entry {entry.entry_id}")
     
@@ -705,11 +705,11 @@ async def async_setup_entry(hass: ConfigEntry, entry: ConfigEntry):
     return True
 
 
-async def async_unload_entry(hass, entry):
+async def async_unload_entry(hass, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     return True
 
 
-async def update_listener(hass, entry):
+async def update_listener(hass, entry: ConfigEntry) -> None:
     """Handle options update."""
     await hass.config_entries.async_reload(entry.entry_id)

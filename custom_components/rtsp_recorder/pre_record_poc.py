@@ -791,7 +791,7 @@ class PreRecordManager:
 # STANDALONE TEST / DEMO
 # ============================================================================
 
-async def demo():
+async def demo() -> None:
     """
     Demo/test function to verify pre-recording functionality.
     

@@ -33,7 +33,11 @@ _analysis_semaphore_limit: int | None = None
 
 
 def _get_analysis_semaphore() -> asyncio.Semaphore:
-    """Get or create the analysis semaphore."""
+    """Get or create the analysis semaphore.
+    
+    Returns:
+        asyncio.Semaphore: The analysis semaphore instance
+    """
     global _analysis_semaphore
     limit = _analysis_semaphore_limit or MAX_CONCURRENT_ANALYSES
     if _analysis_semaphore is None:
@@ -42,7 +46,11 @@ def _get_analysis_semaphore() -> asyncio.Semaphore:
 
 
 def _set_analysis_semaphore_limit(limit: int) -> None:
-    """Set the max concurrent analyses limit and reset semaphore if needed."""
+    """Set the max concurrent analyses limit and reset semaphore if needed.
+    
+    Args:
+        limit: Maximum number of concurrent analyses
+    """
     global _analysis_semaphore, _analysis_semaphore_limit
     try:
         new_limit = max(1, int(limit))

@@ -2,19 +2,30 @@
 
 All notable changes to RTSP Recorder will be documented in this file.
 
-## [1.2.3] - PLANNED
+## [1.2.3] - 2026-02-07
 
-### � Fixes
+### ✅ Code Quality Improvements
+
+- **Type Hints 100%**: Alle 129 Funktionen haben jetzt Return-Type Annotations
+  - `__init__.py`: 4 Funktionen mit `-> bool` / `-> None`
+  - `services.py`: `register_services() -> None`
+  - `websocket_handlers.py`: 2 Handler-Registrierungsfunktionen
+  - `recorder_optimized.py`: `cleanup_stale_tmp_files() -> None`
+  - `pre_record_poc.py`: `demo() -> None`
+- **README Badge**: Type Hints Badge aktualisiert von 51% (gelb) zu 100% (grün)
+- **Frontend Version**: UI zeigt jetzt korrekt "BETA v1.2.3"
+
+### 🔧 Fixes
 
 - **Stats-Anzeige korrigiert**: WebSocket-Handler verwendet jetzt die echten Detector-Stats statt lokaler Tracker-Werte
 - **Coral Anteil / TPU Last**: Werte stimmen jetzt mit den tatsächlichen Detector-Statistiken überein
 - **Push-basierte Stats**: Performance-Daten werden alle 2s gepusht (reduziert Polling auf 10s Fallback)
 
-### �📲 Push Notifications bei Personen-Erkennung
+### 📲 Push Notifications bei Personen-Erkennung
 
 **Sofortige Benachrichtigung wenn bekannte Personen erkannt werden!**
 
-**Geplante Features:**
+**Features:**
 - **Event**: `rtsp_recorder_person_detected` mit allen Daten
 - **Event-Daten**:
   - `person_name`: Name der erkannten Person
@@ -58,12 +69,6 @@ automation:
               - action: "VIEW"
                 title: "Video ansehen"
 ```
-
-**Optional (v1.2.3+):**
-- [ ] Cooldown pro Person (vermeidet Spam bei längerer Anwesenheit)
-- [ ] Config-Option zum Aktivieren/Deaktivieren
-- [ ] Minimum Similarity Threshold für Notifications
-- [ ] Thumbnail im Push (Snapshot bei Erkennung)
 
 ---
 

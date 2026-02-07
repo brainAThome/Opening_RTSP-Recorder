@@ -388,7 +388,7 @@ class OptimizedRecorder:
 
 
 # Utility function to cleanup orphaned .tmp files
-async def cleanup_stale_tmp_files(base_path: str, max_age_minutes: int = 120):
+async def cleanup_stale_tmp_files(base_path: str, max_age_minutes: int = 120) -> None:
     """Remove .tmp files older than max_age_minutes.
     
     Run this on startup to clean up from crashes.

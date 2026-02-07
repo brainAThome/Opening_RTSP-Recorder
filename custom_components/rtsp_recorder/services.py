@@ -150,7 +150,7 @@ def register_services(
     resolve_auto_device_func: Callable,
     update_person_entities_func: Callable,
     update_person_entities_for_video_func: Callable,
-):
+) -> None:
     """Register all RTSP Recorder services.
     
     Args:

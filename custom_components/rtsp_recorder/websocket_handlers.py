@@ -46,7 +46,7 @@ def register_websocket_handlers(
     analysis_perf_cpu_entity: str | None,
     analysis_perf_igpu_entity: str | None,
     analysis_perf_coral_entity: str | None,
-):
+) -> None:
     """Register all WebSocket handlers for the RTSP Recorder integration.
     
     Args:
@@ -597,7 +597,7 @@ def register_people_websocket_handlers(
     analysis_output_path: str,
     analysis_face_match_threshold: float,
     validate_person_name_func,
-):
+) -> None:
     """Register People DB WebSocket handlers.
     
     Args:

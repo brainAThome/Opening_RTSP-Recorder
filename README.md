@@ -6,12 +6,12 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.2.2-brightgreen)
+![Version](https://img.shields.io/badge/version-1.2.3-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-91%25-brightgreen)
 ![ISO 27001](https://img.shields.io/badge/ISO%2027001-88%25-brightgreen)
-![Type Hints](https://img.shields.io/badge/Type%20Hints-51%25-yellow)
+![Type Hints](https://img.shields.io/badge/Type%20Hints-100%25-brightgreen)
 ![HACS](https://img.shields.io/badge/HACS-Compatible-orange)
 ![Tests](https://img.shields.io/badge/Tests-139%20passed-brightgreen)
 ![Vibe Coded](https://img.shields.io/badge/Vibe%20Coded-100%25%20AI-blueviolet)
@@ -19,7 +19,29 @@ A complete video surveillance solution with AI-powered object detection using Co
 📋 **[Audit Report v1.2.2](docs/FINAL_AUDIT_REPORT_v1.2.2.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.2.2_DE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (07.02.2026)
 🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
 
-## What's New in v1.2.2
+## What's New in v1.2.3
+
+### ✅ Code Quality: 100% Type Hints
+**All 129 functions now have return type annotations:**
+- Improved IDE support and code completion
+- Better static analysis with mypy/Pylance
+- Updated badge from 51% (yellow) to 100% (green)
+
+### 🔧 Stats Display Fix
+**Performance Tab now shows accurate Coral TPU statistics:**
+- WebSocket handler uses real detector stats
+- Push-based updates every 2 seconds
+
+### 📲 Person Detection Push Notifications
+**Instant alerts when known people are detected:**
+- Event: `rtsp_recorder_person_detected`
+- Includes: person name, confidence, camera, video path
+- Example automation in documentation
+
+---
+
+<details>
+<summary><b>Previous: v1.2.2 Changes</b></summary>
 
 ### 🔄 Statistics Reset
 **Reset detector statistics from the UI:**
@@ -32,6 +54,8 @@ A complete video surveillance solution with AI-powered object detection using Co
 - Fixed: Indicator no longer disappears when another camera finishes recording
 - Now uses event-driven `_runningRecordings` Map consistently
 - Multi-camera scenarios properly tracked
+
+</details>
 
 ### 🎬 FPS Display Fix
 **Video player now shows actual video FPS:**
