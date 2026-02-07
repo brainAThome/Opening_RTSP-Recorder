@@ -6,7 +6,7 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.2.4-brightgreen)
+![Version](https://img.shields.io/badge/version-1.2.5-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.2+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%25-brightgreen)
@@ -19,7 +19,18 @@ A complete video surveillance solution with AI-powered object detection using Co
 📋 **[Audit Report v1.2.3](docs/FINAL_AUDIT_REPORT_v1.2.3.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.2.3_DE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (07.02.2026)
 🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
 
-## What's New in v1.2.4
+## What's New in v1.2.5
+
+### 🎥 Correct Video FPS Metadata
+**Recordings now have correct FPS in file metadata:**
+- Automatic FPS detection via ffprobe before recording starts
+- FFmpeg uses detected FPS for correct container metadata
+- Fixes issue where 20 FPS cameras showed ~28 FPS in file properties
+
+---
+
+<details>
+<summary><b>Previous: v1.2.4 Changes</b></summary>
 
 ### 🐛 Bugfix: Dynamic Thumbnail Path Loading
 **Thumbnail path changes now take effect immediately:**
@@ -27,7 +38,7 @@ A complete video surveillance solution with AI-powered object detection using Co
 - No restart required after changing thumbnail path in config
 - All default values now use constants from `const.py` for consistency
 
----
+</details>
 
 <details>
 <summary><b>Previous: v1.2.3 Changes</b></summary>
@@ -66,8 +77,6 @@ A complete video surveillance solution with AI-powered object detection using Co
 - Now uses event-driven `_runningRecordings` Map consistently
 - Multi-camera scenarios properly tracked
 
-</details>
-
 ### 🎬 FPS Display Fix
 **Video player now shows actual video FPS:**
 - Reads `video_fps` from analysis data
@@ -86,6 +95,8 @@ A complete video surveillance solution with AI-powered object detection using Co
 - Performance display and checkboxes optimized for mobile
 - Complete @media queries for 768px/480px
 - Tested on Android/iOS
+
+</details>
 
 ### 📖 Ring Camera Privacy Documentation
 
