@@ -281,21 +281,78 @@ When you first add the integration, you'll be guided through:
 
 ## 7. Dashboard Setup
 
-### 7.1 Create a New Dashboard (Recommended)
+> 💡 **Tip for Beginners:** Follow each step exactly. Screenshots in your Home Assistant may look slightly different - that's normal!
 
-1. Go to **Settings** → **Dashboards**
-2. Click **+ Add Dashboard**
-3. Name: "RTSP Recorder"
-4. Icon: `mdi:cctv`
+### 7.1 Create a New Dashboard
+
+**Why a separate dashboard?** The RTSP Recorder Card needs a lot of space. A dedicated dashboard prevents conflicts with your other cards.
+
+1. Click **Settings** in the **left sidebar** (the gear icon ⚙️)
+2. Click **Dashboards**
+3. Click **+ Add Dashboard** (bottom right)
+4. A popup appears:
+   - **Title:** `RTSP Recorder`
+   - **Icon:** Click the icon field and search `cctv`, select the camera icon
+   - Leave "Show in sidebar" enabled ✓
 5. Click **Create**
 
-### 7.2 Add the RTSP Recorder Card
+✅ **Result:** "RTSP Recorder" now appears in your left sidebar with a camera icon.
 
-1. Open your new dashboard
-2. Click **✏️** (Edit, top right)
-3. Click **+ Add Card**
-4. Scroll down and select **"Manual"** (or search "rtsp")
-5. Delete any existing content and paste:
+---
+
+### 7.2 Open Dashboard and Enable Edit Mode
+
+1. Click your new **"RTSP Recorder"** dashboard in the **left sidebar**
+2. You'll see an empty page with text like "Empty page starts here"
+3. Click the **pencil ✏️** (Edit button) in the top right
+   
+   > ⚠️ Don't see a pencil? Click the **three dots ⋮** top right → **Edit Dashboard**
+
+4. A blue bar appears at the top - you're now in Edit Mode!
+
+---
+
+### 7.3 IMPORTANT: Set Panel Mode First!
+
+> ⚠️ **Do this BEFORE adding the card!** Otherwise the card will appear too small.
+
+**What is Panel Mode?** Normally Home Assistant shows multiple cards side by side (like tiles). Panel mode shows only ONE card in full screen - perfect for the RTSP Recorder Card!
+
+**How to enable Panel Mode:**
+
+1. You're in Edit Mode (blue bar at top)
+2. At the top you'll see the tab **"Default View"** with a small **pencil ✏️** next to it
+   
+   ```
+   ┌─────────────────────────────────────────────────────────────┐
+   │  Default View ✏️  │  +                                      │
+   └─────────────────────────────────────────────────────────────┘
+   ```
+   
+3. Click this **small pencil ✏️** (NOT the one in the top right!)
+4. A popup **"Edit View"** opens
+5. Scroll down in the popup until you see **"View Type"**
+6. Click the dropdown (probably says "Masonry" or "Sections")
+7. Select **"Panel (1 card)"**
+8. Click **Save** at the bottom of the popup
+
+✅ **Result:** Panel mode is now active.
+
+---
+
+### 7.4 Add the RTSP Recorder Card
+
+1. You're still in Edit Mode
+2. Click **+ Add Card** (bottom right)
+3. A popup with many card types appears
+4. Scroll **all the way down** in the list
+5. Click **"Manual"** (at the very bottom, under "Custom")
+
+   > 💡 Alternative: Type "rtsp" in the search box - if the card is installed correctly, it will appear
+
+6. You'll see a YAML editor with example code
+7. **Delete EVERYTHING** in the editor
+8. **Copy the following code** and paste it:
 
 ```yaml
 type: custom:rtsp-recorder-card
@@ -303,26 +360,57 @@ base_path: /media/rtsp_recorder/ring_recordings
 thumb_path: /local/thumbnails
 ```
 
-6. Click **Save**
+9. Click **Save** (top right of popup)
 
-### 7.3 Set to Full-Screen Panel Mode (IMPORTANT!)
+✅ **Result:** The RTSP Recorder Card now appears in full screen!
 
-The card looks best in **Panel mode** (full screen):
+---
 
-1. Click **✏️** (Edit mode)
-2. Click the **✏️** next to "Unbenannte Ansicht" / "Default View" at the top
-3. Find **"View type"** setting
-4. Change from "Masonry" to **"Panel (1 card)"**
-5. Click **Save**
-6. Click **Done** (top right)
+### 7.5 Exit Edit Mode
 
-Now the RTSP Recorder card fills the entire screen!
+1. Click **Done** in the top right
+2. The blue bar disappears
+3. You're now viewing your finished RTSP Recorder Dashboard!
 
-### 7.4 Refresh Browser Cache
+---
 
-After setup, force-refresh your browser:
-- **Windows/Linux:** `Ctrl + Shift + R`
-- **Mac:** `Cmd + Shift + R`
+### 7.6 Clear Browser Cache (IMPORTANT If You Have Problems!)
+
+If the card doesn't look right or shows errors:
+
+**Windows/Linux:**
+- Press **Ctrl + Shift + R** (all three keys at once)
+
+**Mac:**
+- Press **Cmd + Shift + R**
+
+**On Phone/Tablet:**
+- Close the Home Assistant app completely
+- Reopen it
+
+---
+
+### 7.7 Common Dashboard Problems
+
+| Problem | What You See | Solution |
+|---------|--------------|----------|
+| Card is too small/narrow | Card only takes 1/3 of width | Panel mode not active! See step 7.3 |
+| "Custom element doesn't exist" | Error message instead of card | Clear browser cache (Ctrl+Shift+R), then restart HA |
+| Card shows "No recordings" | Empty timeline | Normal! Wait for first motion event |
+| Card loading forever | Only spinning wheel | Check if integration is properly installed |
+| White screen | Nothing visible | Check browser console (F12) for JS errors |
+
+---
+
+### 7.8 What It Should Look Like
+
+When everything works, you'll see:
+- ✅ The card fills the entire screen
+- ✅ Top: Tab bar (Timeline, Live, Analytics, Menu)
+- ✅ Middle: Video player or thumbnail grid
+- ✅ Bottom: Status bar with recording info
+
+> 🎉 **Done!** Your RTSP Recorder Dashboard is set up!
 
 ---
 
