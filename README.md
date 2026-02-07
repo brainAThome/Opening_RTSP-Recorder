@@ -52,47 +52,47 @@ A complete video surveillance solution with AI-powered object detection using Co
 - Vollständige @media-Queries für 768px/480px
 - Getestet auf Android/iOS
 
-### 📖 Ring Kamera Datenschutz-Dokumentation
+### 📖 Ring Camera Privacy Documentation
 
 > [!IMPORTANT]
-> **Warum wir RTSP Recorder entwickelt haben: Lokale Aufnahme ohne Cloud!**
+> **Why we developed RTSP Recorder: Local recording without cloud!**
 
 ```
                         ┌─────────────────────┐
-                        │    RING KAMERA      │
-                        │    (Haustür)        │
+                        │    RING CAMERA      │
+                        │    (Front Door)     │
                         └─────────┬───────────┘
               ┌───────────────────┼───────────────────┐
               ▼                   ▼                   ▼
     ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-    │    RING APP     │ │  RING WEBSEITE  │ │  RTSP STREAM    │
-    │    öffnet       │ │    ring.com     │ │    (lokal)      │
+    │    RING APP     │ │  RING WEBSITE   │ │  RTSP STREAM    │
+    │    opens        │ │    ring.com     │ │    (local)      │
     └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
              ▼                   ▼                   ▼
     ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-    │ Snapshot wird   │ │ Snapshot wird   │ │ Kein Daten-     │
-    │ von Kamera      │ │ von Kamera      │ │ transfer zu     │
-    │ abgerufen       │ │ abgerufen       │ │ Amazon          │
+    │ Snapshot is     │ │ Snapshot is     │ │ No data         │
+    │ fetched from    │ │ fetched from    │ │ transfer to     │
+    │ camera          │ │ camera          │ │ Amazon          │
     └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
              ▼                   ▼                   ▼
     ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-    │ Über ring.com   │ │ Über Amazon     │ │ Lokale          │
-    │ API             │ │ CDN (direkt)    │ │ Speicherung     │
+    │ Via ring.com    │ │ Via Amazon      │ │ Local           │
+    │ API             │ │ CDN (direct)    │ │ Storage         │
     └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
              ▼                   ▼                   ▼
     ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-    │ ✅ BLOCKIERBAR  │ │ ❌ NICHT        │ │ ✅ KOMPLETT     │
-    │ mit Pi-hole     │ │ BLOCKIERBAR     │ │ LOKAL           │
+    │ ✅ BLOCKABLE    │ │ ❌ NOT          │ │ ✅ COMPLETELY   │
+    │ with Pi-hole    │ │ BLOCKABLE       │ │ LOCAL           │
     │ (ring.com)      │ │ (amazonaws.com) │ │ (Home Assistant)│
     └─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
-**Dokumentation zum Amazon-Datenfluss bei Ring-Kameras:**
-- Welche Daten wann zu Amazon fließen
-- Unterschied Premium vs. Non-Premium Abo  
-- Pi-hole Blocking Konfiguration
+**Documentation on Amazon data flow with Ring cameras:**
+- What data flows to Amazon and when
+- Premium vs. Non-Premium subscription differences  
+- Pi-hole blocking configuration
 
-👉 **[Ring Amazon Datenfluss Dokumentation](docs/RING_AMAZON_DATENFLUSS.md)**
+👉 **[Ring Amazon Data Flow Documentation](docs/RING_AMAZON_DATAFLOW.md)** | 🇩🇪 **[Deutsche Version](docs/RING_AMAZON_DATAFLOW_DE.md)**
 
 ---
 

@@ -1,5 +1,7 @@
 # Ring Kamera - Amazon Datenfluss Analyse
 
+> 🇬🇧 **[English Version / Englische Version](RING_AMAZON_DATAFLOW.md)**
+
 **Datum:** 06. Februar 2026  
 **Status:** Dokumentiert  
 **Projekt:** RTSP Recorder - Lokale Aufnahme ohne Cloud-Abhängigkeit
