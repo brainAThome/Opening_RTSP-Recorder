@@ -105,7 +105,7 @@ A complete video surveillance solution with AI-powered object detection using Co
     └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
              ▼                   ▼                   ▼
     ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-    │ ✅ BLOCKABLE    │ │ ❌ NOT          │ │ ✅ COMPLETELY   │
+    │ ✅ BLOCKABLE   │ │ ❌ NOT         │ │ ✅ COMPLETELY   │
     │ with Pi-hole    │ │ BLOCKABLE       │ │ LOCAL           │
     │ (ring.com)      │ │ (amazonaws.com) │ │ (Home Assistant)│
     └─────────────────┘ └─────────────────┘ └─────────────────┘
@@ -1238,6 +1238,7 @@ for everyone who loves technology as much as we do.*
 für alle entwickelt, die Technik genauso im Herzen tragen.*
 
 </div>
+
 
 
 
