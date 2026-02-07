@@ -21,14 +21,14 @@ A complete video surveillance solution with AI-powered object detection using Co
 
 ## What's New in v1.2.2
 
-### � Statistics Reset
+### 🔄 Statistics Reset
 **Reset detector statistics from the UI:**
-- New "Statistik zurücksetzen" button in Performance Tab
+- New "Reset Statistics" button in Performance Tab
 - Resets all inference counters and uptime
 - WebSocket endpoint: `rtsp_recorder/reset_detector_stats`
 
 ### 🐛 Recording Indicator Fix
-**"Aufnahme läuft" display now works correctly with multiple cameras:**
+**"Recording in progress" indicator now works correctly with multiple cameras:**
 - Fixed: Indicator no longer disappears when another camera finishes recording
 - Now uses event-driven `_runningRecordings` Map consistently
 - Multi-camera scenarios properly tracked
@@ -43,14 +43,14 @@ A complete video surveillance solution with AI-powered object detection using Co
 - Removed unused `smooth_video` option from configuration
 - No functional impact (was never used)
 
-### 📱 Mobile Portrait-Ansicht
-**Optimierte Mobile-Version für Lovelace Card:**
-- Portrait-Layout mit Timeline-Karten
-- Footer und Tabs mobil scrollbar und kompakt
-- Video-Controls auf Mobile ausgeblendet, stattdessen Download/Löschen im Footer
-- Leistungsanzeige und Checkboxen mobil optimiert
-- Vollständige @media-Queries für 768px/480px
-- Getestet auf Android/iOS
+### 📱 Mobile Portrait View
+**Optimized mobile version for Lovelace Card:**
+- Portrait layout with timeline cards
+- Footer and tabs mobile-scrollable and compact
+- Video controls hidden on mobile, replaced with Download/Delete in footer
+- Performance display and checkboxes optimized for mobile
+- Complete @media queries for 768px/480px
+- Tested on Android/iOS
 
 ### 📖 Ring Camera Privacy Documentation
 
@@ -137,7 +137,7 @@ A complete video surveillance solution with AI-powered object detection using Co
 - EMA algorithm for smooth bounding box transitions
 
 ### 🐛 Bug Fixes (from v1.1.2)
-**Fixed**: Batch analysis `auto_device` undefined error - "Alle Aufnahmen analysieren" works again
+**Fixed**: Batch analysis `auto_device` undefined error - "Analyze All Recordings" works again
 
 ### 🔧 Configuration Improvements
 **SQLite Always Enabled**: Removed unnecessary toggle from settings
