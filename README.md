@@ -1187,7 +1187,15 @@ See [FINAL_AUDIT_REPORT_v1.2.2](docs/FINAL_AUDIT_REPORT_v1.2.2.md) for the compr
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT License - See [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Contributions are welcome! Please read our guidelines before started:
+
+- [Contributing Guidelines](CONTRIBUTING.md) - How to get started
+- [Code of Conduct](CODE_OF_CONDUCT.md) - Our community standards
+- [Security Policy](SECURITY.md) - How to report security vulnerabilities
 
 ## Credits
 
