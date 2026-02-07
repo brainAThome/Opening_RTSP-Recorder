@@ -718,27 +718,27 @@ flowchart TB
 
 ### 1. Custom Integration (`/custom_components/rtsp_recorder/`)
 
-**20 Python Modules (~10,062 LOC):**
+**20 Python Modules (~11,000 LOC):**
 
 | Module | Description | LOC |
 |--------|-------------|-----|
-| `__init__.py` | Main controller, service registration, cleanup scheduling | ~617 |
-| `config_flow.py` | Configuration UI wizard with cleanup interval | ~861 |
-| `analysis.py` | AI analysis pipeline | ~1,072 |
-| `websocket_handlers.py` | Real-time WebSocket API (20 handlers) | ~897 |
-| `services.py` | HA service implementations | ~903 |
-| `database.py` | SQLite database operations (Schema v2) | ~762 |
-| `people_db.py` | Person/face database management (SQLite-only) | ~428 |
-| `recorder.py` | FFmpeg recording engine | ~318 |
-| `retention.py` | Cleanup, retention, analysis folder management | ~300 |
-| `helpers.py` | Utility functions | ~369 |
-| `face_matching.py` | Face embedding comparison | ~291 |
-| `rate_limiter.py` | Token Bucket DoS protection | ~220 |
-| `exceptions.py` | 20+ custom exception types | ~324 |
-| `const.py` | Constants & defaults | ~70 |
+| `__init__.py` | Main controller, service registration, cleanup scheduling | ~667 |
+| `config_flow.py` | Configuration UI wizard with cleanup interval | ~827 |
+| `analysis.py` | AI analysis pipeline (Refactored) | ~1,799 |
+| `websocket_handlers.py` | Real-time WebSocket API (20 handlers) | ~1,025 |
+| `services.py` | HA service implementations | ~934 |
+| `database.py` | SQLite database operations (Schema v2) | ~1,433 |
+| `people_db.py` | Person/face database management (SQLite-only) | ~384 |
+| `recorder.py` | FFmpeg recording engine | ~298 |
+| `retention.py` | Cleanup, retention, analysis folder management | ~255 |
+| `helpers.py` | Utility functions | ~420 |
+| `face_matching.py` | Face embedding comparison | ~274 |
+| `rate_limiter.py` | Token Bucket DoS protection | ~202 |
+| `exceptions.py` | 20+ custom exception types | ~251 |
+| `const.py` | Constants & defaults | ~53 |
 | `strings.json` | UI strings definition | - |
 | `services.yaml` | Service definitions | - |
-| `manifest.json` | Integration manifest (v1.1.0) | - |
+| `manifest.json` | Integration manifest (v1.2.3) | - |
 
 **Code Statistics:**
 - Total Functions: 318
