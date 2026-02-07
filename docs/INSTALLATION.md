@@ -2,7 +2,7 @@
 
 > 🇩🇪 **[Deutsche Version / German Version](INSTALLATION_DE.md)**
 
-**Version:** 1.2.5  
+**Version:** 1.2.6  
 **Last Updated:** February 7, 2026
 
 ---
@@ -11,7 +11,7 @@
 
 1. [System Requirements](#1-system-requirements)
 2. [Installation via HACS](#2-installation-via-hacs)
-3. [Manual Installation](#3-manual-installation)
+3. [Manual Card Installation](#3-manual-card-installation-only-if-problems-occur) (only if problems)
 4. [Detector Add-on Setup](#4-detector-add-on-setup)
 5. [Coral USB Setup](#5-coral-usb-setup)
 6. [First Configuration](#6-first-configuration)
@@ -87,11 +87,31 @@
 3. Search for "**RTSP Recorder**"
 4. Click on it and follow the setup wizard
 
-> ✅ **As of v1.2.6:** The dashboard card is automatically installed and registered!
-> Clear browser cache after first start: **Ctrl + Shift + R**
+### Step 5: Browser Hard-Refresh (VERY IMPORTANT!)
 
-<details>
-<summary>⚠️ <b>Troubleshooting: "Custom element doesn't exist" Error</b> (click to expand)</summary>
+> ⚠️ **Without this step the Dashboard Card will NOT work!**
+
+After installation, the browser cache must be completely cleared. A normal "F5" is NOT enough!
+
+**How to do a Hard-Refresh:**
+
+| Device | Key Combination |
+|--------|-----------------|
+| **Windows/Linux** | **Ctrl + Shift + R** (press all 3 keys at once) |
+| **Mac** | **Cmd + Shift + R** (press all 3 keys at once) |
+| **iPhone/iPad** | Settings → Safari → Clear History and Website Data |
+| **Android** | Chrome: ⋮ → Settings → Privacy → Clear browsing data |
+| **Home Assistant App** | Close app completely (not just minimize!) and reopen |
+
+**After Hard-Refresh:**
+- Reload the Home Assistant page (F5)
+- The card should now work!
+
+---
+
+### Step 6: If the Card Still Doesn't Work
+
+> 🔧 **Troubleshooting: "Custom element doesn't exist" Error**
 
 If you see this error after installation:
 ```
@@ -99,13 +119,98 @@ Configuration Error
 Custom element doesn't exist: rtsp-recorder-card
 ```
 
-**Solution 1: Clear browser cache**
-- Press **Ctrl + Shift + R** (Windows/Linux) or **Cmd + Shift + R** (Mac)
-- Restart Home Assistant
+**Possible causes and solutions:**
 
-**Solution 2: Manual registration (for versions < 1.2.6)**
+**1. Browser cache not properly cleared**
+- Close ALL browser tabs with Home Assistant
+- Open a new tab
+- Press **Ctrl + Shift + R** (or Cmd + Shift + R on Mac)
+- Try again
 
-The dashboard card must be registered as a Lovelace Resource:
+**2. The JS file is missing in the www folder**
+
+Check if the file exists:
+1. Install the **File Editor** Add-on (if not present)
+2. Open File Editor
+3. Navigate to: `/config/www/`
+4. Look for: `rtsp-recorder-card.js`
+
+If the file is NOT there → See "Manual Card Installation" below
+
+**3. Lovelace Resource not registered**
+
+1. Go to **Settings** → **Dashboards**
+2. Click the **⋮** (three-dot menu) in the top right
+3. Select **Resources**
+4. Check if `/local/rtsp-recorder-card.js` is in the list
+5. If NOT: Click **+ Add Resource**
+   - **URL:** `/local/rtsp-recorder-card.js`
+   - **Type:** Select **JavaScript Module**
+6. Click **Create**
+7. Hard-Refresh (Ctrl + Shift + R)
+
+---
+
+## 3. Manual Card Installation (Only If Problems Occur)
+
+> 💡 **When do you need this?** Only if automatic installation (v1.2.6+) didn't work.
+
+### 3.1 Download File
+
+1. Go to: https://github.com/brainAThome/Opening_RTSP-Recorder/releases
+2. Click on the **latest version** (e.g., v1.2.6)
+3. Under "Assets" click on **rtsp-recorder-v1.2.6.zip**
+4. Save the file to your computer
+5. Extract the ZIP file (Right-click → "Extract All" on Windows)
+
+### 3.2 Copy File to Home Assistant
+
+There are several ways - choose the easiest one for you:
+
+#### Option A: File Editor Add-on (easiest!)
+
+1. **Install File Editor** (if not present):
+   - Settings → Add-ons → Add-on Store
+   - Search "File Editor"
+   - Install and start
+   - Enable "Show in sidebar"
+
+2. **Create www folder** (if not present):
+   - Open File Editor (in sidebar)
+   - Click the folder icon 📁 at the top
+   - Navigate to `/config/`
+   - If no `www` folder exists: Click ⋮ → New Folder → Name: `www`
+
+3. **Upload file**:
+   - Navigate into the `www` folder
+   - Click ⋮ → **Upload File**
+   - Select the file `rtsp-recorder-card.js` from the extracted ZIP
+   - Done!
+
+#### Option B: Samba Share (for advanced users)
+
+1. Install the **Samba Share** Add-on if not present
+2. Connect from your PC to `\\homeassistant\config\` (Windows) or `smb://homeassistant/config` (Mac)
+3. Create the `www` folder if not present
+4. Copy `rtsp-recorder-card.js` into the `www` folder
+
+#### Option C: SSH/Terminal (for experts)
+
+```bash
+# Connect via SSH to your Home Assistant
+ssh root@homeassistant.local
+
+# Create www folder if not present
+mkdir -p /config/www
+
+# Download the file directly
+cd /config/www
+wget https://github.com/brainAThome/Opening_RTSP-Recorder/raw/main/www/rtsp-recorder-card.js
+```
+
+### 3.3 Register Resource
+
+After copying, the file MUST be registered as a Lovelace Resource:
 
 1. Go to **Settings** → **Dashboards**
 2. Click the **⋮** (three-dot menu) in the top right
@@ -115,71 +220,10 @@ The dashboard card must be registered as a Lovelace Resource:
    - **URL:** `/local/rtsp-recorder-card.js`
    - **Type:** Select **JavaScript Module**
 6. Click **Create**
-7. Clear browser cache
 
-</details>
+### 3.4 Finally: Hard-Refresh!
 
----
-
-## 3. Manual Installation
-
-### 3.1 Copy Files
-
-```bash
-# Copy integration
-cp -r custom_components/rtsp_recorder/ /config/custom_components/
-
-# Copy dashboard card
-cp www/rtsp-recorder-card.js /config/www/
-```
-
-### 3.2 Register Lovelace Resource
-
-**Option A: UI (Recommended)**
-
-1. Settings → Dashboards → Resources
-2. **+ Add Resource**
-3. URL: `/local/rtsp-recorder-card.js`
-4. Type: **JavaScript Module**
-
-**Option B: YAML**
-
-```yaml
-# In configuration.yaml
-lovelace:
-  mode: yaml
-  resources:
-    - url: /local/rtsp-recorder-card.js
-      type: module
-```
-
-### 3.3 Check Directory Structure
-
-```
-/config/
-├── custom_components/
-│   └── rtsp_recorder/
-│       ├── __init__.py
-│       ├── analysis.py
-│       ├── config_flow.py
-│       ├── database.py
-│       ├── exceptions.py
-│       ├── manifest.json
-│       ├── migrations.py
-│       ├── performance.py
-│       ├── rate_limiter.py
-│       ├── recorder.py
-│       ├── services.py
-│       ├── translations/
-│       │   ├── de.json
-│       │   ├── en.json
-│       │   ├── es.json
-│       │   ├── fr.json
-│       │   └── nl.json
-│       └── websocket_handlers.py
-└── www/
-    └── rtsp-recorder-card.js
-```
+**DON'T FORGET:** Clear browser cache with **Ctrl + Shift + R** (or Cmd + Shift + R on Mac)
 
 ---
 
