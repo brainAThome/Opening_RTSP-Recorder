@@ -16,7 +16,7 @@ Diese Dokumentation beschreibt, wie Ring-Kameras Daten an Amazon senden, welche 
 
 | Abo-Status | Video-Speicherung in Cloud | Handlungsbedarf |
 |------------|---------------------------|-----------------|
-| **Kein Premium** | ❌ Keine Videos gespeichert | Nur Snapshots werden übertragen |
+| **Kein Premium** | ❌ Keine Videos gespeichert | Snapshots nur bei App/Web-Zugriff |
 | **Mit Premium** | ✅ Alle Videos gespeichert | **Video-Speicherung muss manuell deaktiviert werden!** |
 
 ### Videospeicherung deaktivieren (bei Premium-Abo)
