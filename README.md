@@ -830,6 +830,7 @@ erDiagram
 | `recognition_history` | Recognition event log for movement profiles | `idx_history_person`, `idx_history_camera` |
 
 ### Configuration
+- **SQLite Version**: 3.51.2+ (uses system library)
 - **Mode**: WAL (Write-Ahead Logging) for concurrent access
 - **Schema Version**: v2 (PRAGMA user_version = 2)
 - **Location**: `/config/rtsp_recorder/rtsp_recorder.db`
