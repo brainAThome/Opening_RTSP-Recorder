@@ -1,5 +1,5 @@
-// ===== RTSP Recorder Card v1.2.3 BETA =====
-console.log("[RTSP-Recorder] Card Version: 1.2.3 BETA");
+// ===== RTSP Recorder Card v1.2.4 BETA =====
+console.log("[RTSP-Recorder] Card Version: 1.2.4 BETA");
 // MED-008 Fix: Debug logging behind feature flag
 const RTSP_DEBUG = localStorage.getItem('rtsp_recorder_debug') === 'true';
 const rtspLog = (...args) => { if (RTSP_DEBUG) console.log('[RTSP]', ...args); };
@@ -8,7 +8,7 @@ const rtspWarn = (...args) => console.warn('[RTSP]', ...args);  // Warnings alwa
 const rtspError = (...args) => console.error('[RTSP]', ...args);  // Errors always shown
 
 if (RTSP_DEBUG) {
-    console.info("%c RTSP RECORDER CARD \\n%c v1.2.3 BETA (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #27ae60;");
+    console.info("%c RTSP RECORDER CARD \\n%c v1.2.4 BETA (DEBUG) ", "color: #3498db; font-weight: bold; background: #222; padding: 5px;", "color: #27ae60;");
 }
 
 class RtspRecorderCard extends HTMLElement {
@@ -1580,7 +1580,7 @@ class RtspRecorderCard extends HTMLElement {
             
             <div class="fm-container animated" id="container" role="application" aria-label="Opening RTSP-Recorder">
                 <div class="fm-header" role="banner">
-                    <div class="fm-title"><img src="/local/opening_logo4.png" alt="Opening RTSP-Recorder" style="height:50px; vertical-align:middle; background:transparent;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.2.3</span></div>
+                    <div class="fm-title"><img src="/local/opening_logo4.png" alt="Opening RTSP-Recorder" style="height:50px; vertical-align:middle; background:transparent;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.2.4</span></div>
                     <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
                         <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>

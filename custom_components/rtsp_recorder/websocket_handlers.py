@@ -14,6 +14,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 
 from .helpers import log_to_file, get_system_stats, get_inference_stats
+from .const import DEFAULT_STORAGE_PATH, DEFAULT_SNAPSHOT_PATH
 from .face_matching import _normalize_embedding_simple, _cosine_similarity_simple
 from .people_db import (
     _load_people_db, 
@@ -81,9 +82,9 @@ def register_websocket_handlers(
     analysis_face_confidence = float(config_data.get("analysis_face_confidence", 0.5))
     analysis_face_store_embeddings = bool(config_data.get("analysis_face_store_embeddings", True))
     person_entities_enabled = bool(config_data.get("person_entities_enabled", False))
-    # v1.1.0: Pfade für Frontend
-    storage_path = config_data.get("storage_path", "/media/rtsp_recorder")
-    snapshot_path_base = config_data.get("snapshot_path", "/media/rtsp_recorder/thumbnails")
+    # v1.1.0: Pfade für Frontend (v1.2.3: use constants for consistent defaults)
+    storage_path = config_data.get("storage_path", DEFAULT_STORAGE_PATH)
+    snapshot_path_base = config_data.get("snapshot_path", DEFAULT_SNAPSHOT_PATH)
 
     # Helper functions
     def _sensor_info(entity_id: str | None) -> dict | None:

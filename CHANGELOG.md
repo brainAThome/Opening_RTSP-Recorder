@@ -2,6 +2,26 @@
 
 All notable changes to RTSP Recorder will be documented in this file.
 
+## [1.2.4] - 2026-02-07
+
+### 🐛 Bugfix: Thumbnail-Pfad wird jetzt dynamisch gelesen
+
+**Problem:** Nach Änderung des Thumbnail-Pfads in der Konfiguration wurden die Vorschaubilder nicht mehr angezeigt, obwohl sie korrekt gespeichert wurden.
+
+**Ursache:** Die `ThumbnailView` (HTTP-Endpoint) hat den Pfad nur einmal beim Start gelesen und bei Config-Änderungen nicht aktualisiert.
+
+**Lösung:**
+- `ThumbnailView` liest den Pfad jetzt **dynamisch** aus `hass.data[DOMAIN]["snapshot_path"]`
+- Pfad wird bei jedem Request neu gelesen
+- View wird nur einmal registriert (verhindert Duplikate)
+- Alle Default-Werte nutzen jetzt Konstanten aus `const.py` für Konsistenz
+
+**Geänderte Dateien:**
+- `__init__.py`: ThumbnailView refactored, speichert Pfad in `hass.data`
+- `websocket_handlers.py`: Nutzt `DEFAULT_STORAGE_PATH` / `DEFAULT_SNAPSHOT_PATH`
+
+---
+
 ## [1.2.3] - 2026-02-07
 
 ### ✅ Code Quality Improvements
