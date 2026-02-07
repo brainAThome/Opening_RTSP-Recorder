@@ -1,45 +1,47 @@
-# 🚀 RTSP Recorder - Installationsanleitung
+# 🚀 RTSP Recorder - Installation Guide
 
-**Version:** 1.1.1  
-**Letzte Aktualisierung:** 03. Februar 2026
+> 🇩🇪 **[Deutsche Version / German Version](INSTALLATION_DE.md)**
+
+**Version:** 1.2.2  
+**Last Updated:** February 7, 2026
 
 ---
 
-## Inhaltsverzeichnis
+## Table of Contents
 
-1. [Systemanforderungen](#1-systemanforderungen)
+1. [System Requirements](#1-system-requirements)
 2. [Installation via HACS](#2-installation-via-hacs)
-3. [Manuelle Installation](#3-manuelle-installation)
+3. [Manual Installation](#3-manual-installation)
 4. [Detector Add-on Setup](#4-detector-add-on-setup)
-5. [Coral USB Einrichtung](#5-coral-usb-einrichtung)
-6. [Erste Konfiguration](#6-erste-konfiguration)
-7. [Verifizierung](#7-verifizierung)
+5. [Coral USB Setup](#5-coral-usb-setup)
+6. [First Configuration](#6-first-configuration)
+7. [Verification](#7-verification)
 
 ---
 
-## 1. Systemanforderungen
+## 1. System Requirements
 
 ### Minimum
 
-| Komponente | Anforderung |
-|------------|-------------|
+| Component | Requirement |
+|-----------|-------------|
 | Home Assistant | 2024.1+ |
 | Python | 3.11+ |
-| Speicher | 50 GB frei |
-| RAM | 2 GB verfügbar |
+| Storage | 50 GB free |
+| RAM | 2 GB available |
 
-### Empfohlen
+### Recommended
 
-| Komponente | Empfehlung |
-|------------|------------|
+| Component | Recommendation |
+|-----------|----------------|
 | Home Assistant | 2024.12+ |
-| Speicher | 200+ GB SSD |
-| RAM | 4+ GB verfügbar |
+| Storage | 200+ GB SSD |
+| RAM | 4+ GB available |
 | Hardware | Google Coral USB Accelerator |
 
-### Unterstützte Kameras
+### Supported Cameras
 
-- ✅ Jede RTSP-fähige IP-Kamera
+- ✅ Any RTSP-capable IP camera
 - ✅ Home Assistant Camera Entities
 - ✅ Ring Doorbell (via Ring Integration)
 - ✅ Frigate Cameras
@@ -49,60 +51,60 @@
 
 ## 2. Installation via HACS
 
-### Schritt 1: Custom Repository hinzufügen
+### Step 1: Add Custom Repository
 
-1. **HACS** öffnen in Home Assistant
-2. Klicke auf **⋮** (Drei-Punkte-Menü) oben rechts
-3. Wähle **Custom repositories**
-4. Füge hinzu:
-   - **Repository:** `https://github.com/brainAThome/RTSP-Recorder`
+1. Open **HACS** in Home Assistant
+2. Click **⋮** (three-dot menu) top right
+3. Select **Custom repositories**
+4. Add:
+   - **Repository:** `https://github.com/brainAThome/Opening_RTSP-Recorder`
    - **Category:** Integration
-5. Klicke **Add**
+5. Click **Add**
 
-### Schritt 2: Integration installieren
+### Step 2: Install Integration
 
-1. Suche in HACS nach "**RTSP Recorder**"
-2. Klicke **Download**
-3. Wähle Version **1.1.0** (oder neueste)
-4. Bestätige mit **Download**
+1. Search in HACS for "**RTSP Recorder**"
+2. Click **Download**
+3. Select version **1.2.2** (or newest)
+4. Confirm with **Download**
 
-### Schritt 3: Home Assistant neustarten
+### Step 3: Restart Home Assistant
 
 ```yaml
-# In der UI: Entwicklerwerkzeuge → YAML → Home Assistant neustarten
-# Oder in configuration.yaml Verzeichnis:
+# In the UI: Developer Tools → YAML → Restart Home Assistant
+# Or in configuration.yaml directory:
 ha core restart
 ```
 
-### Schritt 4: Integration aktivieren
+### Step 4: Activate Integration
 
-1. **Einstellungen** → **Geräte & Dienste**
-2. Klicke **+ Integration hinzufügen**
-3. Suche "**RTSP Recorder**"
-4. Folge dem Einrichtungsassistenten
+1. **Settings** → **Devices & Services**
+2. Click **+ Add Integration**
+3. Search "**RTSP Recorder**"
+4. Follow the setup wizard
 
 ---
 
-## 3. Manuelle Installation
+## 3. Manual Installation
 
-### 3.1 Dateien kopieren
+### 3.1 Copy Files
 
 ```bash
-# Integration kopieren
+# Copy integration
 cp -r custom_components/rtsp_recorder/ /config/custom_components/
 
-# Dashboard Card kopieren
+# Copy dashboard card
 cp www/rtsp-recorder-card.js /config/www/
 ```
 
-### 3.2 Lovelace Resource registrieren
+### 3.2 Register Lovelace Resource
 
-**Option A: UI (Empfohlen)**
+**Option A: UI (Recommended)**
 
-1. Einstellungen → Dashboards → Ressourcen
-2. **+ Ressource hinzufügen**
+1. Settings → Dashboards → Resources
+2. **+ Add Resource**
 3. URL: `/local/rtsp-recorder-card.js`
-4. Typ: **JavaScript-Modul**
+4. Type: **JavaScript Module**
 
 **Option B: YAML**
 
@@ -115,7 +117,7 @@ lovelace:
       type: module
 ```
 
-### 3.3 Verzeichnisstruktur prüfen
+### 3.3 Check Directory Structure
 
 ```
 /config/
@@ -147,63 +149,63 @@ lovelace:
 
 ## 4. Detector Add-on Setup
 
-Das Detector Add-on ermöglicht KI-Analyse mit Coral USB.
+The Detector Add-on enables AI analysis with Coral USB.
 
-### 4.1 Add-on installieren
+### 4.1 Install Add-on
 
-1. Kopiere das Add-on:
+1. Copy the add-on:
    ```bash
    cp -r addons/rtsp-recorder-detector/ /addons/
    ```
 
-2. **Einstellungen** → **Add-ons** → **Add-on Store**
+2. **Settings** → **Add-ons** → **Add-on Store**
 
-3. Klicke **⋮** → **Check for updates**
+3. Click **⋮** → **Check for updates**
 
-4. Finde "**RTSP Recorder Detector**" unter "Lokale Add-ons"
+4. Find "**RTSP Recorder Detector**" under "Local Add-ons"
 
-5. Klicke **Installieren**
+5. Click **Install**
 
-### 4.2 Add-on konfigurieren
+### 4.2 Configure Add-on
 
 ```yaml
-# Add-on Konfiguration
+# Add-on Configuration
 port: 5000
 log_level: info
 model_path: /models
 coral_enabled: true
 ```
 
-### 4.3 Add-on starten
+### 4.3 Start Add-on
 
-1. Klicke **Starten**
-2. Aktiviere **Bei Systemstart starten**
-3. Optional: Aktiviere **Watchdog**
+1. Click **Start**
+2. Enable **Start on boot**
+3. Optional: Enable **Watchdog**
 
 ---
 
-## 5. Coral USB Einrichtung
+## 5. Coral USB Setup
 
-### 5.1 Hardware-Passthrough (Home Assistant OS)
+### 5.1 Hardware Passthrough (Home Assistant OS)
 
-1. **Einstellungen** → **System** → **Hardware**
-2. Finde "Google Coral USB Accelerator"
-3. Notiere den Pfad (z.B. `/dev/bus/usb/001/002`)
+1. **Settings** → **System** → **Hardware**
+2. Find "Google Coral USB Accelerator"
+3. Note the path (e.g., `/dev/bus/usb/001/002`)
 
-### 5.2 Add-on USB-Zugriff
+### 5.2 Add-on USB Access
 
-In der Add-on Konfiguration:
+In the add-on configuration:
 
 ```yaml
-# Konfiguration für Coral USB
+# Configuration for Coral USB
 devices:
   - /dev/bus/usb
 ```
 
-### 5.3 Coral verifizieren
+### 5.3 Verify Coral
 
-1. Öffne Add-on **Log**
-2. Suche nach:
+1. Open add-on **Log**
+2. Look for:
    ```
    INFO: Coral USB EdgeTPU detected
    INFO: Using EdgeTPU delegate
@@ -211,103 +213,103 @@ devices:
 
 ### 5.4 Troubleshooting Coral
 
-| Problem | Lösung |
-|---------|--------|
-| Coral nicht erkannt | USB neu einstecken, HA neustarten |
-| Permission denied | Prüfe USB-Passthrough Einstellungen |
-| Delegate error | libedgetpu Version prüfen |
+| Problem | Solution |
+|---------|----------|
+| Coral not detected | Replug USB, restart HA |
+| Permission denied | Check USB passthrough settings |
+| Delegate error | Check libedgetpu version |
 
 ---
 
-## 6. Erste Konfiguration
+## 6. First Configuration
 
 ### 6.1 Integration Setup
 
-Nach der Installation:
+After installation:
 
-1. **Einstellungen** → **Geräte & Dienste**
-2. Klicke **+ Integration hinzufügen**
-3. Suche "**RTSP Recorder**"
+1. **Settings** → **Devices & Services**
+2. Click **+ Add Integration**
+3. Search "**RTSP Recorder**"
 
-### 6.2 Basis-Einstellungen
+### 6.2 Basic Settings
 
-| Einstellung | Empfehlung | Beschreibung |
-|-------------|------------|--------------|
-| Storage Path | `/media/rtsp_recorder` | Aufnahme-Speicherort |
-| Snapshot Path | `/media/rtsp_recorder/thumbnails` | Thumbnail-Speicherort |
-| Retention Days | 7 | Aufbewahrungsdauer |
+| Setting | Recommendation | Description |
+|---------|----------------|-------------|
+| Storage Path | `/media/rtsp_recorder` | Recording storage location |
+| Snapshot Path | `/media/rtsp_recorder/thumbnails` | Thumbnail storage location |
+| Retention Days | 7 | Retention period |
 
-### 6.3 Kameras hinzufügen
+### 6.3 Add Cameras
 
-1. In der Integration, klicke **Konfigurieren**
-2. Wähle **Kameras verwalten**
-3. Füge deine Kameras hinzu:
-   - **Name:** z.B. "Wohnzimmer"
-   - **Motion Sensor:** `binary_sensor.wohnzimmer_motion`
-   - **Camera Entity:** `camera.wohnzimmer` (optional)
+1. In the integration, click **Configure**
+2. Select **Manage Cameras**
+3. Add your cameras:
+   - **Name:** e.g., "Living Room"
+   - **Motion Sensor:** `binary_sensor.living_room_motion`
+   - **Camera Entity:** `camera.living_room` (optional)
    - **RTSP URL:** `rtsp://user:pass@192.168.1.x/stream`
 
-### 6.4 Analyse aktivieren
+### 6.4 Enable Analysis
 
-1. In **Optionen** → **Analyse**
-2. **Analyse aktiviert:** ✅
+1. In **Options** → **Analysis**
+2. **Analysis enabled:** ✅
 3. **Detector URL:** `http://local-rtsp-recorder-detector:5000`
-4. **Gerät:** Coral USB (wenn verfügbar)
+4. **Device:** Coral USB (if available)
 
 ---
 
-## 7. Verifizierung
+## 7. Verification
 
-### 7.1 Integration prüfen
+### 7.1 Check Integration
 
 ```bash
-# Auf dem HA Server:
+# On the HA server:
 grep -i rtsp_recorder /config/home-assistant.log | tail -10
 ```
 
-Erwartete Ausgabe:
+Expected output:
 ```
 INFO: Setup of rtsp_recorder completed successfully
 ```
 
-### 7.2 Detector prüfen
+### 7.2 Check Detector
 
 ```bash
-# API-Test
+# API test
 curl http://localhost:5000/info
 ```
 
-Erwartete Ausgabe:
+Expected output:
 ```json
 {
-  "version": "1.0.9",
+  "version": "1.2.2",
   "coral_available": true,
   "models_loaded": true
 }
 ```
 
-### 7.3 Test-Aufnahme
+### 7.3 Test Recording
 
-1. Löse Bewegung an einem konfigurierten Sensor aus
-2. Prüfe Log auf "Recording started"
-3. Prüfe Storage-Pfad auf neue .mp4 Datei
+1. Trigger motion on a configured sensor
+2. Check log for "Recording started"
+3. Check storage path for new .mp4 file
 
-### 7.4 Dashboard Card testen
+### 7.4 Test Dashboard Card
 
 ```yaml
-# In einem Dashboard:
+# In a dashboard:
 type: custom:rtsp-recorder-card
 ```
 
 ---
 
-## Nächste Schritte
+## Next Steps
 
-- 📖 [Benutzerhandbuch](USER_GUIDE.md) - Alle Features im Detail
-- 🧠 [Personen-Training](FACE_RECOGNITION.md) - Gesichtserkennung einrichten
-- ⚙️ [Konfiguration](CONFIGURATION.md) - Alle Optionen erklärt
-- 🔧 [Troubleshooting](TROUBLESHOOTING.md) - Problemlösung
+- 📖 [User Guide](USER_GUIDE.md) - All features in detail
+- 🧠 [Person Training](FACE_RECOGNITION.md) - Set up face recognition
+- ⚙️ [Configuration](CONFIGURATION.md) - All options explained
+- 🔧 [Troubleshooting](TROUBLESHOOTING.md) - Problem solving
 
 ---
 
-*Bei Problemen: [GitHub Issues](https://github.com/brainAThome/RTSP-Recorder/issues)*
+*For problems: [GitHub Issues](https://github.com/brainAThome/Opening_RTSP-Recorder/issues)*

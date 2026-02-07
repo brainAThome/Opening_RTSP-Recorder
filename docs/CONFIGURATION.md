@@ -1,219 +1,221 @@
-# ⚙️ RTSP Recorder - Konfigurationsreferenz
+# ⚙️ RTSP Recorder - Configuration Reference
 
-**Version:** 1.1.1  
-**Letzte Aktualisierung:** 03. Februar 2026
+> 🇩🇪 **[Deutsche Version / German Version](CONFIGURATION_DE.md)**
 
----
-
-## Inhaltsverzeichnis
-
-1. [Basis-Konfiguration](#1-basis-konfiguration)
-2. [Kamera-Einstellungen](#2-kamera-einstellungen)
-3. [Analyse-Optionen](#3-analyse-optionen)
-4. [Gesichtserkennung](#4-gesichtserkennung)
-5. [Automatische Analyse](#5-automatische-analyse)
-6. [Performance-Einstellungen](#6-performance-einstellungen)
-7. [Erweiterte Optionen](#7-erweiterte-optionen)
-8. [Beispiel-Konfigurationen](#8-beispiel-konfigurationen)
+**Version:** 1.2.2  
+**Last Updated:** February 7, 2026
 
 ---
 
-## 1. Basis-Konfiguration
+## Table of Contents
 
-### Speicherpfade
+1. [Basic Configuration](#1-basic-configuration)
+2. [Camera Settings](#2-camera-settings)
+3. [Analysis Options](#3-analysis-options)
+4. [Face Recognition](#4-face-recognition)
+5. [Automatic Analysis](#5-automatic-analysis)
+6. [Performance Settings](#6-performance-settings)
+7. [Advanced Options](#7-advanced-options)
+8. [Example Configurations](#8-example-configurations)
 
-| Option | Standard | Beschreibung |
-|--------|----------|--------------|
-| `storage_path` | `/media/rtsp_recorder/ring_recordings` | Aufnahme-Speicherort |
-| `snapshot_path` | `/media/rtsp_recorder/thumbnails` | Thumbnail-Speicherort |
-| `analysis_output_path` | `/media/rtsp_recorder/ring_recordings/_analysis` | Analyse-Ergebnisse |
+---
 
-### Retention (Aufbewahrung)
+## 1. Basic Configuration
 
-| Option | Standard | Bereich | Beschreibung |
-|--------|----------|---------|--------------|
-| `retention_days` | 7 | 1-365 | Aufnahmen behalten (Tage) |
-| `retention_hours` | 0 | 0-23 | Zusätzliche Stunden |
-| `snapshot_retention_days` | 7 | 1-365 | Thumbnails behalten (Tage) |
+### Storage Paths
 
-**Beispiel:**
+| Option | Default | Description |
+|--------|---------|-------------|
+| `storage_path` | `/media/rtsp_recorder/ring_recordings` | Recording storage location |
+| `snapshot_path` | `/media/rtsp_recorder/thumbnails` | Thumbnail storage location |
+| `analysis_output_path` | `/media/rtsp_recorder/ring_recordings/_analysis` | Analysis results |
+
+### Retention
+
+| Option | Default | Range | Description |
+|--------|---------|-------|-------------|
+| `retention_days` | 7 | 1-365 | Keep recordings (days) |
+| `retention_hours` | 0 | 0-23 | Additional hours |
+| `snapshot_retention_days` | 7 | 1-365 | Keep thumbnails (days) |
+
+**Example:**
 ```yaml
 retention_days: 14
 retention_hours: 12
-# = 14 Tage und 12 Stunden
+# = 14 days and 12 hours
 ```
 
-### Datenbank
+### Database
 
-| Option | Standard | Beschreibung |
-|--------|----------|--------------|
-| `use_sqlite` | `false` | SQLite statt JSON für Personen-DB |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `use_sqlite` | `false` | SQLite instead of JSON for people DB |
 
-**Empfehlung:** SQLite aktivieren bei >20 Personen für bessere Performance.
+**Recommendation:** Enable SQLite with >20 persons for better performance.
 
 ---
 
-## 2. Kamera-Einstellungen
+## 2. Camera Settings
 
-### Pro Kamera verfügbar
+### Available Per Camera
 
-| Option | Format | Beschreibung |
-|--------|--------|--------------|
-| `sensor_{Kamera}` | Entity ID | Motion Sensor für Trigger |
-| `duration_{Kamera}` | Sekunden | Aufnahmedauer |
-| `snapshot_delay_{Kamera}` | Sekunden | Verzögerung für Thumbnail |
+| Option | Format | Description |
+|--------|--------|-------------|
+| `sensor_{Camera}` | Entity ID | Motion sensor for trigger |
+| `duration_{Camera}` | Seconds | Recording duration |
+| `snapshot_delay_{Camera}` | Seconds | Delay for thumbnail |
 
-### Beispiel
+### Example
 
 ```yaml
-# Kamera: Wohnzimmer
-sensor_Wohnzimmer: binary_sensor.wohnzimmer_motion
-duration_Wohnzimmer: 90
-snapshot_delay_Wohnzimmer: 4
+# Camera: Living Room
+sensor_LivingRoom: binary_sensor.living_room_motion
+duration_LivingRoom: 90
+snapshot_delay_LivingRoom: 4
 
-# Kamera: Haustür
-sensor_Haustuer: binary_sensor.haustur_motion
-duration_Haustuer: 120
-snapshot_delay_Haustuer: 3
+# Camera: Front Door
+sensor_FrontDoor: binary_sensor.front_door_motion
+duration_FrontDoor: 120
+snapshot_delay_FrontDoor: 3
 ```
 
-### Empfohlene Aufnahmedauern
+### Recommended Recording Durations
 
-| Kamera-Typ | Empfehlung | Grund |
-|------------|------------|-------|
-| Innenraum | 60-90s | Typische Aktivitätsdauer |
-| Eingang/Flur | 30-60s | Kurze Durchgangszeiten |
-| Außenbereich | 120-180s | Längere Wege |
-| Haustür | 90-120s | Paketannahme etc. |
+| Camera Type | Recommendation | Reason |
+|-------------|----------------|--------|
+| Indoor | 60-90s | Typical activity duration |
+| Entrance/Hallway | 30-60s | Short transit times |
+| Outdoor | 120-180s | Longer paths |
+| Front Door | 90-120s | Package pickup etc. |
 
 ---
 
-## 3. Analyse-Optionen
+## 3. Analysis Options
 
-### Basis-Analyse
+### Basic Analysis
 
-| Option | Standard | Beschreibung |
-|--------|----------|--------------|
-| `analysis_enabled` | `true` | Analyse-Feature aktiv |
-| `analysis_detector_url` | `http://local-rtsp-recorder-detector:5000` | Detector-Endpunkt |
-| `analysis_device` | `coral_usb` | Inferenz-Hardware |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `analysis_enabled` | `true` | Analysis feature active |
+| `analysis_detector_url` | `http://local-rtsp-recorder-detector:5000` | Detector endpoint |
+| `analysis_device` | `coral_usb` | Inference hardware |
 
-### Verfügbare Geräte
+### Available Devices
 
-| Wert | Hardware | Geschwindigkeit |
-|------|----------|-----------------|
-| `coral_usb` | Google Coral USB | ~50ms/Frame |
-| `coral_pcie` | Google Coral PCIe | ~30ms/Frame |
-| `cpu` | CPU (Fallback) | ~500ms/Frame |
+| Value | Hardware | Speed |
+|-------|----------|-------|
+| `coral_usb` | Google Coral USB | ~50ms/frame |
+| `coral_pcie` | Google Coral PCIe | ~30ms/frame |
+| `cpu` | CPU (fallback) | ~500ms/frame |
 
-### Objekt-Detection
+### Object Detection
 
-| Option | Standard | Beschreibung |
-|--------|----------|--------------|
-| `analysis_detector_confidence` | 0.5 | Globale Confidence-Schwelle |
-| `analysis_frame_interval` | 2 | Jeder X-te Frame analysiert |
-| `analysis_objects` | Liste | Zu erkennende Objekte |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `analysis_detector_confidence` | 0.5 | Global confidence threshold |
+| `analysis_frame_interval` | 2 | Every X-th frame analyzed |
+| `analysis_objects` | List | Objects to detect |
 
-### Verfügbare Objekte
+### Available Objects
 
 ```yaml
 analysis_objects:
-  - person        # Personen
-  - car           # Autos
-  - truck         # LKW
-  - bicycle       # Fahrräder
-  - motorcycle    # Motorräder
-  - dog           # Hunde
-  - cat           # Katzen
-  - bird          # Vögel
-  - package       # Pakete
-  - backpack      # Rucksäcke
-  - suitcase      # Koffer
-  - bottle        # Flaschen
-  - cup           # Tassen
-  - chair         # Stühle
-  - couch         # Sofas
-  - bed           # Betten
-  - tv            # Fernseher
+  - person        # Persons
+  - car           # Cars
+  - truck         # Trucks
+  - bicycle       # Bicycles
+  - motorcycle    # Motorcycles
+  - dog           # Dogs
+  - cat           # Cats
+  - bird          # Birds
+  - package       # Packages
+  - backpack      # Backpacks
+  - suitcase      # Suitcases
+  - bottle        # Bottles
+  - cup           # Cups
+  - chair         # Chairs
+  - couch         # Couches
+  - bed           # Beds
+  - tv            # TVs
   - laptop        # Laptops
-  - cell phone    # Handys
-  - book          # Bücher
-  - potted plant  # Pflanzen
-  - umbrella      # Regenschirme
-  - remote        # Fernbedienungen
-  - dining table  # Esstische
+  - cell phone    # Cell phones
+  - book          # Books
+  - potted plant  # Plants
+  - umbrella      # Umbrellas
+  - remote        # Remotes
+  - dining table  # Dining tables
 ```
 
-### Pro-Kamera Objekte
+### Per-Camera Objects
 
 ```yaml
-# Nur bestimmte Objekte pro Kamera
-analysis_objects_Wohnzimmer:
+# Only specific objects per camera
+analysis_objects_LivingRoom:
   - person
   - dog
   - cat
   - remote
   - book
 
-analysis_objects_Haustuer:
+analysis_objects_FrontDoor:
   - person
   - package
   - car
   - bicycle
 ```
 
-### Pro-Kamera Confidence
+### Per-Camera Confidence
 
 ```yaml
-# Höhere Confidence für gut beleuchtete Räume
-detector_confidence_Wohnzimmer: 0.6
-detector_confidence_Flur: 0.4
-detector_confidence_Garten: 0.5
+# Higher confidence for well-lit rooms
+detector_confidence_LivingRoom: 0.6
+detector_confidence_Hallway: 0.4
+detector_confidence_Garden: 0.5
 ```
 
 ---
 
-## 4. Gesichtserkennung
+## 4. Face Recognition
 
-| Option | Standard | Bereich | Beschreibung |
-|--------|----------|---------|--------------|
-| `analysis_face_enabled` | `false` | true/false | Face Detection aktiv |
-| `analysis_face_confidence` | 0.2 | 0.1-0.9 | Gesichts-Erkennungsschwelle |
-| `analysis_face_match_threshold` | 0.35 | 0.2-0.6 | Matching-Schwelle |
-| `person_entities_enabled` | `false` | true/false | HA-Entities pro Person |
+| Option | Default | Range | Description |
+|--------|---------|-------|-------------|
+| `analysis_face_enabled` | `false` | true/false | Face detection active |
+| `analysis_face_confidence` | 0.2 | 0.1-0.9 | Face detection threshold |
+| `analysis_face_match_threshold` | 0.35 | 0.2-0.6 | Matching threshold |
+| `person_entities_enabled` | `false` | true/false | HA entities per person |
 
-### Empfohlene Einstellungen
+### Recommended Settings
 
-| Szenario | face_confidence | match_threshold |
-|----------|----------------|-----------------|
+| Scenario | face_confidence | match_threshold |
+|----------|-----------------|-----------------|
 | Standard | 0.2 | 0.35 |
-| Hohe Genauigkeit | 0.3 | 0.30 |
-| Schwierige Lichtverhältnisse | 0.15 | 0.40 |
-| Viele ähnliche Personen | 0.2 | 0.28 |
+| High accuracy | 0.3 | 0.30 |
+| Difficult lighting | 0.15 | 0.40 |
+| Many similar persons | 0.2 | 0.28 |
 
 ---
 
-## 5. Automatische Analyse
+## 5. Automatic Analysis
 
-### Scheduling-Optionen
+### Scheduling Options
 
-| Option | Standard | Beschreibung |
-|--------|----------|--------------|
-| `analysis_auto_enabled` | `false` | Auto-Analyse aktiv |
-| `analysis_auto_mode` | `daily` | Modus: `daily` oder `interval` |
-| `analysis_auto_time` | `03:00` | Uhrzeit (bei daily) |
-| `analysis_auto_interval_hours` | 24 | Intervall in Stunden |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `analysis_auto_enabled` | `false` | Auto-analysis active |
+| `analysis_auto_mode` | `daily` | Mode: `daily` or `interval` |
+| `analysis_auto_time` | `03:00` | Time (for daily) |
+| `analysis_auto_interval_hours` | 24 | Interval in hours |
 
-### Filter-Optionen
+### Filter Options
 
-| Option | Standard | Beschreibung |
-|--------|----------|--------------|
-| `analysis_auto_since_days` | 1 | Aufnahmen der letzten X Tage |
-| `analysis_auto_limit` | 50 | Max. Aufnahmen pro Durchlauf |
-| `analysis_auto_skip_existing` | `true` | Bereits analysierte überspringen |
-| `analysis_auto_new` | `true` | Nur neue Aufnahmen analysieren |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `analysis_auto_since_days` | 1 | Recordings from last X days |
+| `analysis_auto_limit` | 50 | Max recordings per run |
+| `analysis_auto_skip_existing` | `true` | Skip already analyzed |
+| `analysis_auto_new` | `true` | Only analyze new recordings |
 
-### Beispiel: Tägliche Analyse um 3 Uhr
+### Example: Daily Analysis at 3 AM
 
 ```yaml
 analysis_auto_enabled: true
@@ -224,7 +226,7 @@ analysis_auto_limit: 100
 analysis_auto_skip_existing: true
 ```
 
-### Beispiel: Alle 6 Stunden
+### Example: Every 6 Hours
 
 ```yaml
 analysis_auto_enabled: true
@@ -235,17 +237,17 @@ analysis_auto_limit: 25
 
 ---
 
-## 6. Performance-Einstellungen
+## 6. Performance Settings
 
-### Hardware-Monitoring
+### Hardware Monitoring
 
-| Option | Standard | Beschreibung |
-|--------|----------|--------------|
-| `analysis_perf_cpu_entity` | `null` | CPU-Sensor Entity |
-| `analysis_perf_coral_entity` | `null` | Coral-Temperatur Entity |
-| `analysis_perf_igpu_entity` | `null` | iGPU Entity (optional) |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `analysis_perf_cpu_entity` | `null` | CPU sensor entity |
+| `analysis_perf_coral_entity` | `null` | Coral temperature entity |
+| `analysis_perf_igpu_entity` | `null` | iGPU entity (optional) |
 
-### Empfohlene System-Sensoren
+### Recommended System Sensors
 
 ```yaml
 # System Monitor Integration
@@ -257,25 +259,25 @@ sensor:
       - type: disk_use_percent
         arg: /
 
-# Coral USB Temperatur (wenn verfügbar)
+# Coral USB Temperature (if available)
 analysis_perf_coral_entity: sensor.coral_temperature
 ```
 
 ---
 
-## 7. Erweiterte Optionen
+## 7. Advanced Options
 
-### Interne Einstellungen
+### Internal Settings
 
-Diese Optionen sind normalerweise nicht zu ändern:
+These options typically don't need changing:
 
-| Option | Standard | Beschreibung |
-|--------|----------|--------------|
-| Frame Stability Check | 1s, 2 Checks | Wartezeit für stabile Dateien |
-| Inference History | 1000 Einträge | Buffer für TPU-Load-Berechnung |
-| Rate Limiter | Token Bucket | DoS-Schutz für API |
+| Option | Default | Description |
+|--------|---------|-------------|
+| Frame Stability Check | 1s, 2 checks | Wait time for stable files |
+| Inference History | 1000 entries | Buffer for TPU load calculation |
+| Rate Limiter | Token Bucket | DoS protection for API |
 
-### Debug-Logging
+### Debug Logging
 
 In `configuration.yaml`:
 
@@ -286,53 +288,53 @@ logger:
     custom_components.rtsp_recorder: debug
 ```
 
-### Metriken aktivieren
+### Enable Metrics
 
-Metriken werden automatisch geloggt:
+Metrics are automatically logged:
 ```bash
-# Anzeigen
+# Display
 grep METRIC /config/home-assistant.log | tail -20
 
 # Format
 METRIC|camera_name|metric_type|value
-METRIC|Wohnzimmer|recording_to_saved|32.1s
-METRIC|Wohnzimmer|analysis_duration|6.2s
+METRIC|LivingRoom|recording_to_saved|32.1s
+METRIC|LivingRoom|analysis_duration|6.2s
 ```
 
 ---
 
-## 8. Beispiel-Konfigurationen
+## 8. Example Configurations
 
-### Minimal (nur Recording)
+### Minimal (Recording Only)
 
 ```yaml
 storage_path: /media/rtsp_recorder/recordings
 snapshot_path: /media/rtsp_recorder/thumbnails
 retention_days: 7
 
-sensor_Wohnzimmer: binary_sensor.wohnzimmer_motion
-duration_Wohnzimmer: 60
+sensor_LivingRoom: binary_sensor.living_room_motion
+duration_LivingRoom: 60
 
 analysis_enabled: false
 ```
 
-### Standard (mit Analyse)
+### Standard (with Analysis)
 
 ```yaml
 storage_path: /media/rtsp_recorder/recordings
 snapshot_path: /media/rtsp_recorder/thumbnails
 retention_days: 14
 
-# Kameras
-sensor_Wohnzimmer: binary_sensor.wohnzimmer_motion
-duration_Wohnzimmer: 90
-snapshot_delay_Wohnzimmer: 4
+# Cameras
+sensor_LivingRoom: binary_sensor.living_room_motion
+duration_LivingRoom: 90
+snapshot_delay_LivingRoom: 4
 
-sensor_Haustuer: binary_sensor.haustur_motion
-duration_Haustuer: 120
-snapshot_delay_Haustuer: 3
+sensor_FrontDoor: binary_sensor.front_door_motion
+duration_FrontDoor: 120
+snapshot_delay_FrontDoor: 3
 
-# Analyse
+# Analysis
 analysis_enabled: true
 analysis_detector_url: http://local-rtsp-recorder-detector:5000
 analysis_device: coral_usb
@@ -344,10 +346,10 @@ analysis_objects:
   - package
 ```
 
-### Vollständig (alle Features)
+### Complete (All Features)
 
 ```yaml
-# Speicher
+# Storage
 storage_path: /media/rtsp_recorder/recordings
 snapshot_path: /media/rtsp_recorder/thumbnails
 analysis_output_path: /media/rtsp_recorder/analysis
@@ -355,25 +357,25 @@ retention_days: 30
 snapshot_retention_days: 14
 use_sqlite: true
 
-# Kameras
-sensor_Wohnzimmer: binary_sensor.wohnzimmer_motion
-duration_Wohnzimmer: 90
-snapshot_delay_Wohnzimmer: 4
-analysis_objects_Wohnzimmer: [person, dog, cat, remote]
-detector_confidence_Wohnzimmer: 0.6
+# Cameras
+sensor_LivingRoom: binary_sensor.living_room_motion
+duration_LivingRoom: 90
+snapshot_delay_LivingRoom: 4
+analysis_objects_LivingRoom: [person, dog, cat, remote]
+detector_confidence_LivingRoom: 0.6
 
-sensor_Haustuer: binary_sensor.haustur_motion
-duration_Haustuer: 120
-snapshot_delay_Haustuer: 3
-analysis_objects_Haustuer: [person, package, car, bicycle]
-detector_confidence_Haustuer: 0.5
+sensor_FrontDoor: binary_sensor.front_door_motion
+duration_FrontDoor: 120
+snapshot_delay_FrontDoor: 3
+analysis_objects_FrontDoor: [person, package, car, bicycle]
+detector_confidence_FrontDoor: 0.5
 
-sensor_Garten: binary_sensor.garten_motion
-duration_Garten: 180
-snapshot_delay_Garten: 5
-analysis_objects_Garten: [person, car, dog, bird]
+sensor_Garden: binary_sensor.garden_motion
+duration_Garden: 180
+snapshot_delay_Garden: 5
+analysis_objects_Garden: [person, car, dog, bird]
 
-# Analyse
+# Analysis
 analysis_enabled: true
 analysis_detector_url: http://local-rtsp-recorder-detector:5000
 analysis_device: coral_usb
@@ -381,13 +383,13 @@ analysis_detector_confidence: 0.5
 analysis_frame_interval: 2
 analysis_objects: [person, car, dog, cat, package]
 
-# Gesichtserkennung
+# Face Recognition
 analysis_face_enabled: true
 analysis_face_confidence: 0.2
 analysis_face_match_threshold: 0.35
 person_entities_enabled: true
 
-# Auto-Analyse
+# Auto-Analysis
 analysis_auto_enabled: true
 analysis_auto_mode: daily
 analysis_auto_time: "03:00"
@@ -403,13 +405,13 @@ analysis_perf_coral_entity: sensor.coral_temperature
 
 ---
 
-## Siehe auch
+## See Also
 
-- 📖 [Benutzerhandbuch](USER_GUIDE.md)
+- 📖 [User Guide](USER_GUIDE.md)
 - 🚀 [Installation](INSTALLATION.md)
-- 🧠 [Gesichtserkennung](FACE_RECOGNITION.md)
+- 🧠 [Face Recognition](FACE_RECOGNITION.md)
 - 🔧 [Troubleshooting](TROUBLESHOOTING.md)
 
 ---
 
-*Bei Problemen: [GitHub Issues](https://github.com/brainAThome/RTSP-Recorder/issues)*
+*For problems: [GitHub Issues](https://github.com/brainAThome/Opening_RTSP-Recorder/issues)*

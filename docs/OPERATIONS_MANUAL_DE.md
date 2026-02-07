@@ -1,6 +1,8 @@
 # RTSP Recorder – Betriebsanleitung
 
-![Version](https://img.shields.io/badge/Version-1.1.2%20BETA-brightgreen)
+> 🇬🇧 **[English Version](OPERATIONS_MANUAL.md)**
+
+![Version](https://img.shields.io/badge/Version-1.2.2%20BETA-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 
 > [!NOTE]
@@ -460,9 +462,9 @@ Filtern Sie nach `rtsp_recorder` für relevante Einträge.
 ### Support
 
 Bei weiteren Problemen:
-1. Prüfen Sie die [Troubleshooting-Dokumentation](TROUBLESHOOTING.md)
+1. Prüfen Sie die [Troubleshooting-Dokumentation](TROUBLESHOOTING_DE.md)
 2. Öffnen Sie ein Issue im Repository
 
 ---
 
-> **RTSP Recorder v1.1.1 BETA** – KI-gestützte Videoüberwachung für Home Assistant
+> **RTSP Recorder v1.2.2 BETA** – KI-gestützte Videoüberwachung für Home Assistant

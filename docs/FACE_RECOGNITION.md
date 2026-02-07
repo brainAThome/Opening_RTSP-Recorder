@@ -1,35 +1,37 @@
-# 🧠 RTSP Recorder - Gesichtserkennung
+# 🧠 RTSP Recorder - Face Recognition
 
-**Version:** 1.1.1  
-**Letzte Aktualisierung:** 03. Februar 2026
+> 🇩🇪 **[Deutsche Version / German Version](FACE_RECOGNITION_DE.md)**
+
+**Version:** 1.2.2  
+**Last Updated:** February 7, 2026
 
 ---
 
-## Inhaltsverzeichnis
+## Table of Contents
 
-1. [Übersicht](#1-übersicht)
-2. [Voraussetzungen](#2-voraussetzungen)
-3. [Personen anlegen](#3-personen-anlegen)
-4. [Training mit positiven Samples](#4-training-mit-positiven-samples)
+1. [Overview](#1-overview)
+2. [Prerequisites](#2-prerequisites)
+3. [Creating People](#3-creating-people)
+4. [Training with Positive Samples](#4-training-with-positive-samples)
 5. [Negative Samples](#5-negative-samples)
 6. [Person Detail Popup](#6-person-detail-popup)
-7. [Schwellenwerte anpassen](#7-schwellenwerte-anpassen)
-8. [Person-Entities für Automationen](#8-person-entities-für-automationen)
+7. [Adjusting Thresholds](#7-adjusting-thresholds)
+8. [Person Entities for Automations](#8-person-entities-for-automations)
 9. [Best Practices](#9-best-practices)
 10. [Troubleshooting](#10-troubleshooting)
 
 ---
 
-## 1. Übersicht
+## 1. Overview
 
-Die Gesichtserkennung in RTSP Recorder ermöglicht:
+Face recognition in RTSP Recorder enables:
 
-- **Bekannte Personen identifizieren** in Aufnahmen
-- **Automatische Benachrichtigungen** bei bestimmten Personen
-- **Aktivitäts-Historie** wer wann wo war
-- **Home Assistant Automationen** basierend auf Personen
+- **Identify known persons** in recordings
+- **Automatic notifications** for specific persons
+- **Activity history** of who was where and when
+- **Home Assistant automations** based on persons
 
-### Wie es funktioniert
+### How It Works
 
 ```
 Video Frame → Face Detection → Embedding Extraction → Matching → Person ID
@@ -37,56 +39,56 @@ Video Frame → Face Detection → Embedding Extraction → Matching → Person 
   MobileNet     512-dim Vector    Cosine Similarity   Threshold
 ```
 
-### Modelle
+### Models
 
-| Modell | Zweck | Hardware |
-|--------|-------|----------|
-| MobileNet V2 | Gesichtserkennung | Coral/CPU |
-| EfficientNet-EdgeTPU-S | Embedding-Extraktion | Coral/CPU |
+| Model | Purpose | Hardware |
+|-------|---------|----------|
+| MobileNet V2 | Face detection | Coral/CPU |
+| EfficientNet-EdgeTPU-S | Embedding extraction | Coral/CPU |
 
 ---
 
-## 2. Voraussetzungen
+## 2. Prerequisites
 
 ### Hardware
 
-- ✅ Google Coral USB (empfohlen) für schnelle Inferenz
-- ⚠️ CPU-only möglich, aber 10x langsamer
+- ✅ Google Coral USB (recommended) for fast inference
+- ⚠️ CPU-only possible, but 10x slower
 
 ### Software
 
 - RTSP Recorder v1.0.7+ 
-- Detector Add-on mit Face-Modellen
-- SQLite aktiviert (empfohlen für Historie)
+- Detector add-on with face models
+- SQLite enabled (recommended for history)
 
-### Einstellungen prüfen
+### Check Settings
 
-In Integration Optionen:
+In integration options:
 
 ```yaml
 analysis_face_enabled: true
-analysis_face_confidence: 0.2      # Gesichtserkennung-Schwelle
-analysis_face_match_threshold: 0.35 # Matching-Schwelle
+analysis_face_confidence: 0.2      # Face detection threshold
+analysis_face_match_threshold: 0.35 # Matching threshold
 ```
 
 ---
 
-## 3. Personen anlegen
+## 3. Creating People
 
 ### Via Dashboard
 
-1. Öffne **RTSP Recorder Card**
-2. Gehe zum Tab **👥 Personen**
-3. Klicke **➕ Neue Person**
-4. Gib einen **Namen** ein
-5. Bestätige mit **Erstellen**
+1. Open **RTSP Recorder Card**
+2. Go to tab **👥 People**
+3. Click **➕ New Person**
+4. Enter a **name**
+5. Confirm with **Create**
 
 ### Via Service Call
 
 ```yaml
 service: rtsp_recorder.create_person
 data:
-  name: "Max Mustermann"
+  name: "John Doe"
 ```
 
 ### Via WebSocket API
@@ -95,202 +97,202 @@ data:
 hass.callWS({
   type: 'rtsp_recorder/people_action',
   action: 'create',
-  name: 'Max Mustermann'
+  name: 'John Doe'
 });
 ```
 
 ---
 
-## 4. Training mit positiven Samples
+## 4. Training with Positive Samples
 
-### Schritt 1: Analyse durchführen
+### Step 1: Perform Analysis
 
-1. Nimm ein Video auf, in dem die Person gut sichtbar ist
-2. Führe **Analyse** durch (manuell oder automatisch)
-3. Warte auf Abschluss
+1. Record a video where the person is clearly visible
+2. Perform **analysis** (manually or automatically)
+3. Wait for completion
 
-### Schritt 2: Gesichter zuweisen
+### Step 2: Assign Faces
 
-1. Öffne das analysierte Video im Dashboard
-2. Klicke auf **Detection Overlay**
-3. Du siehst erkannte Gesichter mit **"Unbekannt"**
-4. Klicke auf ein Gesicht
-5. Wähle **"Zu Person hinzufügen"**
-6. Wähle die Person aus der Liste
+1. Open the analyzed video in the dashboard
+2. Click on **Detection Overlay**
+3. You'll see detected faces with **"Unknown"**
+4. Click on a face
+5. Select **"Add to Person"**
+6. Choose the person from the list
 
-### Schritt 3: Mehrere Samples hinzufügen
+### Step 3: Add Multiple Samples
 
-**Empfehlung:** 5-10 Samples pro Person für gute Erkennung
+**Recommendation:** 5-10 samples per person for good recognition
 
-| Sample-Typ | Wichtigkeit |
-|------------|-------------|
-| Frontal, gutes Licht | ⭐⭐⭐⭐⭐ |
-| Leicht seitlich | ⭐⭐⭐⭐ |
-| Verschiedene Beleuchtung | ⭐⭐⭐⭐ |
-| Mit Brille / ohne | ⭐⭐⭐ |
-| Verschiedene Entfernungen | ⭐⭐⭐ |
+| Sample Type | Importance |
+|-------------|------------|
+| Frontal, good light | ⭐⭐⭐⭐⭐ |
+| Slightly to the side | ⭐⭐⭐⭐ |
+| Different lighting | ⭐⭐⭐⭐ |
+| With glasses / without | ⭐⭐⭐ |
+| Different distances | ⭐⭐⭐ |
 
-### Schritt 4: Training verifizieren
+### Step 4: Verify Training
 
-Nach dem Hinzufügen von Samples:
+After adding samples:
 
-1. Gehe zu **Personen** → Wähle Person
-2. Prüfe **Sample-Anzahl**
-3. Führe eine neue Analyse durch
-4. Die Person sollte jetzt erkannt werden
+1. Go to **People** → Select person
+2. Check **sample count**
+3. Run a new analysis
+4. The person should now be recognized
 
 ---
 
 ## 5. Negative Samples
 
-### Was sind Negative Samples?
+### What Are Negative Samples?
 
-Negative Samples sind Gesichter, die **NICHT** zu einer Person gehören, aber fälschlicherweise zugeordnet wurden.
+Negative samples are faces that do **NOT** belong to a person, but were incorrectly assigned.
 
-### Wann verwenden?
+### When to Use?
 
-- Falsch-positive Erkennungen reduzieren
-- Ähnlich aussehende Personen unterscheiden
-- Haustiere oder Bilder ausschließen
+- Reduce false-positive recognitions
+- Distinguish similar-looking persons
+- Exclude pets or pictures
 
-### Negative Sample hinzufügen
+### Add Negative Sample
 
-1. Bei einer falschen Erkennung:
-2. Klicke auf das falsch erkannte Gesicht
-3. Wähle **"Als negatives Sample markieren"**
-4. Wähle die Person, der es NICHT gehört
+1. On an incorrect recognition:
+2. Click on the wrongly recognized face
+3. Select **"Mark as negative sample"**
+4. Choose the person it does NOT belong to
 
-### Schwellenwert
+### Threshold
 
-Wenn mehr als **75%** der Embeddings einer Person als negativ markiert sind, wird das Matching blockiert.
+If more than **75%** of a person's embeddings are marked as negative, matching is blocked.
 
 ---
 
 ## 6. Person Detail Popup
 
-**NEU in v1.1.0n** - Klicke auf einen Personennamen im People-Tab um das Detail-Popup zu öffnen.
+Click on a person name in the People tab to open the detail popup.
 
-### Was wird angezeigt?
+### What Is Shown?
 
-| Bereich | Beschreibung |
-|---------|--------------|
-| **Positive Samples** | Alle Gesichtsbilder, die dieser Person zugeordnet sind |
-| **Negative Samples** | Bilder, die NICHT diese Person zeigen (korrigierte Fehlerkennungen) |
-| **Erkennungen** | Wie oft wurde diese Person insgesamt erkannt |
-| **Zuletzt gesehen** | Datum, Uhrzeit und Kamera der letzten Erkennung |
+| Area | Description |
+|------|-------------|
+| **Positive Samples** | All face images assigned to this person |
+| **Negative Samples** | Images that do NOT show this person (corrected misrecognitions) |
+| **Detections** | How often this person was detected in total |
+| **Last Seen** | Date, time and camera of last detection |
 
-### Samples verwalten
+### Manage Samples
 
-Im Popup kannst du:
+In the popup you can:
 
-1. **Alle Samples einsehen** mit Datum der Erstellung
-2. **Einzelne Samples löschen** durch Klick auf das rote ✕
-3. **Statistiken prüfen** zur Qualitätskontrolle
+1. **View all samples** with creation date
+2. **Delete individual samples** by clicking the red ✕
+3. **Check statistics** for quality control
 
-### Popup öffnen
+### Open Popup
 
-1. Gehe zu **👥 Personen**-Tab
-2. Klicke auf den **blauen, unterstrichenen Namen** einer Person
-3. Das Popup öffnet sich mit allen Details
+1. Go to **👥 People** tab
+2. Click on the **blue, underlined name** of a person
+3. The popup opens with all details
 
-### Wann Samples löschen?
+### When to Delete Samples?
 
-- **Positive löschen**: Wenn ein falsches Bild zugeordnet wurde
-- **Negative löschen**: Wenn ein Bild fälschlich als "nicht diese Person" markiert wurde
+- **Delete positive**: If a wrong image was assigned
+- **Delete negative**: If an image was incorrectly marked as "not this person"
 
 ---
 
-## 7. Schwellenwerte anpassen
+## 7. Adjusting Thresholds
 
-### Face Confidence (Gesichtserkennung)
+### Face Confidence (Face Detection)
 
 ```yaml
-analysis_face_confidence: 0.2  # Standard
+analysis_face_confidence: 0.2  # Default
 ```
 
-| Wert | Effekt |
-|------|--------|
-| 0.1 | Mehr Gesichter erkannt, mehr False Positives |
-| 0.2 | **Empfohlen** - Gute Balance |
-| 0.3 | Weniger Gesichter, höhere Qualität |
-| 0.5 | Nur sehr deutliche Gesichter |
+| Value | Effect |
+|-------|--------|
+| 0.1 | More faces detected, more false positives |
+| 0.2 | **Recommended** - Good balance |
+| 0.3 | Fewer faces, higher quality |
+| 0.5 | Only very clear faces |
 
 ### Face Match Threshold (Matching)
 
 ```yaml
-analysis_face_match_threshold: 0.35  # Standard
+analysis_face_match_threshold: 0.35  # Default
 ```
 
-| Wert | Effekt |
-|------|--------|
-| 0.25 | Streng - Weniger Matches, weniger Fehler |
-| 0.35 | **Empfohlen** - Gute Balance |
-| 0.45 | Locker - Mehr Matches, mehr False Positives |
-| 0.55 | Sehr locker - Hohe Fehlerrate |
+| Value | Effect |
+|-------|--------|
+| 0.25 | Strict - Fewer matches, fewer errors |
+| 0.35 | **Recommended** - Good balance |
+| 0.45 | Loose - More matches, more false positives |
+| 0.55 | Very loose - High error rate |
 
-### Per-Kamera Schwellenwerte
+### Per-Camera Thresholds
 
-In den Optionen kannst du pro Kamera anpassen:
+In the options you can adjust per camera:
 
 ```yaml
-detector_confidence_Wohnzimmer: 0.6  # Höher für gut beleuchtete Räume
-detector_confidence_Flur: 0.4        # Niedriger für schwierige Bedingungen
+detector_confidence_LivingRoom: 0.6  # Higher for well-lit rooms
+detector_confidence_Hallway: 0.4      # Lower for difficult conditions
 ```
 
 ---
 
-## 8. Person-Entities für Automationen
+## 8. Person Entities for Automations
 
-**NEU in v1.1.0n** - Erstelle automatisch Home Assistant Entities für erkannte Personen.
+Create automatic Home Assistant entities for detected persons.
 
-### Aktivieren
+### Enable
 
-1. Gehe zu **Einstellungen** → **Geräte & Dienste** → **RTSP Recorder**
-2. Klicke auf **Konfigurieren**
-3. Aktiviere **Person-Entities erstellen** ✅
+1. Go to **Settings** → **Devices & Services** → **RTSP Recorder**
+2. Click **Configure**
+3. Enable **Create Person Entities** ✅
 
-### Erstellte Entities
+### Created Entities
 
-Für jede Person wird automatisch ein Binary Sensor erstellt:
+For each person, a binary sensor is automatically created:
 
 ```yaml
-binary_sensor.rtsp_person_max_mustermann:
-  state: "on"  # Wenn kürzlich erkannt (letzte 5 Minuten)
+binary_sensor.rtsp_person_john_doe:
+  state: "on"  # When recently detected (last 5 minutes)
   attributes:
     last_seen: "2026-02-03T14:30:00"
-    last_camera: "Wohnzimmer"
+    last_camera: "Living Room"
     confidence: 0.87
     total_sightings: 42
 ```
 
-### Automatisierungen erstellen
+### Create Automations
 
-**Beispiel 1: Benachrichtigung wenn Person erkannt**
+**Example 1: Notification when person detected**
 
 ```yaml
 automation:
-  - alias: "Max erkannt - Benachrichtigung"
+  - alias: "John detected - Notification"
     trigger:
       - platform: state
-        entity_id: binary_sensor.rtsp_person_max_mustermann
+        entity_id: binary_sensor.rtsp_person_john_doe
         to: "on"
     action:
       - service: notify.mobile_app_phone
         data:
-          title: "👤 Person erkannt"
-          message: "Max wurde bei {{ trigger.to_state.attributes.last_camera }} gesehen"
+          title: "👤 Person detected"
+          message: "John was seen at {{ trigger.to_state.attributes.last_camera }}"
           data:
             image: "/local/thumbnails/{{ trigger.to_state.attributes.last_camera }}/latest.jpg"
 ```
 
-**Beispiel 2: Licht einschalten bei Ankunft**
+**Example 2: Turn on light on arrival**
 
 ```yaml
 automation:
-  - alias: "Willkommen zuhause"
+  - alias: "Welcome home"
     trigger:
       - platform: state
-        entity_id: binary_sensor.rtsp_person_max_mustermann
+        entity_id: binary_sensor.rtsp_person_john_doe
         to: "on"
     condition:
       - condition: state
@@ -299,14 +301,14 @@ automation:
     action:
       - service: light.turn_on
         target:
-          entity_id: light.flur
+          entity_id: light.hallway
 ```
 
-**Beispiel 3: Unbekannte Person erkannt**
+**Example 3: Unknown person detected**
 
 ```yaml
 automation:
-  - alias: "Unbekannte Person Alarm"
+  - alias: "Unknown person alarm"
     trigger:
       - platform: state
         entity_id: binary_sensor.rtsp_person_unknown
@@ -314,24 +316,24 @@ automation:
     action:
       - service: notify.mobile_app_phone
         data:
-          title: "⚠️ Unbekannte Person"
-          message: "Unbekannte Person bei {{ trigger.to_state.attributes.last_camera }} erkannt"
+          title: "⚠️ Unknown Person"
+          message: "Unknown person detected at {{ trigger.to_state.attributes.last_camera }}"
           data:
             tag: "unknown_person"
             importance: high
 ```
 
-### Erkennungs-Timeout
+### Detection Timeout
 
-- Person-Entity geht auf `off` nach **5 Minuten** ohne neue Erkennung
-- Bei erneuter Erkennung wechselt es zurück auf `on`
+- Person entity goes to `off` after **5 minutes** without new detection
+- On renewed detection it switches back to `on`
 
-### Entity-Benennung
+### Entity Naming
 
-| Person-Name | Entity-ID |
+| Person Name | Entity ID |
 |-------------|-----------|
-| Max Mustermann | `binary_sensor.rtsp_person_max_mustermann` |
-| Max | `binary_sensor.rtsp_person_max` |
+| John Doe | `binary_sensor.rtsp_person_john_doe` |
+| John | `binary_sensor.rtsp_person_john` |
 | Unknown | `binary_sensor.rtsp_person_unknown` |
 
 ---
@@ -340,100 +342,100 @@ automation:
 
 ### ✅ Do's
 
-| Empfehlung | Grund |
-|------------|-------|
-| 5-10 Samples pro Person | Bessere Genauigkeit |
-| Verschiedene Winkel | Robustere Erkennung |
-| Gute Beleuchtung bevorzugen | Höhere Qualität |
-| Negative Samples nutzen | Weniger False Positives |
-| Person Detail Popup prüfen | Qualitätskontrolle der Samples |
-| Person-Entities für Automationen | Smart Home Integration |
+| Recommendation | Reason |
+|----------------|--------|
+| 5-10 samples per person | Better accuracy |
+| Different angles | More robust recognition |
+| Prefer good lighting | Higher quality |
+| Use negative samples | Fewer false positives |
+| Check Person Detail Popup | Quality control of samples |
+| Person entities for automations | Smart home integration |
 
 ### ❌ Don'ts
 
-| Vermeiden | Grund |
-|-----------|-------|
-| Nur 1-2 Samples | Unzuverlässige Erkennung |
-| Unscharfe Bilder als Sample | Schlechte Embeddings |
-| Zu niedrige Schwellenwerte | Viele Fehlerkennungen |
-| Zu viele Personen (>50) | Performance-Impact |
-| Samples nie überprüfen | Schlechte Trainingsdaten akkumulieren |
+| Avoid | Reason |
+|-------|--------|
+| Only 1-2 samples | Unreliable recognition |
+| Blurry images as sample | Poor embeddings |
+| Too low thresholds | Many misrecognitions |
+| Too many persons (>50) | Performance impact |
+| Never check samples | Bad training data accumulates |
 
-### Optimale Kamera-Einstellungen
+### Optimal Camera Settings
 
 ```
-Auflösung: 1080p (min. 720p)
+Resolution: 1080p (min. 720p)
 Framerate: 15+ fps
 Codec: H.264
-Beleuchtung: Gute Ausleuchtung des Gesichts
-Winkel: Frontal bis 45° zur Kamera
+Lighting: Good face illumination
+Angle: Frontal to 45° to camera
 ```
 
 ---
 
 ## 10. Troubleshooting
 
-### Problem: Keine Gesichter erkannt
+### Problem: No Faces Detected
 
-**Ursachen:**
-1. Face Detection deaktiviert
-2. Confidence zu hoch
-3. Schlechte Videoqualität
+**Causes:**
+1. Face detection disabled
+2. Confidence too high
+3. Poor video quality
 
-**Lösung:**
+**Solution:**
 ```yaml
-# Prüfe Einstellungen
+# Check settings
 analysis_face_enabled: true
-analysis_face_confidence: 0.2  # Senken wenn nötig
+analysis_face_confidence: 0.2  # Lower if needed
 ```
 
-### Problem: Falsche Person erkannt
+### Problem: Wrong Person Recognized
 
-**Ursachen:**
-1. Zu wenige Samples
-2. Match Threshold zu hoch
-3. Ähnlich aussehende Personen
+**Causes:**
+1. Too few samples
+2. Match threshold too high
+3. Similar-looking persons
 
-**Lösung:**
-1. Mehr Samples hinzufügen
-2. Negative Samples für Verwechslungen
-3. Threshold senken: `0.35 → 0.30`
+**Solution:**
+1. Add more samples
+2. Negative samples for mix-ups
+3. Lower threshold: `0.35 → 0.30`
 
-### Problem: Person wird nicht mehr erkannt
+### Problem: Person No Longer Recognized
 
-**Ursachen:**
-1. Aussehen verändert (Bart, Brille, Frisur)
-2. Andere Beleuchtung
-3. Anderer Kamerawinkel
+**Causes:**
+1. Appearance changed (beard, glasses, hairstyle)
+2. Different lighting
+3. Different camera angle
 
-**Lösung:**
-1. Neue Samples mit aktuellem Aussehen hinzufügen
-2. Alte Samples behalten (für Variation)
+**Solution:**
+1. Add new samples with current appearance
+2. Keep old samples (for variation)
 
-### Problem: Zu viele False Positives
+### Problem: Too Many False Positives
 
-**Ursachen:**
-1. Match Threshold zu hoch
-2. Zu wenige negative Samples
-3. Bilder/Poster werden erkannt
+**Causes:**
+1. Match threshold too high
+2. Too few negative samples
+3. Pictures/posters are recognized
 
-**Lösung:**
-1. Threshold senken: `0.35 → 0.30`
-2. False Positives als negative Samples markieren
-3. Bilder/Poster-Bereiche von Detection ausschließen
+**Solution:**
+1. Lower threshold: `0.35 → 0.30`
+2. Mark false positives as negative samples
+3. Exclude picture/poster areas from detection
 
-### Logs prüfen
+### Check Logs
 
 ```bash
-# Auf HA Server
+# On HA server
 grep -i "face\|person\|embedding" /config/home-assistant.log | tail -50
 ```
 
 ---
 
-## Erweitert: Embedding-Qualität
+## Advanced: Embedding Quality
 
-### Embedding-Statistiken abrufen
+### Get Embedding Stats
 
 ```yaml
 service: rtsp_recorder.get_person_stats
@@ -452,16 +454,16 @@ Response:
 }
 ```
 
-### SQLite-Abfragen
+### SQLite Queries
 
 ```sql
--- Erkennungs-Historie
+-- Recognition history
 SELECT * FROM recognition_history 
 WHERE person_id = 'abc123' 
 ORDER BY timestamp DESC 
 LIMIT 10;
 
--- Statistiken pro Person
+-- Statistics per person
 SELECT person_id, COUNT(*) as sightings 
 FROM recognition_history 
 GROUP BY person_id;
@@ -469,12 +471,12 @@ GROUP BY person_id;
 
 ---
 
-## Siehe auch
+## See Also
 
-- 📖 [Benutzerhandbuch](USER_GUIDE.md)
-- ⚙️ [Konfiguration](CONFIGURATION.md)
+- 📖 [User Guide](USER_GUIDE.md)
+- ⚙️ [Configuration](CONFIGURATION.md)
 - 🔧 [Troubleshooting](TROUBLESHOOTING.md)
 
 ---
 
-*Bei Problemen: [GitHub Issues](https://github.com/brainAThome/RTSP-Recorder/issues)*
+*For problems: [GitHub Issues](https://github.com/brainAThome/Opening_RTSP-Recorder/issues)*

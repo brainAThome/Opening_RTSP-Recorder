@@ -1,142 +1,143 @@
-# RTSP Recorder - Benutzerhandbuch
+# RTSP Recorder - User Guide
 
-**Version:** 1.1.1  
-**Datum:** Februar 2026  
-**Kompatibilität:** Home Assistant 2024.1+
+> 🇩🇪 **[Deutsche Version / German Version](USER_GUIDE_DE.md)**
+
+**Version:** 1.2.2  
+**Date:** February 2026  
+**Compatibility:** Home Assistant 2024.1+
 
 ---
 
-## Inhaltsverzeichnis
+## Table of Contents
 
-1. [Einführung](#1-einführung)
+1. [Introduction](#1-introduction)
 2. [Installation](#2-installation)
-3. [Erste Schritte](#3-erste-schritte)
+3. [Getting Started](#3-getting-started)
 4. [Dashboard Card](#4-dashboard-card)
-5. [Aufnahmen & Timeline](#5-aufnahmen--timeline)
-6. [KI-Analyse](#6-ki-analyse)
-7. [Personen-Erkennung](#7-personen-erkennung)
-8. [Einstellungen im Detail](#8-einstellungen-im-detail)
-9. [Automatisierungen](#9-automatisierungen)
+5. [Recordings & Timeline](#5-recordings--timeline)
+6. [AI Analysis](#6-ai-analysis)
+7. [Person Recognition](#7-person-recognition)
+8. [Settings in Detail](#8-settings-in-detail)
+9. [Automations](#9-automations)
 10. [Troubleshooting](#10-troubleshooting)
 11. [FAQ](#11-faq)
 
-> 📚 **Weitere Dokumentation:**
-> - [Installation](INSTALLATION.md) - Detaillierte Installationsanleitung
-> - [Konfiguration](CONFIGURATION.md) - Alle Optionen erklärt
-> - [Gesichtserkennung](FACE_RECOGNITION.md) - Training & Matching
-> - [Troubleshooting](TROUBLESHOOTING.md) - Problemlösung
+> 📚 **Additional Documentation:**
+> - [Installation](INSTALLATION.md) - Detailed installation guide
+> - [Configuration](CONFIGURATION.md) - All options explained
+> - [Face Recognition](FACE_RECOGNITION.md) - Training & Matching
+> - [Troubleshooting](TROUBLESHOOTING.md) - Problem solving
 
 ---
 
-## 1. Einführung
+## 1. Introduction
 
-RTSP Recorder ist eine umfassende Videoüberwachungslösung für Home Assistant mit KI-gestützter Objekterkennung und Gesichtserkennung.
+RTSP Recorder is a comprehensive video surveillance solution for Home Assistant with AI-powered object detection and face recognition.
 
-### Was ist neu in v1.1.0?
+### What's New in v1.2.2?
 
-| Feature | Beschreibung |
-|---------|--------------|
-| ⚡ **Parallele Snapshots** | Thumbnails während der Aufnahme |
-| 📊 **TPU-Load Anzeige** | Echtzeit Coral-Auslastung |
-| 🔒 **Rate Limiter** | DoS-Schutz für API |
-| 🌐 **5 Sprachen** | DE, EN, ES, FR, NL |
-| 🧪 **Unit Tests** | pytest Framework |
+| Feature | Description |
+|---------|-------------|
+| 📊 **Statistics Reset** | Reset detector statistics from UI |
+| 🔴 **Recording Indicator Fix** | Multi-camera display fixed |
+| 🎬 **FPS Display** | Shows actual video FPS |
+| 📖 **Ring Privacy Docs** | Amazon data flow documentation |
 
-### Hauptfunktionen
+### Main Features
 
-| Funktion | Beschreibung |
-|----------|--------------|
-| **Bewegungsgesteuerte Aufnahme** | Automatische Aufzeichnung bei Bewegungserkennung |
-| **KI-Objekterkennung** | Erkennung von Personen, Autos, Tieren etc. |
-| **Gesichtserkennung** | Training und Wiedererkennung bekannter Personen |
-| **Coral USB Support** | Hardware-beschleunigte Inferenz (~50ms statt ~600ms) |
-| **Timeline-Ansicht** | Visuelle Übersicht aller Aufnahmen |
-| **Retention Management** | Automatische Bereinigung alter Aufnahmen |
+| Feature | Description |
+|---------|-------------|
+| **Motion-triggered Recording** | Automatic recording on motion detection |
+| **AI Object Detection** | Detection of persons, cars, animals etc. |
+| **Face Recognition** | Training and recognition of known persons |
+| **Coral USB Support** | Hardware-accelerated inference (~50ms vs ~600ms) |
+| **Timeline View** | Visual overview of all recordings |
+| **Retention Management** | Automatic cleanup of old recordings |
 
-### Systemanforderungen
+### System Requirements
 
-- Home Assistant 2024.1 oder neuer
+- Home Assistant 2024.1 or newer
 - Python 3.11+
 - Optional: Google Coral USB Accelerator
-- Speicherplatz für Aufnahmen (empfohlen: min. 50 GB)
+- Storage space for recordings (recommended: min. 50 GB)
 
 ---
 
 ## 2. Installation
 
-### 2.1 Installation via HACS (Empfohlen)
+### 2.1 Installation via HACS (Recommended)
 
-1. **HACS öffnen** in Home Assistant
-2. Klicke auf **⋮** (Drei-Punkte-Menü) → **Custom repositories**
-3. Repository-URL eingeben:
+1. **Open HACS** in Home Assistant
+2. Click **⋮** (three-dot menu) → **Custom repositories**
+3. Enter repository URL:
    ```
-   https://github.com/brainAThome/RTSP-Recorder
+   https://github.com/brainAThome/Opening_RTSP-Recorder
    ```
-4. Kategorie: **Integration**
-5. Klicke **Add**
-6. Suche nach "RTSP Recorder" und klicke **Download**
-7. **Home Assistant neustarten**
+4. Category: **Integration**
+5. Click **Add**
+6. Search for "RTSP Recorder" and click **Download**
+7. **Restart Home Assistant**
 
-### 2.2 Manuelle Installation
+### 2.2 Manual Installation
 
-1. **Integration kopieren:**
+1. **Copy integration:**
    ```
    custom_components/rtsp_recorder/ → /config/custom_components/rtsp_recorder/
    ```
 
-2. **Dashboard Card kopieren:**
+2. **Copy dashboard card:**
    ```
    www/rtsp-recorder-card.js → /config/www/rtsp-recorder-card.js
    ```
 
-3. **Lovelace Resource hinzufügen:**
+3. **Add Lovelace resource:**
    
-   Einstellungen → Dashboards → Ressourcen → Ressource hinzufügen:
+   Settings → Dashboards → Resources → Add Resource:
    ```yaml
    URL: /local/rtsp-recorder-card.js
-   Typ: JavaScript-Modul
+   Type: JavaScript Module
    ```
 
-4. **Home Assistant neustarten**
+4. **Restart Home Assistant**
 
-### 2.3 Detector Add-on (Optional, für Coral USB)
+### 2.3 Detector Add-on (Optional, for Coral USB)
 
-Das Detector Add-on ermöglicht Hardware-beschleunigte KI-Analyse.
+The Detector Add-on enables hardware-accelerated AI analysis.
 
-1. Kopiere `addons/rtsp-recorder-detector/` nach `/addons/`
-2. Einstellungen → Add-ons → Add-on Store
-3. Klicke **⋮** → **Repositories** (wird automatisch erkannt)
-4. Installiere "RTSP Recorder Detector"
-5. Konfiguriere USB-Passthrough für Coral
-6. Starte das Add-on
+1. Copy `addons/rtsp-recorder-detector/` to `/addons/`
+2. Settings → Add-ons → Add-on Store
+3. Click **⋮** → **Repositories** (auto-detected)
+4. Install "RTSP Recorder Detector"
+5. Configure USB passthrough for Coral
+6. Start the add-on
 
 ---
 
-## 3. Erste Schritte
+## 3. Getting Started
 
-### 3.1 Integration hinzufügen
+### 3.1 Add Integration
 
-1. Gehe zu **Einstellungen** → **Geräte & Dienste**
-2. Klicke **+ Integration hinzufügen**
-3. Suche nach **"RTSP Recorder"**
-4. Folge dem Konfigurationsassistenten
+1. Go to **Settings** → **Devices & Services**
+2. Click **+ Add Integration**
+3. Search for **"RTSP Recorder"**
+4. Follow the configuration wizard
 
-### 3.2 Erste Kamera konfigurieren
+### 3.2 Configure First Camera
 
-Im Konfigurationsassistenten:
+In the configuration wizard:
 
-| Feld | Beschreibung | Beispiel |
-|------|--------------|----------|
-| **Name** | Anzeigename der Kamera | `Wohnzimmer` |
-| **Kamera-Entity** | Home Assistant Kamera-Entity | `camera.wohnzimmer` |
-| **RTSP URL** | Direkter RTSP-Stream (optional) | `rtsp://192.168.1.100/stream` |
-| **Bewegungssensor** | Entity für Bewegungserkennung | `binary_sensor.wohnzimmer_motion` |
+| Field | Description | Example |
+|-------|-------------|---------|
+| **Name** | Display name of camera | `Living Room` |
+| **Camera Entity** | Home Assistant camera entity | `camera.living_room` |
+| **RTSP URL** | Direct RTSP stream (optional) | `rtsp://192.168.1.100/stream` |
+| **Motion Sensor** | Entity for motion detection | `binary_sensor.living_room_motion` |
 
-### 3.3 Dashboard Card hinzufügen
+### 3.3 Add Dashboard Card
 
-1. Dashboard bearbeiten → **+ Karte hinzufügen**
-2. Wähle **Manuell** (YAML)
-3. Füge ein:
+1. Edit dashboard → **+ Add Card**
+2. Choose **Manual** (YAML)
+3. Add:
 
 ```yaml
 type: custom:rtsp-recorder-card
@@ -148,260 +149,260 @@ thumb_path: /local/thumbnails
 
 ## 4. Dashboard Card
 
-Die Dashboard Card ist das Herzstück der Benutzeroberfläche.
+The dashboard card is the heart of the user interface.
 
-### 4.1 Übersicht
+### 4.1 Overview
 
-Die Card zeigt:
-- **Video-Player** mit aktueller/ausgewählter Aufnahme
-- **Timeline** mit Thumbnails aller Aufnahmen
-- **Kamera-Auswahl** (Dropdown)
-- **Einstellungen-Button** (Zahnrad-Icon)
-- **Performance-Footer** (optional)
+The card shows:
+- **Video player** with current/selected recording
+- **Timeline** with thumbnails of all recordings
+- **Camera selection** (dropdown)
+- **Settings button** (gear icon)
+- **Performance footer** (optional)
 
 ### 4.2 Navigation
 
-| Element | Funktion |
+| Element | Function |
 |---------|----------|
-| **Timeline-Thumbnails** | Klicken zum Abspielen |
-| **Pfeile links/rechts** | Durch Aufnahmen blättern |
-| **Kamera-Dropdown** | Zwischen Kameras wechseln |
-| **Datum-Filter** | Aufnahmen nach Datum filtern |
-| **⚙️ Zahnrad** | Einstellungen öffnen |
+| **Timeline thumbnails** | Click to play |
+| **Left/right arrows** | Browse through recordings |
+| **Camera dropdown** | Switch between cameras |
+| **Date filter** | Filter recordings by date |
+| **⚙️ Gear** | Open settings |
 
-### 4.3 Video-Steuerung
+### 4.3 Video Controls
 
-- **Play/Pause:** Klick auf Video oder Spacebar
-- **Vor/Zurück:** Pfeiltasten oder Timeline
-- **Vollbild:** Doppelklick auf Video
-- **Download:** Rechtsklick → Speichern
+- **Play/Pause:** Click on video or Spacebar
+- **Forward/Back:** Arrow keys or timeline
+- **Fullscreen:** Double-click on video
+- **Download:** Right-click → Save
 
 ---
 
-## 5. Aufnahmen & Timeline
+## 5. Recordings & Timeline
 
-### 5.1 Automatische Aufnahme
+### 5.1 Automatic Recording
 
-Aufnahmen werden automatisch erstellt, wenn:
-1. Der konfigurierte Bewegungssensor auf **ON** wechselt
-2. Die Kamera verfügbar ist
-3. Keine Aufnahme bereits läuft
+Recordings are automatically created when:
+1. The configured motion sensor switches to **ON**
+2. The camera is available
+3. No recording is already in progress
 
-**Aufnahme-Parameter:**
+**Recording Parameters:**
 
-| Parameter | Standard | Beschreibung |
-|-----------|----------|--------------|
-| Aufnahmedauer | 30 Sekunden | Nach Bewegungsende |
-| Snapshot-Verzögerung | 2 Sekunden | Für Thumbnail |
-| Format | MP4 (H.264) | Kompatibel mit allen Browsern |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Recording duration | 30 seconds | After motion ends |
+| Snapshot delay | 2 seconds | For thumbnail |
+| Format | MP4 (H.264) | Compatible with all browsers |
 
-### 5.2 Manuelle Aufnahme
+### 5.2 Manual Recording
 
-**Via Service-Call:**
+**Via Service Call:**
 ```yaml
 service: rtsp_recorder.save_recording
 data:
-  camera_name: wohnzimmer
-  duration: 60  # Optional, in Sekunden
+  camera_name: living_room
+  duration: 60  # Optional, in seconds
 ```
 
-### 5.3 Aufnahmen löschen
+### 5.3 Delete Recordings
 
-**Einzelne Aufnahme:**
-- Rechtsklick auf Thumbnail → Löschen
-- Oder via Service-Call
+**Single recording:**
+- Right-click on thumbnail → Delete
+- Or via service call
 
-**Mehrere Aufnahmen:**
+**Multiple recordings:**
 ```yaml
 service: rtsp_recorder.delete_all_recordings
 data:
-  camera_name: wohnzimmer  # Optional
-  older_than_days: 7       # Optional
+  camera_name: living_room  # Optional
+  older_than_days: 7        # Optional
 ```
 
-### 5.4 Retention (Speicherverwaltung)
+### 5.4 Retention (Storage Management)
 
-Die Retention-Einstellungen steuern, wie lange Aufnahmen aufbewahrt werden.
+Retention settings control how long recordings are kept.
 
-**Globale Einstellungen:**
-- Aufnahmen: X Tage
-- Snapshots: X Tage
-- Analyse-Daten: X Tage
+**Global settings:**
+- Recordings: X days
+- Snapshots: X days
+- Analysis data: X days
 
-**Pro-Kamera-Override:**
-Jede Kamera kann eigene Retention-Werte haben, die die globalen überschreiben.
+**Per-camera override:**
+Each camera can have its own retention values that override the global ones.
 
 ---
 
-## 6. KI-Analyse
+## 6. AI Analysis
 
-### 6.1 Funktionsweise
+### 6.1 How It Works
 
-Die KI-Analyse erkennt Objekte in Aufnahmen:
-
-```
-Video → Frames extrahieren → Objekterkennung → Ergebnisse speichern
-```
-
-**Erkennbare Objekte:**
-- Person, Fahrrad, Auto, Motorrad, Bus, LKW
-- Hund, Katze, Vogel, Pferd
-- Und 70+ weitere COCO-Klassen
-
-### 6.2 Analyse-Modi
-
-| Modus | Beschreibung |
-|-------|--------------|
-| **Manuell** | Einzelne Aufnahme analysieren |
-| **Auto-Analyse** | Neue Aufnahmen automatisch analysieren |
-| **Batch-Analyse** | Alle/gefilterte Aufnahmen analysieren |
-| **Zeitplan** | Tägliche automatische Analyse |
-
-### 6.3 Auto-Analyse aktivieren
-
-1. Öffne **Einstellungen** → **Analyse**
-2. Aktiviere **"Neue Aufnahmen automatisch analysieren"**
-3. Optional: **"Coral für Auto-Analyse erzwingen"**
-
-### 6.4 Batch-Analyse
-
-Für nachträgliche Analyse aller Aufnahmen:
-
-1. Einstellungen → Analyse
-2. Klicke **"Alle analysieren"**
-3. Optional: Filter setzen (Kamera, Zeitraum)
-4. **"Bereits analysierte überspringen"** für Effizienz
-
-### 6.5 Analyse-Zeitplan
-
-Automatische Analyse zu bestimmten Zeiten:
-
-| Option | Beschreibung |
-|--------|--------------|
-| **Täglich um** | Feste Uhrzeit (z.B. 03:00) |
-| **Alle X Stunden** | Intervall-basiert |
-
-### 6.6 Erkennungsschwellwerte
-
-Pro Kamera konfigurierbar:
-
-| Schwellwert | Beschreibung | Empfohlen |
-|-------------|--------------|-----------|
-| **Detektor** | Mindest-Konfidenz für Objekterkennung | 0.5 - 0.7 |
-| **Gesicht** | Mindest-Konfidenz für Gesichtserkennung | 0.6 - 0.8 |
-| **Match** | Mindest-Ähnlichkeit für Personen-Match | 0.6 - 0.75 |
-
-### 6.7 Objekt-Filter
-
-Wähle, welche Objekte pro Kamera erkannt werden sollen:
+AI analysis detects objects in recordings:
 
 ```
-☑ Person  ☑ Auto  ☐ Hund  ☐ Katze  ☐ Fahrrad
+Video → Extract frames → Object detection → Save results
 ```
 
-Nicht aktivierte Objekte werden ignoriert (spart Ressourcen).
+**Detectable Objects:**
+- Person, Bicycle, Car, Motorcycle, Bus, Truck
+- Dog, Cat, Bird, Horse
+- And 70+ more COCO classes
+
+### 6.2 Analysis Modes
+
+| Mode | Description |
+|------|-------------|
+| **Manual** | Analyze single recording |
+| **Auto-Analysis** | Automatically analyze new recordings |
+| **Batch Analysis** | Analyze all/filtered recordings |
+| **Schedule** | Daily automatic analysis |
+
+### 6.3 Enable Auto-Analysis
+
+1. Open **Settings** → **Analysis**
+2. Enable **"Automatically analyze new recordings"**
+3. Optional: **"Force Coral for auto-analysis"**
+
+### 6.4 Batch Analysis
+
+For retroactive analysis of all recordings:
+
+1. Settings → Analysis
+2. Click **"Analyze all"**
+3. Optional: Set filters (camera, time period)
+4. **"Skip already analyzed"** for efficiency
+
+### 6.5 Analysis Schedule
+
+Automatic analysis at specific times:
+
+| Option | Description |
+|--------|-------------|
+| **Daily at** | Fixed time (e.g., 03:00) |
+| **Every X hours** | Interval-based |
+
+### 6.6 Detection Thresholds
+
+Configurable per camera:
+
+| Threshold | Description | Recommended |
+|-----------|-------------|-------------|
+| **Detector** | Minimum confidence for object detection | 0.5 - 0.7 |
+| **Face** | Minimum confidence for face detection | 0.6 - 0.8 |
+| **Match** | Minimum similarity for person match | 0.6 - 0.75 |
+
+### 6.7 Object Filters
+
+Choose which objects to detect per camera:
+
+```
+☑ Person  ☑ Car  ☐ Dog  ☐ Cat  ☐ Bicycle
+```
+
+Unchecked objects are ignored (saves resources).
 
 ---
 
-## 7. Personen-Erkennung
+## 7. Person Recognition
 
-Die Gesichtserkennung ermöglicht die Identifikation bekannter Personen.
+Face recognition enables identification of known persons.
 
-### 7.1 Konzept
+### 7.1 Concept
 
 ```
-Gesicht erkannt → Embedding erstellen → Mit Datenbank vergleichen → Person identifizieren
+Face detected → Create embedding → Compare with database → Identify person
 ```
 
-**Begriffe:**
-- **Embedding:** 1280-dimensionaler Vektor eines Gesichts
-- **Positive Samples:** Bilder, die ZU einer Person gehören
-- **Negative Samples:** Bilder, die NICHT zu einer Person gehören
+**Terms:**
+- **Embedding:** 1280-dimensional vector of a face
+- **Positive Samples:** Images that BELONG to a person
+- **Negative Samples:** Images that do NOT belong to a person
 
-### 7.2 Person anlegen
+### 7.2 Create Person
 
-1. Öffne **Einstellungen** → **Personen**
-2. Klicke **"+ Person hinzufügen"**
-3. Gib einen Namen ein (z.B. "Max")
-4. Bestätige mit **OK**
+1. Open **Settings** → **People**
+2. Click **"+ Add Person"**
+3. Enter a name (e.g., "Max")
+4. Confirm with **OK**
 
-### 7.3 Training aus Analyse
+### 7.3 Training from Analysis
 
-Das Training erfolgt über erkannte Gesichter aus Analysen:
+Training is done via detected faces from analyses:
 
-1. Wähle eine **analysierte Aufnahme** im Dropdown
-2. Klicke **"Analyse laden"**
-3. Erkannte Gesichter werden angezeigt
+1. Select an **analyzed recording** from the dropdown
+2. Click **"Load Analysis"**
+3. Detected faces are displayed
 
-**Gesicht zuweisen:**
-- Wähle eine Person im Dropdown
-- Klicke auf ein **nicht zugewiesenes Bild** → wird direkt hinzugefügt
-- Das Bild wird **grün markiert** (✓)
+**Assign face:**
+- Select a person from the dropdown
+- Click on an **unassigned image** → added directly
+- The image is marked **green** (✓)
 
-**Korrigieren:**
-- Klicke auf ein **bereits zugewiesenes (grünes) Bild**
-- Ein **Korrektur-Popup** erscheint
-- Wähle die richtige Person oder "Überspringen"
+**Correct:**
+- Click on an **already assigned (green) image**
+- A **correction popup** appears
+- Select the correct person or "Skip"
 
 ### 7.4 Negative Samples
 
-Negative Samples verhindern falsche Zuordnungen.
+Negative samples prevent false assignments.
 
-**Wann verwenden?**
-- Wenn Person A fälschlicherweise als Person B erkannt wird
-- Bei ähnlich aussehenden Personen
+**When to use?**
+- When Person A is incorrectly recognized as Person B
+- With similar-looking persons
 
-**So geht's:**
-1. Klicke auf ein Bild → Popup erscheint
-2. Klicke auf **❌** neben der falschen Person
-3. Das Bild wird als "Nicht diese Person" markiert
+**How to:**
+1. Click on an image → Popup appears
+2. Click on **❌** next to the wrong person
+3. The image is marked as "Not this person"
 
-**Schwellwert:** 75% - Wenn ein Gesicht >75% Ähnlichkeit mit einem Negativ-Sample hat, wird es ausgeschlossen.
+**Threshold:** 75% - If a face has >75% similarity with a negative sample, it's excluded.
 
-### 7.5 Empfehlungen für gutes Training
+### 7.5 Recommendations for Good Training
 
-| Empfehlung | Grund |
-|------------|-------|
-| **3-5 Positive Samples** pro Person | Verschiedene Winkel/Lichtverhältnisse |
-| **Klare Frontalaufnahmen** bevorzugen | Bessere Embedding-Qualität |
-| **Negative Samples** bei Verwechslungen | Verhindert False Positives |
-| **Regelmäßig nachtrainieren** | Verbessert Genauigkeit über Zeit |
+| Recommendation | Reason |
+|----------------|--------|
+| **3-5 Positive Samples** per person | Different angles/lighting |
+| **Prefer clear frontal shots** | Better embedding quality |
+| **Negative Samples** for mix-ups | Prevents false positives |
+| **Retrain regularly** | Improves accuracy over time |
 
-### 7.6 Person Detail Popup (NEU in v1.1.0n)
+### 7.6 Person Detail Popup
 
-Klicke auf den **Namen einer Person** im People-Tab, um das Detail-Popup zu öffnen.
+Click on a **person's name** in the People tab to open the detail popup.
 
-**Was zeigt das Popup?**
-- **Positive Samples:** Alle zugewiesenen Gesichtsbilder mit Datum
-- **Negative Samples:** Alle Ausschluss-Bilder
-- **Erkennungen:** Wie oft wurde diese Person insgesamt erkannt
-- **Zuletzt gesehen:** Datum, Uhrzeit und Kamera der letzten Erkennung
+**What does the popup show?**
+- **Positive Samples:** All assigned face images with date
+- **Negative Samples:** All exclusion images
+- **Detections:** How often this person was detected
+- **Last seen:** Date, time and camera of last detection
 
-**Samples verwalten:**
-- Klicke auf das rote **✕** um einzelne Samples zu löschen
-- Ideal für die Qualitätskontrolle deiner Trainingsdaten
+**Manage samples:**
+- Click the red **✕** to delete individual samples
+- Ideal for quality control of your training data
 
-### 7.7 Person-Entities für Automationen (NEU in v1.1.0n)
+### 7.7 Person Entities for Automations
 
-Erstelle Home Assistant Entities für erkannte Personen:
+Create Home Assistant entities for detected persons:
 
-1. Gehe zu **Einstellungen** → **RTSP Recorder** → **Konfigurieren**
-2. Aktiviere **Person-Entities erstellen**
+1. Go to **Settings** → **RTSP Recorder** → **Configure**
+2. Enable **Create Person Entities**
 
-**Erstellte Entities:**
+**Created entities:**
 ```yaml
 binary_sensor.rtsp_person_max:
-  state: "on"  # Wenn kürzlich erkannt
+  state: "on"  # When recently detected
   attributes:
     last_seen: "2026-02-03T14:30:00"
-    last_camera: "Wohnzimmer"
+    last_camera: "Living Room"
     confidence: 0.87
 ```
 
-**Beispiel-Automation:**
+**Example Automation:**
 ```yaml
 automation:
-  - alias: "Max erkannt"
+  - alias: "Max detected"
     trigger:
       - platform: state
         entity_id: binary_sensor.rtsp_person_max
@@ -409,138 +410,138 @@ automation:
     action:
       - service: notify.mobile_app
         data:
-          message: "Max wurde bei {{ trigger.to_state.attributes.last_camera }} gesehen"
+          message: "Max was seen at {{ trigger.to_state.attributes.last_camera }}"
 ```
 
-> 📚 **Mehr Details:** Siehe [Gesichtserkennung](FACE_RECOGNITION.md#8-person-entities-für-automationen)
+> 📚 **More details:** See [Face Recognition](FACE_RECOGNITION.md#8-person-entities-for-automations)
 
-### 7.8 Person umbenennen/löschen
+### 7.8 Rename/Delete Person
 
-- **Umbenennen:** Klicke auf ✏️ neben dem Namen
-- **Löschen:** Klicke auf 🗑️ → Bestätigen
+- **Rename:** Click ✏️ next to the name
+- **Delete:** Click 🗑️ → Confirm
 
-⚠️ **Achtung:** Beim Löschen werden alle Embeddings unwiderruflich entfernt!
-
----
-
-## 8. Einstellungen im Detail
-
-Die Einstellungen sind in 5 Tabs organisiert:
-
-### 8.1 Tab: Allgemein
-
-| Einstellung | Beschreibung |
-|-------------|--------------|
-| **Aufnahmedauer** | Sekunden nach Bewegungsende (Standard: 30) |
-| **Snapshot-Verzögerung** | Sekunden bis Thumbnail (Standard: 2) |
-| **Footer anzeigen** | Performance-Anzeige unter Video |
-
-### 8.2 Tab: Speicher
-
-| Einstellung | Beschreibung |
-|-------------|--------------|
-| **Aufnahmen aufbewahren** | Tage bis zur automatischen Löschung |
-| **Snapshots aufbewahren** | Tage für Thumbnail-Aufbewahrung |
-| **Analyse-Daten aufbewahren** | Tage für JSON-Ergebnisse |
-| **Pro-Kamera-Einstellungen** | Override für einzelne Kameras |
-
-**Speicherplatz-Anzeige:**
-- Gesamtgröße aller Aufnahmen
-- Anzahl der Dateien
-- Aufschlüsselung nach Kamera
-
-### 8.3 Tab: Analyse
-
-| Einstellung | Beschreibung |
-|-------------|--------------|
-| **Detektor-URL** | Adresse des Detector Add-ons |
-| **Auto-Analyse** | Neue Aufnahmen automatisch analysieren |
-| **Coral erzwingen** | Coral USB für Auto-Analyse verwenden |
-| **Zeitplan** | Automatische Batch-Analyse |
-| **SQLite nutzen** | Datenbank statt JSON für Personen |
-
-**Aktionen:**
-- **Test-Inferenz:** Prüft Verbindung zum Detektor
-- **Alle analysieren:** Startet Batch-Analyse
-
-### 8.4 Tab: Personen
-
-| Bereich | Beschreibung |
-|---------|--------------|
-| **Personen-Liste** | Alle angelegten Personen mit Embeddings |
-| **Training aus Analyse** | Gesichter aus Aufnahmen zuweisen |
-| **Erkannte Gesichter** | Bilder zum Zuweisen/Korrigieren |
-
-**Pro Person:**
-- Name + Embedding-Anzahl
-- Vorschaubilder (Thumbnails)
-- Bearbeiten/Löschen-Buttons
-
-### 8.5 Tab: Leistung
-
-Live-Statistiken des Detector Add-ons:
-
-| Metrik | Beschreibung |
-|--------|--------------|
-| **CPU** | Aktuelle CPU-Auslastung |
-| **RAM** | Speicherverbrauch |
-| **Coral Status** | Verbunden/Nicht verbunden |
-| **Inferenzen** | Anzahl durchgeführter Analysen |
-| **Ø Inferenzzeit** | Durchschnittliche Analysezeit (ms) |
-| **Coral-Anteil** | Prozent der Coral-Analysen |
-
-**Test-Button:** Führt eine Test-Inferenz durch und zeigt Zeit.
+⚠️ **Warning:** When deleting, all embeddings are permanently removed!
 
 ---
 
-## 9. Automatisierungen
+## 8. Settings in Detail
 
-### 9.1 Person erkannt - Benachrichtigung
+The settings are organized in 5 tabs:
+
+### 8.1 Tab: General
+
+| Setting | Description |
+|---------|-------------|
+| **Recording duration** | Seconds after motion ends (default: 30) |
+| **Snapshot delay** | Seconds until thumbnail (default: 2) |
+| **Show footer** | Performance display below video |
+
+### 8.2 Tab: Storage
+
+| Setting | Description |
+|---------|-------------|
+| **Keep recordings** | Days until automatic deletion |
+| **Keep snapshots** | Days for thumbnail retention |
+| **Keep analysis data** | Days for JSON results |
+| **Per-camera settings** | Override for individual cameras |
+
+**Storage display:**
+- Total size of all recordings
+- Number of files
+- Breakdown by camera
+
+### 8.3 Tab: Analysis
+
+| Setting | Description |
+|---------|-------------|
+| **Detector URL** | Address of Detector add-on |
+| **Auto-Analysis** | Automatically analyze new recordings |
+| **Force Coral** | Use Coral USB for auto-analysis |
+| **Schedule** | Automatic batch analysis |
+| **Use SQLite** | Database instead of JSON for people |
+
+**Actions:**
+- **Test Inference:** Checks connection to detector
+- **Analyze all:** Starts batch analysis
+
+### 8.4 Tab: People
+
+| Area | Description |
+|------|-------------|
+| **People list** | All created persons with embeddings |
+| **Training from analysis** | Assign faces from recordings |
+| **Detected faces** | Images for assigning/correcting |
+
+**Per person:**
+- Name + embedding count
+- Preview images (thumbnails)
+- Edit/Delete buttons
+
+### 8.5 Tab: Performance
+
+Live statistics from the Detector add-on:
+
+| Metric | Description |
+|--------|-------------|
+| **CPU** | Current CPU usage |
+| **RAM** | Memory usage |
+| **Coral Status** | Connected/Not connected |
+| **Inferences** | Number of analyses performed |
+| **Avg Inference Time** | Average analysis time (ms) |
+| **Coral Percentage** | Percent of Coral analyses |
+
+**Test button:** Runs a test inference and shows time.
+
+---
+
+## 9. Automations
+
+### 9.1 Person Detected - Notification
 
 ```yaml
 automation:
-  - alias: "Person erkannt - Push-Nachricht"
+  - alias: "Person detected - Push notification"
     trigger:
       - platform: event
         event_type: rtsp_recorder_person_detected
     condition:
       - condition: template
-        value_template: "{{ trigger.event.data.person_name != 'Unbekannt' }}"
+        value_template: "{{ trigger.event.data.person_name != 'Unknown' }}"
     action:
       - service: notify.mobile_app
         data:
-          title: "Person erkannt"
-          message: "{{ trigger.event.data.person_name }} wurde von {{ trigger.event.data.camera }} erkannt"
+          title: "Person detected"
+          message: "{{ trigger.event.data.person_name }} was detected by {{ trigger.event.data.camera }}"
           data:
             image: "{{ trigger.event.data.thumbnail }}"
 ```
 
-### 9.2 Unbekannte Person - Alarm
+### 9.2 Unknown Person - Alarm
 
 ```yaml
 automation:
-  - alias: "Unbekannte Person - Alarm"
+  - alias: "Unknown person - Alarm"
     trigger:
       - platform: event
         event_type: rtsp_recorder_person_detected
     condition:
       - condition: template
-        value_template: "{{ trigger.event.data.person_name == 'Unbekannt' }}"
+        value_template: "{{ trigger.event.data.person_name == 'Unknown' }}"
       - condition: state
         entity_id: alarm_control_panel.home
         state: "armed_away"
     action:
       - service: notify.all
         data:
-          title: "⚠️ Unbekannte Person!"
-          message: "Unbekannte Person bei {{ trigger.event.data.camera }}"
+          title: "⚠️ Unknown Person!"
+          message: "Unknown person at {{ trigger.event.data.camera }}"
 ```
 
-### 9.3 Tägliche Analyse nachts
+### 9.3 Daily Analysis at Night
 
 ```yaml
 automation:
-  - alias: "Nachtliche Batch-Analyse"
+  - alias: "Nightly batch analysis"
     trigger:
       - platform: time
         at: "03:00:00"
@@ -551,14 +552,14 @@ automation:
           use_coral: true
 ```
 
-### 9.4 Aufnahme bei Abwesenheit
+### 9.4 Recording When Away
 
 ```yaml
 automation:
-  - alias: "Aufnahme wenn niemand zuhause"
+  - alias: "Record when nobody home"
     trigger:
       - platform: state
-        entity_id: binary_sensor.eingang_motion
+        entity_id: binary_sensor.entrance_motion
         to: "on"
     condition:
       - condition: state
@@ -567,182 +568,182 @@ automation:
     action:
       - service: rtsp_recorder.save_recording
         data:
-          camera_name: eingang
+          camera_name: entrance
           duration: 60
 ```
 
-### 9.5 Verfügbare Events
+### 9.5 Available Events
 
-| Event | Beschreibung | Daten |
-|-------|--------------|-------|
-| `rtsp_recorder_recording_saved` | Aufnahme gespeichert | camera, filename, duration |
-| `rtsp_recorder_analysis_complete` | Analyse abgeschlossen | camera, filename, detections |
-| `rtsp_recorder_person_detected` | Person erkannt | camera, person_name, confidence, thumbnail |
+| Event | Description | Data |
+|-------|-------------|------|
+| `rtsp_recorder_recording_saved` | Recording saved | camera, filename, duration |
+| `rtsp_recorder_analysis_complete` | Analysis finished | camera, filename, detections |
+| `rtsp_recorder_person_detected` | Person detected | camera, person_name, confidence, thumbnail |
 
-### 9.6 Verfügbare Services
+### 9.6 Available Services
 
-| Service | Beschreibung |
-|---------|--------------|
-| `rtsp_recorder.save_recording` | Manuelle Aufnahme starten |
-| `rtsp_recorder.delete_recording` | Einzelne Aufnahme löschen |
-| `rtsp_recorder.delete_all_recordings` | Bulk-Löschung |
-| `rtsp_recorder.analyze_recording` | Einzelne Analyse |
-| `rtsp_recorder.analyze_all_recordings` | Batch-Analyse |
+| Service | Description |
+|---------|-------------|
+| `rtsp_recorder.save_recording` | Start manual recording |
+| `rtsp_recorder.delete_recording` | Delete single recording |
+| `rtsp_recorder.delete_all_recordings` | Bulk deletion |
+| `rtsp_recorder.analyze_recording` | Single analysis |
+| `rtsp_recorder.analyze_all_recordings` | Batch analysis |
 
 ---
 
 ## 10. Troubleshooting
 
-### 10.1 Aufnahmen starten nicht
+### 10.1 Recordings Don't Start
 
-**Mögliche Ursachen:**
+**Possible causes:**
 
-| Problem | Lösung |
-|---------|--------|
-| Bewegungssensor falsch | Entity-ID in Kamera-Einstellungen prüfen |
-| Kamera nicht erreichbar | RTSP-URL testen, Netzwerk prüfen |
-| Speicherplatz voll | Alte Aufnahmen löschen, Retention anpassen |
-| FFmpeg-Fehler | Logs prüfen, FFmpeg neu installieren |
+| Problem | Solution |
+|---------|----------|
+| Wrong motion sensor | Check entity ID in camera settings |
+| Camera not reachable | Test RTSP URL, check network |
+| Storage full | Delete old recordings, adjust retention |
+| FFmpeg error | Check logs, reinstall FFmpeg |
 
-**Diagnose:**
+**Diagnosis:**
 ```bash
 # In HA Terminal:
 tail -f /config/home-assistant.log | grep rtsp_recorder
 ```
 
-### 10.2 Coral USB nicht erkannt
+### 10.2 Coral USB Not Detected
 
-1. **USB-Passthrough prüfen:**
+1. **Check USB passthrough:**
    ```bash
    lsusb | grep -i coral
-   # Sollte "Global Unichip Corp" zeigen
+   # Should show "Global Unichip Corp"
    ```
 
-2. **Add-on-Konfiguration:**
-   - Einstellungen → Add-ons → Detector → Konfiguration
-   - USB-Gerät hinzufügen
+2. **Add-on configuration:**
+   - Settings → Add-ons → Detector → Configuration
+   - Add USB device
 
-3. **Reset versuchen:**
-   - Detector Add-on neustarten
-   - Oder: `/tpu_reset` Endpoint aufrufen
+3. **Try reset:**
+   - Restart Detector add-on
+   - Or: Call `/tpu_reset` endpoint
 
-### 10.3 Gesichtserkennung ungenau
+### 10.3 Face Recognition Inaccurate
 
-| Symptom | Lösung |
-|---------|--------|
-| Falsche Zuordnungen | Mehr Training-Samples hinzufügen |
-| Person nicht erkannt | Bessere Bilder (frontal, gut beleuchtet) |
-| Verwechslungen | Negative Samples für verwechselte Person |
-| Zu viele Unbekannte | Match-Schwellwert senken (z.B. 0.55) |
+| Symptom | Solution |
+|---------|----------|
+| Wrong assignments | Add more training samples |
+| Person not recognized | Better images (frontal, well-lit) |
+| Mix-ups | Negative samples for confused person |
+| Too many unknowns | Lower match threshold (e.g., 0.55) |
 
-### 10.4 Analyse sehr langsam
+### 10.4 Analysis Very Slow
 
-| Ursache | Lösung |
-|---------|--------|
-| CPU-Fallback aktiv | Coral USB installieren/prüfen |
-| Zu viele Frames | Frame-Intervall erhöhen |
-| Große Videos | Kürzere Aufnahmedauer |
-| Server ausgelastet | Analyse nachts planen |
+| Cause | Solution |
+|-------|----------|
+| CPU fallback active | Install/check Coral USB |
+| Too many frames | Increase frame interval |
+| Large videos | Shorter recording duration |
+| Server overloaded | Schedule analysis at night |
 
-### 10.5 Dashboard Card lädt nicht
+### 10.5 Dashboard Card Not Loading
 
-1. **Browser-Cache leeren:** Ctrl+F5
-2. **Resource prüfen:**
+1. **Clear browser cache:** Ctrl+F5
+2. **Check resource:**
    ```yaml
    # In Lovelace YAML:
    resources:
-     - url: /local/rtsp-recorder-card.js?v=1.0.9
+     - url: /local/rtsp-recorder-card.js?v=1.2.2
        type: module
    ```
-3. **Datei vorhanden?** `/config/www/rtsp-recorder-card.js`
-4. **Konsole prüfen:** F12 → Console → Fehler suchen
+3. **File exists?** `/config/www/rtsp-recorder-card.js`
+4. **Check console:** F12 → Console → Look for errors
 
 ---
 
 ## 11. FAQ
 
-### Allgemein
+### General
 
-**Q: Wie viel Speicherplatz brauche ich?**
-> A: Ca. 1-5 MB pro Minute Aufnahme (abhängig von Qualität). Bei 10 Kameras mit je 10 Aufnahmen/Tag à 30 Sek ≈ 1-3 GB/Tag.
+**Q: How much storage do I need?**
+> A: About 1-5 MB per minute of recording (depending on quality). With 10 cameras with 10 recordings/day at 30 sec each ≈ 1-3 GB/day.
 
-**Q: Funktioniert es ohne Coral USB?**
-> A: Ja, aber Analysen dauern 10-15x länger (CPU-Fallback).
+**Q: Does it work without Coral USB?**
+> A: Yes, but analyses take 10-15x longer (CPU fallback).
 
-**Q: Kann ich mehrere Coral USB verwenden?**
-> A: Aktuell wird nur ein Coral unterstützt.
+**Q: Can I use multiple Coral USB devices?**
+> A: Currently only one Coral is supported.
 
-### Aufnahmen
+### Recordings
 
-**Q: Warum sind manche Aufnahmen sehr kurz?**
-> A: Die Aufnahme endet X Sekunden nach der letzten Bewegung. Kurze Bewegung = kurze Aufnahme.
+**Q: Why are some recordings very short?**
+> A: Recording ends X seconds after last motion. Short motion = short recording.
 
-**Q: Kann ich die Aufnahmequalität ändern?**
-> A: Die Qualität wird von der Kamera/RTSP-Stream bestimmt, nicht von RTSP Recorder.
+**Q: Can I change recording quality?**
+> A: Quality is determined by camera/RTSP stream, not by RTSP Recorder.
 
-**Q: Werden Aufnahmen verschlüsselt?**
-> A: Nein, Aufnahmen werden als normale MP4-Dateien gespeichert.
+**Q: Are recordings encrypted?**
+> A: No, recordings are saved as normal MP4 files.
 
-### KI-Analyse
+### AI Analysis
 
-**Q: Welche Objekte werden erkannt?**
-> A: Alle 80 COCO-Klassen (Person, Auto, Hund, Katze, etc.). Vollständige Liste: https://cocodataset.org
+**Q: Which objects are detected?**
+> A: All 80 COCO classes (Person, Car, Dog, Cat, etc.). Full list: https://cocodataset.org
 
-**Q: Wie genau ist die Gesichtserkennung?**
-> A: Bei guten Trainingsdaten ~85-95% Genauigkeit. Hängt stark von Bildqualität und Beleuchtung ab.
+**Q: How accurate is face recognition?**
+> A: With good training data ~85-95% accuracy. Depends heavily on image quality and lighting.
 
-**Q: Werden Daten in die Cloud gesendet?**
-> A: Nein, alle Analysen laufen lokal auf deinem Server.
+**Q: Is data sent to the cloud?**
+> A: No, all analyses run locally on your server.
 
-### Personen
+### People
 
-**Q: Wie viele Personen kann ich trainieren?**
-> A: Technisch unbegrenzt. Empfohlen: max. 50 für beste Performance.
+**Q: How many people can I train?**
+> A: Technically unlimited. Recommended: max. 50 for best performance.
 
-**Q: Kann ich Embeddings exportieren/importieren?**
-> A: Die Daten liegen in `/config/rtsp_recorder.db` (SQLite) oder `rtsp_recorder_people.json`.
+**Q: Can I export/import embeddings?**
+> A: Data is stored in `/config/rtsp_recorder.db` (SQLite) or `rtsp_recorder_people.json`.
 
-**Q: Was passiert bei ähnlichen Zwillingen?**
-> A: Negative Samples verwenden, um Verwechslungen zu minimieren.
+**Q: What about identical twins?**
+> A: Use negative samples to minimize confusion.
 
 ---
 
-## Anhang
+## Appendix
 
-### A. Dateipfade
+### A. File Paths
 
-| Pfad | Beschreibung |
-|------|--------------|
+| Path | Description |
+|------|-------------|
 | `/config/custom_components/rtsp_recorder/` | Integration |
 | `/config/www/rtsp-recorder-card.js` | Dashboard Card |
-| `/media/rtsp_recordings/` | Aufnahmen |
+| `/media/rtsp_recordings/` | Recordings |
 | `/config/www/thumbnails/` | Thumbnails |
-| `/media/rtsp_analysis/` | Analyse-Ergebnisse |
-| `/config/rtsp_recorder.db` | SQLite-Datenbank |
-| `/config/rtsp_recorder_people.json` | Personen (JSON-Modus) |
+| `/media/rtsp_analysis/` | Analysis results |
+| `/config/rtsp_recorder.db` | SQLite database |
+| `/config/rtsp_recorder_people.json` | People (JSON mode) |
 
-### B. API-Referenz
+### B. API Reference
 
 **Detector Add-on Endpoints:**
 
-| Endpoint | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/health` | GET | Health-Check |
-| `/info` | GET | Geräte-Info |
-| `/metrics` | GET | Performance-Metriken |
-| `/detect` | POST | Objekterkennung |
-| `/faces` | POST | Gesichtserkennung |
-| `/embed_face` | POST | Embedding extrahieren |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/info` | GET | Device info |
+| `/metrics` | GET | Performance metrics |
+| `/detect` | POST | Object detection |
+| `/faces` | POST | Face detection |
+| `/embed_face` | POST | Extract embedding |
 
-### C. Verwendete KI-Modelle
+### C. AI Models Used
 
-| Modell | Aufgabe | Input | Hardware |
-|--------|---------|-------|----------|
-| MobileDet SSD | Objekterkennung | 320x320 | Coral/CPU |
-| MobileNet V2 | Gesichtserkennung | 320x320 | Coral/CPU |
+| Model | Task | Input | Hardware |
+|-------|------|-------|----------|
+| MobileDet SSD | Object detection | 320x320 | Coral/CPU |
+| MobileNet V2 | Face detection | 320x320 | Coral/CPU |
 | EfficientNet-S | Face Embedding | 224x224 | Coral/CPU |
 | MoveNet Lightning | Pose Estimation | 192x192 | CPU |
 
 ---
 
-*RTSP Recorder v1.0.9 STABLE - © 2026 brainAThome*
+*RTSP Recorder v1.2.2 BETA - © 2026 brainAThome*

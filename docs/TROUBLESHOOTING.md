@@ -1,212 +1,214 @@
 # 🔧 RTSP Recorder - Troubleshooting
 
-**Version:** 1.1.1  
-**Letzte Aktualisierung:** 03. Februar 2026
+> 🇩🇪 **[Deutsche Version / German Version](TROUBLESHOOTING_DE.md)**
+
+**Version:** 1.2.2  
+**Last Updated:** February 7, 2026
 
 ---
 
-## Inhaltsverzeichnis
+## Table of Contents
 
-1. [Schnelldiagnose](#1-schnelldiagnose)
+1. [Quick Diagnosis](#1-quick-diagnosis)
 2. [Installation & Setup](#2-installation--setup)
-3. [Aufnahmen](#3-aufnahmen)
-4. [Analyse & Detection](#4-analyse--detection)
+3. [Recordings](#3-recordings)
+4. [Analysis & Detection](#4-analysis--detection)
 5. [Coral USB / TPU](#5-coral-usb--tpu)
-6. [Gesichtserkennung](#6-gesichtserkennung)
+6. [Face Recognition](#6-face-recognition)
 7. [Dashboard Card](#7-dashboard-card)
 8. [Performance](#8-performance)
-9. [Log-Analyse](#9-log-analyse)
-10. [Häufige Fehlermeldungen](#10-häufige-fehlermeldungen)
+9. [Log Analysis](#9-log-analysis)
+10. [Common Error Messages](#10-common-error-messages)
 
 ---
 
-## 1. Schnelldiagnose
+## 1. Quick Diagnosis
 
-### System-Check Befehle
+### System Check Commands
 
 ```bash
-# Integration geladen?
+# Integration loaded?
 grep -i "rtsp_recorder" /config/home-assistant.log | tail -10
 
-# Detector erreichbar?
+# Detector reachable?
 curl http://localhost:5000/info
 
-# Aufnahmen vorhanden?
+# Recordings present?
 ls -la /media/rtsp_recorder/ring_recordings/*/
 
-# Coral erkannt?
+# Coral detected?
 curl http://localhost:5000/info | grep coral
 ```
 
-### Status-Checkliste
+### Status Checklist
 
-| Check | Befehl | Erwartung |
-|-------|--------|-----------|
-| HA läuft | `ha core check` | "Command completed" |
-| Integration | `grep rtsp_recorder /config/.storage/core.config_entries` | Eintrag vorhanden |
-| Detector | `curl localhost:5000/info` | JSON Response |
+| Check | Command | Expected |
+|-------|---------|----------|
+| HA running | `ha core check` | "Command completed" |
+| Integration | `grep rtsp_recorder /config/.storage/core.config_entries` | Entry present |
+| Detector | `curl localhost:5000/info` | JSON response |
 | Coral | Detector /info | `"coral_available": true` |
-| Speicher | `df -h /media` | >10% frei |
+| Storage | `df -h /media` | >10% free |
 
 ---
 
 ## 2. Installation & Setup
 
-### Problem: Integration nicht gefunden
+### Problem: Integration Not Found
 
-**Symptom:** "rtsp_recorder" erscheint nicht in Integrationen
+**Symptom:** "rtsp_recorder" doesn't appear in integrations
 
-**Ursachen & Lösungen:**
+**Causes & Solutions:**
 
-1. **Dateien fehlen**
+1. **Files missing**
    ```bash
    ls /config/custom_components/rtsp_recorder/
-   # Muss enthalten: __init__.py, manifest.json, etc.
+   # Must contain: __init__.py, manifest.json, etc.
    ```
 
-2. **Manifest ungültig**
+2. **Manifest invalid**
    ```bash
    python3 -c "import json; json.load(open('/config/custom_components/rtsp_recorder/manifest.json'))"
    ```
 
-3. **Cache-Problem**
-   - HA komplett neustarten (nicht nur reload)
-   - Browser-Cache leeren (Ctrl+Shift+R)
+3. **Cache problem**
+   - Fully restart HA (not just reload)
+   - Clear browser cache (Ctrl+Shift+R)
 
-### Problem: Integration lädt nicht
+### Problem: Integration Won't Load
 
-**Symptom:** Fehler beim Setup
+**Symptom:** Error during setup
 
-**Log prüfen:**
+**Check log:**
 ```bash
 grep -i "error.*rtsp" /config/home-assistant.log | tail -20
 ```
 
-**Häufige Ursachen:**
+**Common causes:**
 
-| Fehler | Lösung |
-|--------|--------|
-| ImportError | Python-Abhängigkeiten prüfen |
-| FileNotFoundError | Pfade prüfen |
-| PermissionError | Rechte prüfen: `chmod -R 755 /config/custom_components/rtsp_recorder` |
+| Error | Solution |
+|-------|----------|
+| ImportError | Check Python dependencies |
+| FileNotFoundError | Check paths |
+| PermissionError | Check permissions: `chmod -R 755 /config/custom_components/rtsp_recorder` |
 
 ---
 
-## 3. Aufnahmen
+## 3. Recordings
 
-### Problem: Keine Aufnahmen bei Bewegung
+### Problem: No Recordings on Motion
 
-**Diagnose:**
+**Diagnosis:**
 
-1. **Motion Sensor prüfen**
+1. **Check motion sensor**
    ```yaml
-   # In Entwicklerwerkzeuge → Status
-   # Prüfe: binary_sensor.xxx_motion wechselt zu "on"?
+   # In Developer Tools → States
+   # Check: binary_sensor.xxx_motion switches to "on"?
    ```
 
-2. **Event-Trigger prüfen**
+2. **Check event trigger**
    ```bash
    grep -i "motion.*trigger\|recording.*start" /config/home-assistant.log | tail -10
    ```
 
-3. **Kamera-Konfiguration**
-   - Ist die Kamera in den Optionen konfiguriert?
-   - Ist der richtige Motion-Sensor zugewiesen?
+3. **Camera configuration**
+   - Is the camera configured in options?
+   - Is the correct motion sensor assigned?
 
-**Lösungen:**
+**Solutions:**
 
-| Problem | Lösung |
-|---------|--------|
-| Sensor falsch | Korrekten binary_sensor zuweisen |
-| Kein RTSP | RTSP-URL prüfen |
-| FFmpeg-Fehler | Log prüfen, Codec-Probleme |
+| Problem | Solution |
+|---------|----------|
+| Wrong sensor | Assign correct binary_sensor |
+| No RTSP | Check RTSP URL |
+| FFmpeg error | Check log, codec issues |
 
-### Problem: Aufnahme bricht ab
+### Problem: Recording Breaks Off
 
-**Symptom:** Aufnahmen sind zu kurz oder unvollständig
+**Symptom:** Recordings are too short or incomplete
 
-**Ursachen:**
+**Causes:**
 
-1. **RTSP-Stream instabil**
+1. **RTSP stream unstable**
    ```bash
-   # Test mit ffprobe
+   # Test with ffprobe
    ffprobe rtsp://user:pass@ip/stream
    ```
 
-2. **Timeout zu kurz**
-   - Netzwerk-Latenz prüfen
-   - FFmpeg TCP-Modus bereits aktiv (Standard)
+2. **Timeout too short**
+   - Check network latency
+   - FFmpeg TCP mode already active (default)
 
-3. **Speicher voll**
+3. **Storage full**
    ```bash
    df -h /media
    ```
 
-### Problem: Keine Thumbnails
+### Problem: No Thumbnails
 
-**Diagnose:**
+**Diagnosis:**
 ```bash
 ls /media/rtsp_recorder/thumbnails/*/
 ```
 
-**Lösungen:**
+**Solutions:**
 
-| Ursache | Lösung |
-|---------|--------|
-| Pfad falsch | snapshot_path prüfen |
-| Keine Rechte | `chmod 755 /media/rtsp_recorder/thumbnails` |
-| FFmpeg-Fehler | Codec-Kompatibilität prüfen |
+| Cause | Solution |
+|-------|----------|
+| Path wrong | Check snapshot_path |
+| No permissions | `chmod 755 /media/rtsp_recorder/thumbnails` |
+| FFmpeg error | Check codec compatibility |
 
 ---
 
-## 4. Analyse & Detection
+## 4. Analysis & Detection
 
-### Problem: Analyse startet nicht
+### Problem: Analysis Won't Start
 
-**Diagnose:**
+**Diagnosis:**
 ```bash
-# Detector erreichbar?
+# Detector reachable?
 curl -X POST http://localhost:5000/detect \
   -F "image=@test.jpg" 2>&1 | head -5
 ```
 
-**Lösungen:**
+**Solutions:**
 
-| Problem | Lösung |
-|---------|--------|
-| Detector offline | Add-on starten |
-| URL falsch | `analysis_detector_url` prüfen |
-| Port blockiert | Firewall/Docker-Netzwerk prüfen |
+| Problem | Solution |
+|---------|----------|
+| Detector offline | Start add-on |
+| URL wrong | Check `analysis_detector_url` |
+| Port blocked | Check firewall/Docker network |
 
-### Problem: Keine Objekte erkannt
+### Problem: No Objects Detected
 
-**Ursachen:**
+**Causes:**
 
-1. **Confidence zu hoch**
+1. **Confidence too high**
    ```yaml
-   # Senken auf 0.3 oder 0.4
+   # Lower to 0.3 or 0.4
    analysis_detector_confidence: 0.4
    ```
 
-2. **Objekt nicht in Liste**
+2. **Object not in list**
    ```yaml
    analysis_objects:
      - person
      - car
-     - dog  # Hinzufügen was fehlt
+     - dog  # Add what's missing
    ```
 
-3. **Videoqualität zu niedrig**
-   - Mindestens 720p
-   - Ausreichende Beleuchtung
+3. **Video quality too low**
+   - At least 720p
+   - Sufficient lighting
 
-### Problem: Analyse langsam
+### Problem: Analysis Slow
 
-**CPU-Modus:**
-- Normal: ~500ms/Frame
-- Mit Coral: ~50ms/Frame
+**CPU mode:**
+- Normal: ~500ms/frame
+- With Coral: ~50ms/frame
 
-**Lösung:** Coral USB einrichten
+**Solution:** Set up Coral USB
 
 ```yaml
 analysis_device: coral_usb
@@ -216,135 +218,135 @@ analysis_device: coral_usb
 
 ## 5. Coral USB / TPU
 
-### Problem: Coral nicht erkannt
+### Problem: Coral Not Detected
 
-**Diagnose:**
+**Diagnosis:**
 ```bash
-# USB-Geräte prüfen
+# Check USB devices
 lsusb | grep -i google
 
-# Detector-Log
+# Detector log
 docker logs addon_local_rtsp_recorder_detector | grep -i coral
 ```
 
-**Lösungen:**
+**Solutions:**
 
-| Problem | Lösung |
-|---------|--------|
-| USB nicht sichtbar | Physisch prüfen, anderer Port |
-| Kein Passthrough | Add-on Konfiguration: `devices: ["/dev/bus/usb"]` |
-| Permission denied | udev-Regeln prüfen |
+| Problem | Solution |
+|---------|----------|
+| USB not visible | Check physically, try different port |
+| No passthrough | Add-on configuration: `devices: ["/dev/bus/usb"]` |
+| Permission denied | Check udev rules |
 
-### Problem: Coral-Fehler "Delegate error"
+### Problem: Coral Error "Delegate error"
 
-**Ursache:** libedgetpu-Version inkompatibel
+**Cause:** libedgetpu version incompatible
 
-**Lösung:**
+**Solution:**
 ```bash
-# Im Add-on Container
+# In add-on container
 pip install --upgrade pycoral
 ```
 
-### Problem: TPU-Load immer 0%
+### Problem: TPU Load Always 0%
 
-**Ursache:** Keine Inferenzen auf Coral
+**Cause:** No inferences on Coral
 
-**Prüfen:**
+**Check:**
 ```bash
 curl http://localhost:5000/info
-# "device": "coral_usb" sollte angezeigt werden
+# "device": "coral_usb" should be displayed
 ```
 
 ---
 
-## 6. Gesichtserkennung
+## 6. Face Recognition
 
-### Problem: Keine Gesichter erkannt
+### Problem: No Faces Detected
 
-**Diagnose:**
-1. Face Detection aktiviert?
+**Diagnosis:**
+1. Face Detection enabled?
    ```yaml
    analysis_face_enabled: true
    ```
 
-2. Confidence zu hoch?
+2. Confidence too high?
    ```yaml
-   analysis_face_confidence: 0.2  # Senken
+   analysis_face_confidence: 0.2  # Lower
    ```
 
-3. Gesicht zu klein im Bild?
-   - Mindestens 50x50 Pixel
+3. Face too small in image?
+   - At least 50x50 pixels
 
-### Problem: Falsche Person erkannt
+### Problem: Wrong Person Recognized
 
-**Lösungen:**
+**Solutions:**
 
-1. **Match Threshold senken**
+1. **Lower match threshold**
    ```yaml
-   analysis_face_match_threshold: 0.30  # statt 0.35
+   analysis_face_match_threshold: 0.30  # instead of 0.35
    ```
 
-2. **Negative Samples hinzufügen**
-   - Falsche Matches als negativ markieren
+2. **Add negative samples**
+   - Mark wrong matches as negative
 
-3. **Mehr Training-Samples**
-   - 5-10 verschiedene Samples pro Person
+3. **More training samples**
+   - 5-10 different samples per person
 
-### Problem: Person wird nicht mehr erkannt
+### Problem: Person No Longer Recognized
 
-**Ursache:** Aussehen verändert
+**Cause:** Appearance changed
 
-**Lösung:** Neue Samples mit aktuellem Aussehen hinzufügen
+**Solution:** Add new samples with current appearance
 
 ---
 
 ## 7. Dashboard Card
 
-### Problem: Card nicht sichtbar
+### Problem: Card Not Visible
 
-**Diagnose:**
+**Diagnosis:**
 
-1. **Resource registriert?**
-   - Einstellungen → Dashboards → Ressourcen
+1. **Resource registered?**
+   - Settings → Dashboards → Resources
    - URL: `/local/rtsp-recorder-card.js`
 
-2. **Datei vorhanden?**
+2. **File present?**
    ```bash
    ls -la /config/www/rtsp-recorder-card.js
    ```
 
-3. **Browser-Cache**
+3. **Browser cache**
    - Ctrl+Shift+R (Hard Refresh)
-   - Inkognito-Modus testen
+   - Test incognito mode
 
-### Problem: Card zeigt Fehler
+### Problem: Card Shows Error
 
 **"Custom element doesn't exist":**
 ```yaml
-# Ressource neu hinzufügen
+# Re-add resource
 type: module
-url: /local/rtsp-recorder-card.js?v=1.1.0  # Version-Parameter
+url: /local/rtsp-recorder-card.js?v=1.2.2  # Version parameter
 ```
 
-### Problem: Videos laden nicht
+### Problem: Videos Won't Load
 
-**Ursachen:**
+**Causes:**
 
-| Problem | Lösung |
-|---------|--------|
-| Pfad falsch | storage_path prüfen |
-| Keine Rechte | `chmod -R 755 /media/rtsp_recorder` |
-| CORS-Fehler | HA Proxy-Einstellungen |
+| Problem | Solution |
+|---------|----------|
+| Path wrong | Check storage_path |
+| No permissions | `chmod -R 755 /media/rtsp_recorder` |
+| CORS error | HA proxy settings |
 
 ---
 
 ## 8. Performance
 
-### Problem: HA wird langsam
+### Problem: HA Becomes Slow
 
-**Diagnose:**
+**Diagnosis:**
 ```bash
-# CPU-Last
+# CPU load
 top -bn1 | head -20
 
 # Memory
@@ -354,25 +356,25 @@ free -h
 iostat -x 1 5
 ```
 
-**Lösungen:**
+**Solutions:**
 
-| Ursache | Lösung |
-|---------|--------|
-| Zu viele Aufnahmen | Retention reduzieren |
-| Analyse zu häufig | frame_interval erhöhen |
-| SQLite nicht aktiv | `use_sqlite: true` |
+| Cause | Solution |
+|-------|----------|
+| Too many recordings | Reduce retention |
+| Analysis too frequent | Increase frame_interval |
+| SQLite not active | `use_sqlite: true` |
 
-### Problem: Speicher voll
+### Problem: Storage Full
 
-**Diagnose:**
+**Diagnosis:**
 ```bash
 du -sh /media/rtsp_recorder/*
 ```
 
-**Lösungen:**
-1. Retention reduzieren
-2. Alte Aufnahmen manuell löschen
-3. Speicher erweitern
+**Solutions:**
+1. Reduce retention
+2. Manually delete old recordings
+3. Expand storage
 
 ### Blocking Call Warnings
 
@@ -381,31 +383,31 @@ du -sh /media/rtsp_recorder/*
 Detected blocking call to open... inside the event loop
 ```
 
-**Erklärung:** Diese Warnungen sind bekannt und unkritisch. Sie betreffen Datei-I/O-Operationen, die synchron ausgeführt werden.
+**Explanation:** These warnings are known and non-critical. They affect file I/O operations that are executed synchronously.
 
-**Status:** Low Priority - Funktionalität nicht beeinträchtigt
+**Status:** Low priority - functionality not affected
 
 ---
 
-## 9. Log-Analyse
+## 9. Log Analysis
 
-### Wichtige Log-Zeilen
+### Important Log Lines
 
 ```bash
-# Erfolgreiche Aufnahme
+# Successful recording
 grep "Recording saved" /config/home-assistant.log
 
-# Analyse-Ergebnisse
+# Analysis results
 grep "Analysis complete\|detected" /config/home-assistant.log
 
-# Fehler
+# Errors
 grep -i "error.*rtsp" /config/home-assistant.log
 
-# Metriken
+# Metrics
 grep "METRIC" /config/home-assistant.log
 ```
 
-### Debug-Modus aktivieren
+### Enable Debug Mode
 
 ```yaml
 # In configuration.yaml
@@ -417,16 +419,16 @@ logger:
     custom_components.rtsp_recorder.recorder: debug
 ```
 
-### Log-Rotation
+### Log Rotation
 
 ```bash
-# Alte Logs bereinigen
+# Clean old logs
 truncate -s 0 /config/home-assistant.log
 ```
 
 ---
 
-## 10. Häufige Fehlermeldungen
+## 10. Common Error Messages
 
 ### "Connection refused to detector"
 
@@ -434,9 +436,9 @@ truncate -s 0 /config/home-assistant.log
 Error connecting to http://local-rtsp-recorder-detector:5000
 ```
 
-**Lösung:**
-1. Add-on starten
-2. URL prüfen (lokal vs. Docker-Netzwerk)
+**Solution:**
+1. Start add-on
+2. Check URL (local vs. Docker network)
 
 ### "FFmpeg process failed"
 
@@ -444,10 +446,10 @@ Error connecting to http://local-rtsp-recorder-detector:5000
 FFmpeg exited with code 1
 ```
 
-**Lösungen:**
-1. RTSP-URL prüfen
-2. Netzwerk-Konnektivität testen
-3. Kamera-Credentials prüfen
+**Solutions:**
+1. Check RTSP URL
+2. Test network connectivity
+3. Check camera credentials
 
 ### "Permission denied: /media/..."
 
@@ -455,7 +457,7 @@ FFmpeg exited with code 1
 PermissionError: [Errno 13] Permission denied
 ```
 
-**Lösung:**
+**Solution:**
 ```bash
 chmod -R 755 /media/rtsp_recorder
 chown -R root:root /media/rtsp_recorder
@@ -467,9 +469,9 @@ chown -R root:root /media/rtsp_recorder
 sqlite3.OperationalError: database is locked
 ```
 
-**Lösung:**
-1. HA neustarten
-2. WAL-Modus prüfen (Standard)
+**Solution:**
+1. Restart HA
+2. Check WAL mode (default)
 
 ### "No module named 'xxx'"
 
@@ -477,46 +479,46 @@ sqlite3.OperationalError: database is locked
 ModuleNotFoundError: No module named 'cv2'
 ```
 
-**Lösung:** Abhängigkeiten sind im Add-on enthalten, nicht in HA direkt.
+**Solution:** Dependencies are included in the add-on, not in HA directly.
 
 ---
 
 ## Support
 
-### Informationen sammeln
+### Gather Information
 
-Vor dem Erstellen eines Issues:
+Before creating an issue:
 
 ```bash
-# System-Info
+# System info
 cat /config/custom_components/rtsp_recorder/manifest.json | grep version
 
-# Letzte Fehler
+# Recent errors
 grep -i error /config/home-assistant.log | tail -50 > error_log.txt
 
-# Konfiguration (ohne Passwörter!)
+# Configuration (without passwords!)
 cat /config/.storage/core.config_entries | grep -A 100 rtsp_recorder
 ```
 
-### Issue erstellen
+### Create Issue
 
-[GitHub Issues](https://github.com/brainAThome/RTSP-Recorder/issues)
+[GitHub Issues](https://github.com/brainAThome/Opening_RTSP-Recorder/issues)
 
-Bitte inkludieren:
-1. RTSP Recorder Version
-2. Home Assistant Version
-3. Fehlermeldung (vollständig)
-4. Schritte zur Reproduktion
-5. Relevante Logs
+Please include:
+1. RTSP Recorder version
+2. Home Assistant version
+3. Error message (complete)
+4. Steps to reproduce
+5. Relevant logs
 
 ---
 
-## Siehe auch
+## See Also
 
-- 📖 [Benutzerhandbuch](USER_GUIDE.md)
-- ⚙️ [Konfiguration](CONFIGURATION.md)
+- 📖 [User Guide](USER_GUIDE.md)
+- ⚙️ [Configuration](CONFIGURATION.md)
 - 🚀 [Installation](INSTALLATION.md)
 
 ---
 
-*Bei Problemen: [GitHub Issues](https://github.com/brainAThome/RTSP-Recorder/issues)*
+*For problems: [GitHub Issues](https://github.com/brainAThome/Opening_RTSP-Recorder/issues)*
