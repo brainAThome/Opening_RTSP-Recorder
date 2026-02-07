@@ -1093,6 +1093,22 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 - 🛡️ CORS restriction to local Home Assistant instances
 - ✅ Hardcore test: 100% pass rate
 
+## Documentation
+
+Complete documentation is available in English (primary) with German translations:
+
+| Topic | English | Deutsch |
+|-------|---------|---------|
+| **User Guide** | [USER_GUIDE.md](docs/USER_GUIDE.md) | [USER_GUIDE_DE.md](docs/USER_GUIDE_DE.md) |
+| **Installation** | [INSTALLATION.md](docs/INSTALLATION.md) | [INSTALLATION_DE.md](docs/INSTALLATION_DE.md) |
+| **Configuration** | [CONFIGURATION.md](docs/CONFIGURATION.md) | [CONFIGURATION_DE.md](docs/CONFIGURATION_DE.md) |
+| **Troubleshooting** | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | [TROUBLESHOOTING_DE.md](docs/TROUBLESHOOTING_DE.md) |
+| **Face Recognition** | [FACE_RECOGNITION.md](docs/FACE_RECOGNITION.md) | [FACE_RECOGNITION_DE.md](docs/FACE_RECOGNITION_DE.md) |
+| **Operations Manual** | [OPERATIONS_MANUAL.md](docs/OPERATIONS_MANUAL.md) | [OPERATIONS_MANUAL_DE.md](docs/OPERATIONS_MANUAL_DE.md) |
+| **Ring Data Flow** | [RING_AMAZON_DATAFLOW.md](docs/RING_AMAZON_DATAFLOW.md) | [RING_AMAZON_DATAFLOW_DE.md](docs/RING_AMAZON_DATAFLOW_DE.md) |
+
+---
+
 ## Audit Report
 
 See [COMPREHENSIVE_AUDIT_REPORT_v5.1](COMPREHENSIVE_AUDIT_REPORT_v5.0_2026-02-05.md) for the comprehensive ISO 25010 + ISO 27001 audit report.
