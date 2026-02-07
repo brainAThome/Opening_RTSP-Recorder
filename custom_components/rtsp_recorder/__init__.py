@@ -36,6 +36,8 @@ from .analysis import detect_available_devices
 from .const import (
     DOMAIN,
     DEFAULT_MAX_CONCURRENT_ANALYSES,
+    DEFAULT_STORAGE_PATH,
+    DEFAULT_SNAPSHOT_PATH,
 )
 from .helpers import (
     log_to_file,
@@ -67,9 +69,18 @@ class ThumbnailView(HomeAssistantView):
     name = "api:rtsp_recorder:thumbnail"
     requires_auth = False  # Thumbnails are not sensitive
     
-    def __init__(self, snapshot_path: str):
-        """Initialize with the configured snapshot path."""
-        self._snapshot_path = snapshot_path
+    def __init__(self, hass):
+        """Initialize with hass instance to read path dynamically."""
+        self._hass = hass
+    
+    def _get_snapshot_path(self) -> str:
+        """Get current snapshot path from config (dynamic lookup)."""
+        # v1.2.3: Read path dynamically so config changes take effect without restart
+        try:
+            domain_data = self._hass.data.get(DOMAIN, {})
+            return domain_data.get("snapshot_path", "/config/www/thumbnails")
+        except Exception:
+            return "/config/www/thumbnails"
     
     async def get(self, request: web.Request, camera: str, filename: str) -> web.Response:
         """Handle thumbnail request."""
@@ -77,8 +88,9 @@ class ThumbnailView(HomeAssistantView):
         if ".." in camera or ".." in filename or "/" in filename or "\\" in filename:
             return web.Response(status=403, text="Forbidden")
         
-        # Build full path
-        file_path = os.path.join(self._snapshot_path, camera, filename)
+        # Build full path - use dynamic path lookup
+        snapshot_path = self._get_snapshot_path()
+        file_path = os.path.join(snapshot_path, camera, filename)
         
         # Read file in executor to avoid blocking the event loop
         def _read_file():
@@ -117,9 +129,9 @@ async def async_setup_entry(hass, entry: ConfigEntry) -> bool:
     # Merge data and options
     config_data = {**entry.data, **entry.options}
     
-    # Extract configuration values
-    storage_path = config_data.get("storage_path", "/media/rtsp_recordings")
-    snapshot_path_base = config_data.get("snapshot_path", "/config/www/thumbnails")
+    # Extract configuration values (v1.2.3: use constants for consistent defaults)
+    storage_path = config_data.get("storage_path", DEFAULT_STORAGE_PATH)
+    snapshot_path_base = config_data.get("snapshot_path", DEFAULT_SNAPSHOT_PATH)
     retention_days = config_data.get("retention_days", 7)
     snapshot_retention_days = config_data.get("snapshot_retention_days", 7)
     retention_hours = config_data.get("retention_hours", 0)
@@ -197,10 +209,19 @@ async def async_setup_entry(hass, entry: ConfigEntry) -> bool:
         if not os.path.exists(analysis_output_path):
             os.makedirs(analysis_output_path, exist_ok=True)
 
-        # 2. Register HTTP endpoint for thumbnails (v1.0.9+)
+        # 2. Store snapshot_path in hass.data for dynamic access by ThumbnailView
+        hass.data.setdefault(DOMAIN, {})["snapshot_path"] = snapshot_path_base
+        log_to_file(f"Snapshot path stored in hass.data: {snapshot_path_base}")
+        
+        # 2b. Register HTTP endpoint for thumbnails (v1.0.9+)
         # This allows thumbnails to be served from any configured path
-        hass.http.register_view(ThumbnailView(snapshot_path_base))
-        log_to_file(f"Registered thumbnail endpoint: /api/rtsp_recorder/thumbnail/")
+        # v1.2.3: Only register once - view reads path dynamically from hass.data
+        if not hass.data[DOMAIN].get("thumbnail_view_registered"):
+            hass.http.register_view(ThumbnailView(hass))
+            hass.data[DOMAIN]["thumbnail_view_registered"] = True
+            log_to_file(f"Registered thumbnail endpoint: /api/rtsp_recorder/thumbnail/")
+        else:
+            log_to_file(f"Thumbnail endpoint already registered, path updated dynamically")
 
         # 3. Initialize SQLite database backend (v1.1.0j: SQLite-only)
         log_to_file("Enabling SQLite backend for people database...")
