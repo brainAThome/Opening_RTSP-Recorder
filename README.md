@@ -6,7 +6,7 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.2.3-brightgreen)
+![Version](https://img.shields.io/badge/version-1.2.4-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.2+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%25-brightgreen)
@@ -19,7 +19,18 @@ A complete video surveillance solution with AI-powered object detection using Co
 📋 **[Audit Report v1.2.3](docs/FINAL_AUDIT_REPORT_v1.2.3.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.2.3_DE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (07.02.2026)
 🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
 
-## What's New in v1.2.3
+## What's New in v1.2.4
+
+### 🐛 Bugfix: Dynamic Thumbnail Path Loading
+**Thumbnail path changes now take effect immediately:**
+- ThumbnailView reads path dynamically from `hass.data`
+- No restart required after changing thumbnail path in config
+- All default values now use constants from `const.py` for consistency
+
+---
+
+<details>
+<summary><b>Previous: v1.2.3 Changes</b></summary>
 
 ### ✅ Code Quality: 100% Type Hints
 **All 129 functions now have return type annotations:**
@@ -38,7 +49,7 @@ A complete video surveillance solution with AI-powered object detection using Co
 - Includes: person name, confidence, camera, video path
 - Example automation in documentation
 
----
+</details>
 
 <details>
 <summary><b>Previous: v1.2.2 Changes</b></summary>
