@@ -87,6 +87,28 @@
 3. Search for "**RTSP Recorder**"
 4. Click on it and follow the setup wizard
 
+### Step 5: Register Dashboard Card (IMPORTANT!)
+
+> ⚠️ **Without this step you will get the error:**
+> ```
+> Configuration Error
+> Custom element doesn't exist: rtsp-recorder-card
+> ```
+
+The dashboard card must be registered as a Lovelace Resource:
+
+1. Go to **Settings** → **Dashboards**
+2. Click the **⋮** (three-dot menu) in the top right
+3. Select **Resources**
+4. Click **+ Add Resource** (bottom right)
+5. Fill in:
+   - **URL:** `/local/rtsp-recorder-card.js`
+   - **Type:** Select **JavaScript Module**
+6. Click **Create**
+7. **Clear browser cache:** Press **Ctrl + Shift + R** (Windows/Linux) or **Cmd + Shift + R** (Mac)
+
+✅ **Result:** The card is now registered and can be used in dashboards.
+
 ---
 
 ## 3. Manual Installation
@@ -395,10 +417,15 @@ If the card doesn't look right or shows errors:
 | Problem | What You See | Solution |
 |---------|--------------|----------|
 | Card is too small/narrow | Card only takes 1/3 of width | Panel mode not active! See step 7.3 |
-| "Custom element doesn't exist" | Error message instead of card | Clear browser cache (Ctrl+Shift+R), then restart HA |
+| "Custom element doesn't exist" | Error message instead of card | **Lovelace Resource missing!** See Step 2.5 above |
 | Card shows "No recordings" | Empty timeline | Normal! Wait for first motion event |
 | Card loading forever | Only spinning wheel | Check if integration is properly installed |
 | White screen | Nothing visible | Check browser console (F12) for JS errors |
+
+> 💡 **The most common error:** "Custom element doesn't exist: rtsp-recorder-card"
+> 
+> This means the JavaScript file was not registered as a Lovelace Resource.
+> **Solution:** Go to Step 2.5 "Register Dashboard Card" and follow the instructions.
 
 ---
 
