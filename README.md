@@ -120,6 +120,47 @@ A complete video surveillance solution with AI-powered object detection using Co
 
 ---
 
+### 💰 Save Money: Cloud Subscription Costs vs. Local Recording
+
+> [!TIP]
+> **RTSP Recorder = €0/year** - No subscriptions, no cloud, complete privacy!
+
+**Annual subscription costs you can avoid:**
+
+| Provider | Plan | Monthly | **Yearly** | Notes |
+|----------|------|---------|------------|-------|
+| **Ring** | Premium | €19.99 | **€199.99** | 24/7 recording, all devices |
+| **Ring** | Standard | €9.99 | **€99.99** | All devices, 1 location |
+| **Ring** | Basic | €3.99 | **€39.99** | 1 device only |
+| **Google Nest** | Home Premium | ~€10 | **~€100** | 60 days history |
+| **Arlo** | Secure | ~€10-15 | **~€100-150** | Per location |
+| **Blink** | Plus | ~€3 | **~€30** | Per device (Amazon) |
+| **eufy** | - | €0 | **€0** | Local storage (no subscription) |
+
+**💡 Your savings with RTSP Recorder:**
+
+| Scenario | Cloud Cost/Year | With RTSP Recorder | **Savings/Year** |
+|----------|-----------------|-------------------|------------------|
+| 1x Ring Premium | €200 | €0 | **€200** |
+| Ring + Nest | €300 | €0 | **€300** |
+| 5 years Ring Premium | €1,000 | €0 | **€1,000** |
+| 10 years Ring Premium | €2,000 | €0 | **€2,000** |
+
+**🔧 Recommended Home Assistant Integrations:**
+
+| Camera System | HA Integration | RTSP Support |
+|---------------|----------------|--------------|
+| **Ring** | [ring-mqtt](https://github.com/tsightler/ring-mqtt) (Add-on) | ✅ Via RTSP gateway |
+| **eufy** | [eufy_security](https://github.com/fuatakgun/eufy_security) | ✅ Native RTSP |
+| **Reolink** | [reolink](https://www.home-assistant.io/integrations/reolink/) | ✅ Native RTSP |
+| **Tapo** | [tapo](https://www.home-assistant.io/integrations/tapo/) | ✅ Native RTSP |
+| **UniFi** | [unifiprotect](https://www.home-assistant.io/integrations/unifiprotect/) | ✅ Native RTSP |
+| **Wyze** | [docker-wyze-bridge](https://github.com/mrlt8/docker-wyze-bridge) | ✅ Via RTSP bridge |
+
+> ⚠️ **Note for Ring users:** Install [ring-mqtt](https://github.com/tsightler/ring-mqtt) Add-on first to get RTSP streams from your Ring cameras. The stream still uses Ring's cloud, but recordings are stored locally!
+
+---
+
 ## What's New in v1.2.1
 
 ### 🛠 Code Quality Improvements (MEDIUM Findings Remediation)
