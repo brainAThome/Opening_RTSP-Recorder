@@ -46,3 +46,6 @@ rtsp_debug.log
 .env
 .env.local
 secrets.yaml
+
+AGENT_PROMPT*.md
+HANDOVER*.md
