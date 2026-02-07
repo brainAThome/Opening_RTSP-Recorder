@@ -52,6 +52,15 @@ A complete video surveillance solution with AI-powered object detection using Co
 - Vollständige @media-Queries für 768px/480px
 - Getestet auf Android/iOS
 
+### 📖 Ring Kamera Datenschutz-Dokumentation
+**Neue Dokumentation zum Amazon-Datenfluss bei Ring-Kameras:**
+- Welche Daten wann zu Amazon fließen
+- Unterschied Premium vs. Non-Premium Abo
+- Pi-hole Blocking Konfiguration
+- **Warum wir RTSP Recorder entwickelt haben: Lokale Aufnahme ohne Cloud!**
+
+👉 **[Ring Amazon Datenfluss Dokumentation](docs/RING_AMAZON_DATENFLUSS.md)**
+
 ---
 
 ## What's New in v1.2.1
