@@ -124,6 +124,7 @@ async def _install_dashboard_card(hass) -> bool:
     without requiring manual file copying.
     """
     import shutil
+    import hashlib
     from pathlib import Path
     
     # Source: JS file bundled with the integration
@@ -132,6 +133,14 @@ async def _install_dashboard_card(hass) -> bool:
     # Destination: /config/www/rtsp-recorder-card.js
     www_dir = Path(hass.config.path("www"))
     dest_file = www_dir / "rtsp-recorder-card.js"
+    
+    def _get_file_hash(filepath: Path) -> str:
+        """Calculate MD5 hash of a file."""
+        hash_md5 = hashlib.md5()
+        with open(filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
     
     try:
         # Create www directory if it doesn't exist
@@ -142,16 +151,21 @@ async def _install_dashboard_card(hass) -> bool:
             _LOGGER.warning(f"Dashboard card source not found: {source_file}")
             return False
         
-        # Copy file if it doesn't exist or is different (update)
-        source_size = source_file.stat().st_size
+        # Always check if update is needed by comparing file hashes
         needs_copy = True
         
         if dest_file.exists():
-            dest_size = dest_file.stat().st_size
-            if dest_size == source_size:
-                # Same size, likely same file - skip copy
-                needs_copy = False
-                _LOGGER.debug("Dashboard card already installed (same size)")
+            # Compare file hashes to detect any changes (including version updates)
+            def _compare_hashes():
+                source_hash = _get_file_hash(source_file)
+                dest_hash = _get_file_hash(dest_file)
+                return source_hash != dest_hash
+            
+            loop = asyncio.get_event_loop()
+            needs_copy = await loop.run_in_executor(None, _compare_hashes)
+            
+            if not needs_copy:
+                _LOGGER.debug("Dashboard card already up-to-date (same hash)")
         
         if needs_copy:
             # Run file copy in executor to avoid blocking
@@ -160,7 +174,7 @@ async def _install_dashboard_card(hass) -> bool:
             
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, _do_copy)
-            _LOGGER.info(f"Dashboard card installed to {dest_file}")
+            _LOGGER.info(f"Dashboard card installed/updated to {dest_file}")
         
         # Register as Lovelace resource (idempotent - won't duplicate)
         resource_url = "/local/rtsp-recorder-card.js"
