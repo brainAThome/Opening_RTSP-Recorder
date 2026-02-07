@@ -9,7 +9,7 @@ A complete video surveillance solution with AI-powered object detection using Co
 ![Version](https://img.shields.io/badge/version-1.2.3-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![ISO 25010](https://img.shields.io/badge/ISO%2025010-91%25-brightgreen)
+![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%25-brightgreen)
 ![ISO 27001](https://img.shields.io/badge/ISO%2027001-88%25-brightgreen)
 ![Type Hints](https://img.shields.io/badge/Type%20Hints-100%25-brightgreen)
 ![HACS](https://img.shields.io/badge/HACS-Compatible-orange)

@@ -11,9 +11,9 @@
 
 | Kategorie | Punktzahl | Bewertung |
 |-----------|-----------|-----------|
-| **ISO 25010 Qualität** | 91/100 | ⭐⭐⭐⭐⭐ AUSGEZEICHNET |
+| **ISO 25010 Qualität** | 93/100 | ⭐⭐⭐⭐⭐ AUSGEZEICHNET |
 | **ISO 27001 Sicherheit** | 88/100 | ⭐⭐⭐⭐ GUT |
-| **Gesamtbewertung** | 90/100 | ✅ PRODUKTIONSREIF |
+| **Gesamtbewertung** | 91/100 | ✅ PRODUKTIONSREIF |
 
 ---
 
@@ -243,15 +243,15 @@
 | Verantwortlichkeit | 85 |
 | Authentizität | 90 |
 
-### 5.7 Wartbarkeit (90/100)
+### 5.7 Wartbarkeit (94/100)
 
 | Untermerkmal | Punktzahl |
 |--------------|-----------|
 | Modularität | 95 |
-| Wiederverwendbarkeit | 88 |
-| Analysierbarkeit | 90 |
-| Modifizierbarkeit | 88 |
-| Testbarkeit | 88 |
+| Wiederverwendbarkeit | 92 |
+| Analysierbarkeit | 95 |
+| Modifizierbarkeit | 92 |
+| Testbarkeit | 92 |
 
 ### 5.8 Übertragbarkeit (88/100)
 
