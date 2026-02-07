@@ -87,13 +87,23 @@
 3. Suche nach "**RTSP Recorder**"
 4. Klicke darauf und folge dem Einrichtungsassistenten
 
-### Schritt 5: Dashboard Card registrieren (WICHTIG!)
+> ✅ **Ab v1.2.6:** Die Dashboard Card wird automatisch installiert und registriert!
+> Der Browser-Cache muss nach dem ersten Start geleert werden: **Strg + Shift + R**
 
-> ⚠️ **Ohne diesen Schritt bekommst du den Fehler:**
-> ```
-> Konfigurationsfehler
-> Custom element doesn't exist: rtsp-recorder-card
-> ```
+<details>
+<summary>⚠️ <b>Troubleshooting: "Custom element doesn't exist" Fehler</b> (klicken zum Öffnen)</summary>
+
+Falls du nach der Installation diesen Fehler siehst:
+```
+Konfigurationsfehler
+Custom element doesn't exist: rtsp-recorder-card
+```
+
+**Lösung 1: Browser-Cache leeren**
+- Drücke **Strg + Shift + R** (Windows/Linux) oder **Cmd + Shift + R** (Mac)
+- Starte Home Assistant neu
+
+**Lösung 2: Manuelle Registrierung (für Versionen < 1.2.6)**
 
 Die Dashboard Card muss als Lovelace Resource registriert werden:
 
@@ -105,9 +115,9 @@ Die Dashboard Card muss als Lovelace Resource registriert werden:
    - **URL:** `/local/rtsp-recorder-card.js`
    - **Typ:** Wähle **JavaScript-Modul**
 6. Klicke **Erstellen**
-7. **Browser-Cache leeren:** Drücke **Strg + Shift + R** (Windows/Linux) oder **Cmd + Shift + R** (Mac)
+7. Browser-Cache leeren
 
-✅ **Ergebnis:** Die Card ist jetzt registriert und kann im Dashboard verwendet werden.
+</details>
 
 ---
 

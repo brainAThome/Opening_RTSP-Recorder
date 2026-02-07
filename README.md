@@ -6,7 +6,7 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.2.5-brightgreen)
+![Version](https://img.shields.io/badge/version-1.2.6-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.2+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%25-brightgreen)
@@ -19,7 +19,19 @@ A complete video surveillance solution with AI-powered object detection using Co
 📋 **[Audit Report v1.2.3](docs/FINAL_AUDIT_REPORT_v1.2.3.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.2.3_DE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (07.02.2026)
 🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
 
-## What's New in v1.2.5
+## What's New in v1.2.6
+
+### 🚀 Automatic Dashboard Card Installation
+**No more "Custom element doesn't exist" errors!**
+- Dashboard card JS file is now bundled with the integration
+- Automatically copied to `/config/www/` on first load
+- Automatically registered as Lovelace resource
+- Just install via HACS, restart, and use!
+
+---
+
+<details>
+<summary><b>Previous: v1.2.5 Changes</b></summary>
 
 ### 🎥 Correct Video FPS Metadata
 **Recordings now have correct FPS in file metadata:**
@@ -27,7 +39,7 @@ A complete video surveillance solution with AI-powered object detection using Co
 - FFmpeg uses detected FPS for correct container metadata
 - Fixes issue where 20 FPS cameras showed ~28 FPS in file properties
 
----
+</details>
 
 <details>
 <summary><b>Previous: v1.2.4 Changes</b></summary>
