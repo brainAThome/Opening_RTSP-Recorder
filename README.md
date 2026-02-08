@@ -6,7 +6,7 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.2.7-brightgreen)
+![Version](https://img.shields.io/badge/version-1.2.8-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.2+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%25-brightgreen)
@@ -19,7 +19,20 @@ A complete video surveillance solution with AI-powered object detection using Co
 📋 **[Audit Report v1.2.3](docs/FINAL_AUDIT_REPORT_v1.2.3.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.2.3_DE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (07.02.2026)
 🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
 
-## What's New in v1.2.7
+## What's New in v1.2.8
+
+### 🔧 Debug-Modus für technische Anzeigen
+**Cleaner UI für normale Nutzer:**
+- Neuer Toggle im Menü: Allgemein → Debug-Modus
+- Versteckt FPS/Frame-Info Anzeige (oben rechts im Video)
+- Versteckt "Leistung anzeigen" Checkbox
+- Versteckt Performance-Panel (CPU, RAM, Coral, etc.)
+- Einstellung wird im Browser gespeichert
+
+---
+
+<details>
+<summary><b>Previous: v1.2.7 Changes</b></summary>
 
 ### 🔄 Smart Dashboard Card Auto-Update
 **Card updates are now detected automatically!**
@@ -27,7 +40,7 @@ A complete video surveillance solution with AI-powered object detection using Co
 - Card is automatically updated when HACS installs a new version
 - No more manual file deletion required after updates
 
----
+</details>
 
 <details>
 <summary><b>Previous: v1.2.6 Changes</b></summary>
