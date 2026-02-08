@@ -415,11 +415,6 @@ class RTSPRecorder:
 
 ---
 
-## 📚 Weitere Dokumentation
-
-- [RTSP Recorder README](../README.md)
-- [HANDOVER_v1.2.2.md](../HANDOVER_v1.2.2.md)
-- [AGENT_PROMPT_v1.2.2.md](../AGENT_PROMPT_v1.2.2.md)
 
 ---
 
