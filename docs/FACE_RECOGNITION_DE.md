@@ -479,4 +479,4 @@ GROUP BY person_id;
 
 ---
 
-*Bei Problemen: [GitHub Issues](https://github.com/brainAThome/RTSP-Recorder/issues)*
+*Bei Problemen: [GitHub Issues](https://github.com/brainAThome/Opening_RTSP-Recorder/issues)*

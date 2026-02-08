@@ -75,12 +75,12 @@ Problemlösung & FAQ:
 ## Quick Links
 
 ### Integration
-- **GitHub:** [github.com/brainAThome/RTSP-Recorder](https://github.com/brainAThome/RTSP-Recorder)
+- **GitHub:** [github.com/brainAThome/Opening_RTSP-Recorder](https://github.com/brainAThome/Opening_RTSP-Recorder)
 - **HACS:** Custom Repository
 
 ### Support
-- **Issues:** [GitHub Issues](https://github.com/brainAThome/RTSP-Recorder/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/brainAThome/RTSP-Recorder/discussions)
+- **Issues:** [GitHub Issues](https://github.com/brainAThome/Opening_RTSP-Recorder/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/brainAThome/Opening_RTSP-Recorder/discussions)
 
 ---
 

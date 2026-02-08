@@ -414,4 +414,4 @@ analysis_perf_coral_entity: sensor.coral_temperature
 
 ---
 
-*Bei Problemen: [GitHub Issues](https://github.com/brainAThome/RTSP-Recorder/issues)*
+*Bei Problemen: [GitHub Issues](https://github.com/brainAThome/Opening_RTSP-Recorder/issues)*

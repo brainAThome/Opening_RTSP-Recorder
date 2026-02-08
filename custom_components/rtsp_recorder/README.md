@@ -708,7 +708,7 @@ For AI object detection with Coral USB:
 This integration is HACS-compatible:
 
 1. Open HACS → ⋮ Menu → **Custom repositories**
-2. Add URL: `https://github.com/brainAThome/RTSP-Recorder`
+2. Add URL: `https://github.com/brainAThome/Opening_RTSP-Recorder`
 3. Category: **Integration**
 4. Click **Add** → Install
 5. Restart Home Assistant

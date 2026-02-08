@@ -72,7 +72,7 @@ RTSP Recorder ist eine umfassende Videoüberwachungslösung für Home Assistant 
 2. Klicke auf **⋮** (Drei-Punkte-Menü) → **Custom repositories**
 3. Repository-URL eingeben:
    ```
-   https://github.com/brainAThome/RTSP-Recorder
+   https://github.com/brainAThome/Opening_RTSP-Recorder
    ```
 4. Kategorie: **Integration**
 5. Klicke **Add**
