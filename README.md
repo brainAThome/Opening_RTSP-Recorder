@@ -16,7 +16,7 @@ A complete video surveillance solution with AI-powered object detection using Co
 ![Tests](https://img.shields.io/badge/Tests-139%20passed-brightgreen)
 ![Vibe Coded](https://img.shields.io/badge/Vibe%20Coded-100%25%20AI-blueviolet)
 
-📋 **[Audit Report v1.2.3](docs/FINAL_AUDIT_REPORT_v1.2.3.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.2.3_DE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (07.02.2026)
+📋 **[Audit Report v1.3.1](docs/FINAL_AUDIT_REPORT_v1.3.1.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.3.1_DE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (08.02.2026)
 🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
 
 ## What's New in v1.3.1
@@ -35,118 +35,20 @@ A complete video surveillance solution with AI-powered object detection using Co
 ---
 
 <details>
-<summary><b>Previous: v1.2.8 Changes</b></summary>
+<summary><b>📋 Full Changelog (v1.0.6 - v1.2.9)</b></summary>
 
-### 🔧 Debug Mode for Technical Displays
-**Cleaner UI for regular users:**
-- New toggle in Menu: General → Debug Mode
-- Hides FPS/Frame info display (top right in video)
-- Hides "Show Performance" checkbox
-- Hides Performance panel (CPU, RAM, Coral, etc.)
-- Setting is saved in browser localStorage
-
-</details>
-
-<details>
-<summary><b>Previous: v1.2.7 Changes</b></summary>
-
-### 🔄 Smart Dashboard Card Auto-Update
-**Card updates are now detected automatically!**
-- Uses MD5 hash comparison instead of file size
-- Card is automatically updated when HACS installs a new version
-- No more manual file deletion required after updates
-
-</details>
-
-<details>
-<summary><b>Previous: v1.2.6 Changes</b></summary>
-
-### 🚀 Automatic Dashboard Card Installation
-**No more "Custom element doesn't exist" errors!**
-- Dashboard card JS file is now bundled with the integration
-- Automatically copied to `/config/www/` on first load
-- Automatically registered as Lovelace resource
-- Just install via HACS, restart, and use!
-
-</details>
-
-<details>
-<summary><b>Previous: v1.2.5 Changes</b></summary>
-
-### 🎥 Correct Video FPS Metadata
-**Recordings now have correct FPS in file metadata:**
-- Automatic FPS detection via ffprobe before recording starts
-- FFmpeg uses detected FPS for correct container metadata
-- Fixes issue where 20 FPS cameras showed ~28 FPS in file properties
-
-</details>
-
-<details>
-<summary><b>Previous: v1.2.4 Changes</b></summary>
-
-### 🐛 Bugfix: Dynamic Thumbnail Path Loading
-**Thumbnail path changes now take effect immediately:**
-- ThumbnailView reads path dynamically from `hass.data`
-- No restart required after changing thumbnail path in config
-- All default values now use constants from `const.py` for consistency
-
-</details>
-
-<details>
-<summary><b>Previous: v1.2.3 Changes</b></summary>
-
-### ✅ Code Quality: 100% Type Hints
-**All 129 functions now have return type annotations:**
-- Improved IDE support and code completion
-- Better static analysis with mypy/Pylance
-- Updated badge from 51% (yellow) to 100% (green)
-
-### 🔧 Stats Display Fix
-**Performance Tab now shows accurate Coral TPU statistics:**
-- WebSocket handler uses real detector stats
-- Push-based updates every 2 seconds
-
-### 📲 Person Detection Push Notifications
-**Instant alerts when known people are detected:**
-- Event: `rtsp_recorder_person_detected`
-- Includes: person name, confidence, camera, video path
-- Example automation in documentation
-
-</details>
-
-<details>
-<summary><b>Previous: v1.2.2 Changes</b></summary>
-
-### 🔄 Statistics Reset
-**Reset detector statistics from the UI:**
-- New "Reset Statistics" button in Performance Tab
-- Resets all inference counters and uptime
-- WebSocket endpoint: `rtsp_recorder/reset_detector_stats`
-
-### 🐛 Recording Indicator Fix
-**"Recording in progress" indicator now works correctly with multiple cameras:**
-- Fixed: Indicator no longer disappears when another camera finishes recording
-- Now uses event-driven `_runningRecordings` Map consistently
-- Multi-camera scenarios properly tracked
-
-### 🎬 FPS Display Fix
-**Video player now shows actual video FPS:**
-- Reads `video_fps` from analysis data
-- Falls back to 25 FPS (PAL standard) if unavailable
-
-### 🧹 Removed smooth_video Option
-**Config cleanup:**
-- Removed unused `smooth_video` option from configuration
-- No functional impact (was never used)
-
-### 📱 Mobile Portrait View
-**Optimized mobile version for Lovelace Card:**
-- Portrait layout with timeline cards
-- Footer and tabs mobile-scrollable and compact
-- Video controls hidden on mobile, replaced with Download/Delete in footer
-- Performance display and checkboxes optimized for mobile
-- Complete @media queries for 768px/480px
-- Tested on Android/iOS
+See **[CHANGELOG.md](CHANGELOG.md)** for the complete version history including:
+- v1.2.8: Debug Mode for Technical Displays
+- v1.2.7: Smart Dashboard Card Auto-Update
+- v1.2.6: Automatic Dashboard Card Installation
+- v1.2.5: Correct Video FPS Metadata
+- v1.2.4: Dynamic Thumbnail Path Loading
+- v1.2.3: 100% Type Hints, Stats Display Fix
+- v1.2.2: Statistics Reset, Mobile Portrait View
+- v1.2.1: Cyclomatic Complexity Reduction
+- v1.2.0: Sample Quality Analysis, Multi-Sensor Trigger
+- v1.1.x: Person Detail Popup, HA Person Entities
+- v1.0.x: SQLite Backend, Face Detection
 
 </details>
 
