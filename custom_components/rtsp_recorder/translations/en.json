@@ -2,7 +2,7 @@
     "config": {
         "step": {
             "user": {
-                "title": "🎬 Set up RTSP Recorder",
+                "title": "🎬 Set up Opening RTSP Recorder",
                 "description": "Welcome! Configure the storage location for your camera recordings.",
                 "data": {
                     "storage_path": "📁 Storage Path",
@@ -31,7 +31,7 @@
     "options": {
         "step": {
             "init": {
-                "title": "⚙️ RTSP Recorder Settings",
+                "title": "⚙️ Opening RTSP Recorder Settings",
                 "description": "**{allowlist_status}**\n\nIf not allowed, add the following to `configuration.yaml`:\n```\nhomeassistant:\n  allowlist_external_dirs:\n    - /media\n```\n\nGlobal retention time and camera configuration.\n\n✅ = Camera already configured",
                 "data": {
                     "storage_path": "📁 Storage Path",
