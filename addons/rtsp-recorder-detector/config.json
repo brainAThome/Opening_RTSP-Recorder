@@ -1,9 +1,9 @@
 {
-  "name": "RTSP Recorder Detector",
+  "name": "Opening RTSP Recorder Detector",
   "version": "1.0.9",
   "slug": "rtsp_recorder_detector",
-  "description": "Local object detector with Coral USB EdgeTPU support.",
-  "url": "https://github.com/brainAThome/RTSP-Recorder",
+  "description": "Local object detector with Coral USB EdgeTPU support for Opening RTSP Recorder.",
+  "url": "https://github.com/brainAThome/Opening_RTSP-Recorder",
   "arch": [
     "amd64"
   ],
