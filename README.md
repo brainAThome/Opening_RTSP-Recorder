@@ -115,84 +115,27 @@ Replace expensive cloud subscriptions (Ring €200/yr, Nest €100/yr, Arlo €1
 
 ---
 
-## What's New in v1.2.1
+## What's New in v1.3.1
 
-### 🛠 Code Quality Improvements (MEDIUM Findings Remediation)
-**Major refactoring and code quality improvements!**
+🐛 **Debug Mode Bugfix** - Performance panel visibility fixed when toggling Debug Mode
 
-- **Cyclomatic Complexity**: `analyze_recording` reduced from CC=140 to CC=23 (-84%)
-- **Exception Handling**: 7 silent `except:pass` blocks now have debug logging
-- **Security Documentation**: New `SECURITY.md` with biometric data policy
-- **Flake8 Cleanup**: Removed unused globals (F824) and imports (F401)
-- **ISO 25010 Score**: 95→96/100
-- **Maintainability Score**: 85→90/100
+📋 **[Full Release History](docs/RELEASE_HISTORY.md)** | **[Detailed CHANGELOG](CHANGELOG.md)**
 
 ---
 
-## What's New in v1.2.0
+## Version Comparison (Recent Releases)
 
-### 🚀 Multi-Sensor Trigger Support
-**You can now select multiple sensors to trigger recording for each camera!**
-
-- Motion sensor selector in config flow now allows multi-select
-- Backward compatible: legacy `sensor_{camera}` configs still work
-- New format: `sensors_{camera}` stores a list of entities
-- Both camera config and manual camera steps support multi-sensors
-
-### 🧠 Sample Quality Analysis (People DB)
-**Automatic outlier detection and quality scoring for face embeddings!**
-
-- **Quality Scores**: Each sample shows similarity to person's centroid (0-100%)
-- **Outlier Detection**: Samples below 65% threshold marked with ⚠️ badge
-- **Bulk Selection**: Checkbox per sample + "Select All Outliers" button
-- **Bulk Delete**: Remove multiple problematic samples at once
-- **Visual Indicators**: Color-coded quality (green/orange/red), outlier count
-
-### 🎨 Overlay Smoothing
-**Smooth analysis overlay drawing for reduced visual jitter!**
-
-- Toggle `analysis_overlay_smoothing` in settings
-- Configurable alpha value (0.1-1.0, default 0.55)
-- EMA algorithm for smooth bounding box transitions
-
-### 🐛 Bug Fixes (from v1.1.2)
-**Fixed**: Batch analysis `auto_device` undefined error - "Analyze All Recordings" works again
-
-### 🔧 Configuration Improvements
-**SQLite Always Enabled**: Removed unnecessary toggle from settings
-**New Setting**: `analysis_max_concurrent` slider (1-4 parallel tasks)
-**Multi-Sensor Trigger**: Select multiple binary_sensors per camera (motion, doorbell, etc.)
-**HACS Support**: Easy installation and automatic update notifications
-
-### 🖼️ Branding & UI
-- **Dashboard Logo**: Opening logo in card header (replaces text)
-- **Version Badge**: "BETA v1.2.0" badge for version visibility
-- **Integration Icon**: Custom icon for Home Assistant integrations page
-- **5 Languages**: German, English, Spanish, French, Dutch
-
-### 📊 Quality Metrics (v5.1 Audit - 05.02.2026)
-- **ISO 25010 Score**: 96/100 (EXCELLENT) ⬆️ +2
-- **ISO 27001 Score**: 88/100 (GOOD) ⬆️ +2
-- **Maintainability Score**: 90/100 ⬆️ +5
-- **Type Hints Coverage**: 100% (COMPLETE) ⬆️ +12%
-- **Automated Tests**: 139 passed, 221 total
-- **Lines of Code**: 10,980 (7,276 SLOC)
-
-## Version Comparison
-
-| Feature | v1.1.2 | v1.2.0 | v1.2.1 | v1.2.2 | v1.2.3 |
-|---------|--------|--------|--------|--------|--------|
-| **Recording** | ⚡ Parallel | ⚡ Parallel | ⚡ Parallel | ⚡ Parallel | ⚡ Parallel |
-| **Push Notifications** | ❌ | ❌ | ❌ | ❌ | ✅ NEW |
-| **Costs Docs (€0)** | ❌ | ❌ | ❌ | ❌ | ✅ NEW |
-| **Community Standards** | ❌ | ❌ | ❌ | ❌ | ✅ NEW |
-| **Stats Fix (WS)** | ❌ | ❌ | ❌ | ❌ | ✅ NEW |
-| **Legal Disclaimer** | ❌ | ❌ | ❌ | ❌ | ✅ NEW |
-| **Mobile Portrait** | ❌ | ❌ | ❌ | ✅ | ✅ |
-| **Type Hints** | 88.2% | 88.2% | 88.2% | 88.2% | **100%** |
-| **ISO 25010 Score** | 93% | 95% | 96% | 96% | **96%** |
-| **ISO 27001 Score** | 85% | 86% | 88% | 88% | **88%** |
-| **Production Ready** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Feature | v1.2.8 | v1.2.9 | v1.3.0 | v1.3.1 |
+|---------|--------|--------|--------|--------|
+| **Debug Mode Toggle** | ✅ NEW | ✅ | ✅ | ✅ |
+| **Opening Branding** | ❌ | 🔄 Partial | ✅ Full | ✅ |
+| **Performance Panel Fix** | N/A | N/A | N/A | ✅ NEW |
+| **5 Languages Updated** | ❌ | ❌ | ✅ | ✅ |
+| **Push Notifications** | ✅ | ✅ | ✅ | ✅ |
+| **Type Hints** | 100% | 100% | 100% | 100% |
+| **ISO 25010 Score** | 94/100 | 94/100 | 94/100 | 94/100 |
+| **ISO 27001 Score** | 88/100 | 88/100 | 88/100 | 88/100 |
+| **Production Ready** | ✅ | ✅ | ✅ | ✅ |
 
 ### ⚡ Performance Optimizations
 - **Parallel Snapshots**: Thumbnails captured DURING recording
