@@ -6,7 +6,7 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.2.9-brightgreen)
+![Version](https://img.shields.io/badge/version-1.3.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.2+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%25-brightgreen)
@@ -19,12 +19,12 @@ A complete video surveillance solution with AI-powered object detection using Co
 📋 **[Audit Report v1.2.3](docs/FINAL_AUDIT_REPORT_v1.2.3.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.2.3_DE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (07.02.2026)
 🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
 
-## What's New in v1.2.9
+## What's New in v1.3.0
 
 ### 🏷️ Rebranding: "Opening RTSP Recorder"
 **Einheitliches Branding für bessere Erkennbarkeit:**
-- Integration heißt jetzt "Opening RTSP Recorder" (statt "RTSP Recorder")
-- Addon heißt "Opening RTSP Recorder Detector"
+- **Integration**: "Opening RTSP Recorder" (v1.3.0)
+- **Addon**: "Opening RTSP Recorder Detector" (v1.1.0)
 - Alle Übersetzungen (DE, EN, FR, ES, NL) aktualisiert
 - Setup-Dialoge zeigen den neuen Namen
 
