@@ -1581,7 +1581,7 @@ class RtspRecorderCard extends HTMLElement {
             
             <div class="fm-container animated" id="container" role="application" aria-label="Opening RTSP-Recorder">
                 <div class="fm-header" role="banner">
-                    <div class="fm-title"><img src="/local/opening_logo4.png" alt="Opening RTSP-Recorder" style="height:50px; vertical-align:middle; background:transparent;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.3.0</span></div>
+                    <div class="fm-title"><img src="/local/opening_logo4.png" alt="Opening RTSP-Recorder" style="height:50px; vertical-align:middle; background:transparent;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.3.1</span></div>
                     <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
                         <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>
@@ -1952,9 +1952,10 @@ class RtspRecorderCard extends HTMLElement {
             perfToggle.style.display = this._debugMode ? 'flex' : 'none';
         }
         
-        // Performance Panel (wenn Debug aus, Panel auch ausblenden)
+        // Performance Panel Sichtbarkeit
+        const perfPanel = root.querySelector('#footer-perf-panel');
         if (!this._debugMode) {
-            const perfPanel = root.querySelector('#footer-perf-panel');
+            // Debug aus: Panel ausblenden und Checkbox zurücksetzen
             if (perfPanel) {
                 perfPanel.style.display = 'none';
             }
@@ -1962,6 +1963,11 @@ class RtspRecorderCard extends HTMLElement {
             const perfCheckbox = root.querySelector('#footer-perf');
             if (perfCheckbox) {
                 perfCheckbox.checked = false;
+            }
+        } else {
+            // Debug an: Panel-Display zurücksetzen (Inhalt wird von updatePerfFooter gesteuert)
+            if (perfPanel) {
+                perfPanel.style.display = '';
             }
         }
     }
