@@ -502,7 +502,7 @@ cat /config/.storage/core.config_entries | grep -A 100 rtsp_recorder
 
 ### Issue erstellen
 
-[GitHub Issues](https://github.com/brainAThome/RTSP-Recorder/issues)
+[GitHub Issues](https://github.com/brainAThome/Opening_RTSP-Recorder/issues)
 
 Bitte inkludieren:
 1. RTSP Recorder Version
@@ -521,4 +521,4 @@ Bitte inkludieren:
 
 ---
 
-*Bei Problemen: [GitHub Issues](https://github.com/brainAThome/RTSP-Recorder/issues)*
+*Bei Problemen: [GitHub Issues](https://github.com/brainAThome/Opening_RTSP-Recorder/issues)*
