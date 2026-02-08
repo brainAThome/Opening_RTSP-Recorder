@@ -2,7 +2,7 @@
     "config": {
         "step": {
             "user": {
-                "title": "🎬 RTSP Recorder configureren",
+                "title": "🎬 Opening RTSP Recorder configureren",
                 "description": "Welkom! Configureer de opslaglocatie voor uw opnames.",
                 "data": {
                     "storage_path": "📁 Opslagpad",
@@ -31,7 +31,7 @@
     "options": {
         "step": {
             "init": {
-                "title": "⚙️ RTSP Recorder Instellingen",
+                "title": "⚙️ Opening RTSP Recorder Instellingen",
                 "description": "**{allowlist_status}**\n\nIndien niet toegestaan, voeg dit toe aan `configuration.yaml`:\n```\nhomeassistant:\n  allowlist_external_dirs:\n    - /media\n```\n\nGlobale bewaartijd en cameraconfiguratie.\n\n✅ = Camera al geconfigureerd",
                 "data": {
                     "storage_path": "📁 Opslagpad",

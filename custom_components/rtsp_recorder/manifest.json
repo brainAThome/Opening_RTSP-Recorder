@@ -1,8 +1,8 @@
 {
     "domain": "rtsp_recorder",
-    "name": "RTSP Recorder",
+    "name": "Opening RTSP Recorder",
     "config_flow": true,
-    "version": "1.2.8",
+    "version": "1.2.9",
     "homeassistant": "2026.2.0",
     "documentation": "https://github.com/brainAThome/RTSP-Recorder",
     "dependencies": [
