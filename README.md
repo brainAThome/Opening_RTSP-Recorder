@@ -9,14 +9,14 @@ A complete video surveillance solution with AI-powered object detection using Co
 ![Version](https://img.shields.io/badge/version-1.3.1-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.2+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%25-brightgreen)
+![ISO 25010](https://img.shields.io/badge/ISO%2025010-94%25-brightgreen)
 ![ISO 27001](https://img.shields.io/badge/ISO%2027001-88%25-brightgreen)
 ![Type Hints](https://img.shields.io/badge/Type%20Hints-100%25-brightgreen)
 ![HACS](https://img.shields.io/badge/HACS-Compatible-orange)
 ![Tests](https://img.shields.io/badge/Tests-139%20passed-brightgreen)
 ![Vibe Coded](https://img.shields.io/badge/Vibe%20Coded-100%25%20AI-blueviolet)
 
-📋 **[Audit Report v1.3.1](docs/FINAL_AUDIT_REPORT_v1.3.1.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.3.1_DE.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis (08.02.2026)
+📋 **[Audit Report v1.3.1](docs/FINAL_AUDIT_REPORT_v1.3.1.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.3.1_DE.md)** - Quality & Security tested according to ISO 25010:2011 (31 criteria) + ISO 27001:2022 (16 controls) (15.02.2026)
 🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
 
 ## What's New in v1.3.1
