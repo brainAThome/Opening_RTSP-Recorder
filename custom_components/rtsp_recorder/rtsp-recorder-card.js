@@ -947,6 +947,35 @@ class RtspRecorderCard extends HTMLElement {
                 .fm-player-col { flex: 1; position: relative; background: #000; display: flex; flex-direction: column; align-items: stretch; justify-content: stretch; }
                 .fm-player-body { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
                 #main-video { width: 100%; height: 100%; object-fit: contain; }
+                
+                /* v1.3.2: Video Loading Spinner for mobile performance */
+                .video-loading-spinner {
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    background: rgba(0,0,0,0.8);
+                    z-index: 100;
+                }
+                .video-loading-spinner .spinner {
+                    width: 50px;
+                    height: 50px;
+                    border: 4px solid rgba(255,255,255,0.2);
+                    border-top-color: var(--primary-color, #03a9f4);
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                }
+                .video-loading-spinner .loading-text {
+                    margin-top: 15px;
+                    color: #fff;
+                    font-size: 14px;
+                }
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+                
                 #overlay-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
                 .fm-overlay-tl { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.55); padding: 6px 14px; border-radius: 4px; color: #fff; font-size: 0.9em; font-weight: 600; pointer-events: none; }
                 .fm-overlay-tr { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.35); padding: 6px 14px; border-radius: 4px; color: #ccc; font-size: 0.85em; pointer-events: none; }
@@ -1581,7 +1610,7 @@ class RtspRecorderCard extends HTMLElement {
             
             <div class="fm-container animated" id="container" role="application" aria-label="Opening RTSP-Recorder">
                 <div class="fm-header" role="banner">
-                    <div class="fm-title"><img src="/local/opening_logo4.png" alt="Opening RTSP-Recorder" style="height:50px; vertical-align:middle; background:transparent;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.3.1</span></div>
+                    <div class="fm-title"><img src="/local/opening_logo4.png" alt="Opening RTSP-Recorder" style="height:50px; vertical-align:middle; background:transparent;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.3.2</span></div>
                     <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
                         <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>
@@ -1594,7 +1623,11 @@ class RtspRecorderCard extends HTMLElement {
                             <div class="fm-overlay-tl" id="txt-cam" aria-live="polite">Waehle Aufnahme</div>
                             <div class="fm-overlay-tr" id="txt-date">BETA VERSION</div>
                             <div class="fm-frame-info" id="txt-frame-info">00:00:00.000 | 0 FPS | Frame 0</div>
-                            <video id="main-video" controls autoplay muted playsinline aria-label="Aufnahme Videoplayer"></video>
+                            <video id="main-video" controls muted playsinline preload="metadata" aria-label="Aufnahme Videoplayer"></video>
+                            <div id="video-loading-spinner" class="video-loading-spinner" style="display:none;">
+                                <div class="spinner"></div>
+                                <div class="loading-text">Video wird geladen...</div>
+                            </div>
                             <canvas id="overlay-canvas" aria-hidden="true"></canvas>
                         
                             <!-- Video Controls -->
@@ -5317,20 +5350,43 @@ class RtspRecorderCard extends HTMLElement {
                 this._videoFps = null;
                 
                 const video = root.querySelector('#main-video');
+                const loadingSpinner = root.querySelector('#video-loading-spinner');
+                
+                // v1.3.2: Show loading spinner and poster for better mobile UX
+                if (loadingSpinner) loadingSpinner.style.display = 'flex';
+                video.poster = ev.thumb; // Use thumbnail as poster while loading
+                
                 // Add loading state for smooth transition
                 if (this._animationsEnabled) {
                     video.classList.add('loading');
                 }
                 
-                const info = await this._hass.callWS({ type: 'media_source/resolve_media', media_content_id: ev.id });
-                this._currentVideoUrl = info.url;
-                video.src = info.url;
-                video.onloadeddata = () => {
-                    if (this._animationsEnabled) {
-                        video.classList.remove('loading');
-                    }
-                };
-                video.play();
+                try {
+                    const info = await this._hass.callWS({ type: 'media_source/resolve_media', media_content_id: ev.id });
+                    this._currentVideoUrl = info.url;
+                    
+                    // v1.3.2: Use canplay event for mobile - ensures enough data buffered
+                    video.oncanplay = () => {
+                        if (loadingSpinner) loadingSpinner.style.display = 'none';
+                        if (this._animationsEnabled) {
+                            video.classList.remove('loading');
+                        }
+                        video.play().catch(e => console.warn('[RTSP-Recorder] Autoplay blocked:', e));
+                    };
+                    
+                    // Fallback timeout for slow connections
+                    video.onerror = () => {
+                        if (loadingSpinner) loadingSpinner.style.display = 'none';
+                        console.error('[RTSP-Recorder] Video load error');
+                    };
+                    
+                    video.src = info.url;
+                    video.load(); // Explicitly start loading
+                } catch (e) {
+                    if (loadingSpinner) loadingSpinner.style.display = 'none';
+                    console.error('[RTSP-Recorder] Failed to resolve media:', e);
+                }
+                
                 root.querySelector('#txt-cam').innerText = displayName;
                 root.querySelector('#txt-date').innerText = ev.date.toLocaleString('de-DE');
                 if (this._overlayEnabled) {
