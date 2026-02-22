@@ -33,7 +33,7 @@ from .helpers import (
     _list_video_files,
     _get_analysis_semaphore,
 )
-from .recorder import async_record_stream, async_take_snapshot
+from .recorder import async_record_stream, async_take_snapshot, _remux_to_faststart
 from .analysis import analyze_recording
 from .people_db import _load_people_db
 from .analysis_helpers import _build_analysis_index
@@ -427,6 +427,16 @@ def register_services(
                     log_to_file(f"HA Snapshot task exception: {e}")
                     
                 log_to_file(f"HA camera recording and snapshot complete")
+
+                # v1.3.3: Remux fMP4 to regular MP4 for mobile compatibility
+                # HA camera.record produces fragmented MP4 from RTSP streams
+                # which mobile browsers cannot progressively play
+                if os.path.exists(full_path) and os.path.getsize(full_path) > 0:
+                    remux_ok, remux_err = await _remux_to_faststart(full_path, full_path)
+                    if remux_ok:
+                        log_to_file(f"REMUX OK: {full_path}")
+                    else:
+                        log_to_file(f"REMUX SKIP: {remux_err} (keeping original)")
 
             # v1.1.0: Recording + Snapshot finished - NOW remove from active recordings
             # This triggers the frontend to refresh the timeline
