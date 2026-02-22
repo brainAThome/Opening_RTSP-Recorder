@@ -80,6 +80,72 @@ def log_to_file(msg: str) -> None:
     except OSError:
         pass
 
+async def _remux_to_faststart(tmp_path: str, final_path: str) -> tuple[bool, str | None]:
+    """Remux fragmented MP4 to non-fragmented MP4 with faststart.
+    
+    v1.3.3: RTSP streams recorded with -c copy produce fragmented MP4
+    (many moof/mdat pairs). Mobile browsers cannot progressively play
+    fragmented MP4 and must download the entire file first.
+    
+    This remux step converts fMP4 to regular MP4 with a single moov+mdat
+    structure and moov atom at the beginning (faststart). No re-encoding
+    is performed, so this takes <1 second for a 60s recording.
+    
+    Args:
+        tmp_path: Input fragmented MP4 file
+        final_path: Output non-fragmented MP4 file
+    
+    Returns:
+        Tuple of (success: bool, error_msg: str | None)
+    """
+    remux_tmp = final_path + ".remux.mp4"
+    try:
+        command = [
+            "ffmpeg",
+            "-y",
+            "-i", tmp_path,
+            "-c", "copy",
+            "-movflags", "+faststart",
+            remux_tmp
+        ]
+        log_to_file(f"REMUX: {tmp_path} -> {remux_tmp}")
+        
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
+        
+        if process.returncode != 0:
+            stderr_text = stderr.decode('utf-8', errors='replace')[-300:] if stderr else ""
+            log_to_file(f"REMUX FAILED (code {process.returncode}): {stderr_text}")
+            return False, f"Remux failed with code {process.returncode}"
+        
+        # Verify remuxed file is valid
+        if os.path.exists(remux_tmp) and os.path.getsize(remux_tmp) > 0:
+            os.rename(remux_tmp, final_path)
+            log_to_file(f"REMUX SUCCESS: {final_path} ({os.path.getsize(final_path)} bytes)")
+            return True, None
+        else:
+            log_to_file("REMUX: Output file missing or empty")
+            return False, "Remux output missing or empty"
+            
+    except asyncio.TimeoutError:
+        log_to_file("REMUX TIMEOUT (30s)")
+        return False, "Remux timed out"
+    except Exception as e:
+        log_to_file(f"REMUX ERROR: {e}")
+        return False, f"Remux error: {e}"
+    finally:
+        # Cleanup remux temp file on failure
+        if os.path.exists(remux_tmp):
+            try:
+                os.remove(remux_tmp)
+            except OSError:
+                pass
+
+
 async def _monitor_recording(
     process: asyncio.subprocess.Process,
     tmp_path: str,
@@ -89,8 +155,8 @@ async def _monitor_recording(
     """Monitor FFmpeg process and finalize recording on completion.
     
     Waits for the FFmpeg process to finish, validates the output file,
-    and renames it from temporary to final path. Handles errors gracefully
-    and notifies caller via optional callback.
+    then remuxes to non-fragmented MP4 for mobile compatibility (v1.3.3).
+    Handles errors gracefully and notifies caller via optional callback.
     
     Args:
         process: The running FFmpeg subprocess
@@ -125,13 +191,28 @@ async def _monitor_recording(
             log_to_file(f"Temp file size: {size} bytes")
             
             if size > 0:
-                try:
-                    os.rename(tmp_path, final_path)
-                    log_to_file(f"Renamed {tmp_path} -> {final_path} (Success)")
+                # v1.3.3: Remux fMP4 to regular MP4 for mobile compatibility
+                # RTSP -c copy produces fragmented MP4 (many moof/mdat pairs)
+                # which mobile browsers cannot progressively play
+                remux_ok, remux_err = await _remux_to_faststart(tmp_path, final_path)
+                
+                if remux_ok:
+                    # Remux succeeded - clean up temp file
+                    try:
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
                     success = True
-                except OSError as e:
-                    error_msg = f"Rename failed: {e}"
-                    log_to_file(f"RENAME ERROR: {e}")
+                else:
+                    # Remux failed - fall back to simple rename
+                    log_to_file(f"REMUX fallback: {remux_err}, using direct rename")
+                    try:
+                        os.rename(tmp_path, final_path)
+                        log_to_file(f"Renamed {tmp_path} -> {final_path} (fallback)")
+                        success = True
+                    except OSError as e:
+                        error_msg = f"Rename failed: {e}"
+                        log_to_file(f"RENAME ERROR: {e}")
             else:
                 error_msg = "Recording file is empty"
                 log_to_file(f"Temp file empty, deleting.")

@@ -117,6 +117,126 @@ class ThumbnailView(HomeAssistantView):
             return web.Response(status=500, text="Internal error")
 
 
+class VideoStreamView(HomeAssistantView):
+    """v1.3.3: HTTP View to serve video files with Range request support.
+    
+    Mobile browsers require HTTP Range requests (partial content / byte-range)
+    for smooth progressive video playback. HA's built-in media_source may not
+    always serve Range headers correctly, especially for fragmented MP4 files.
+    
+    This endpoint serves videos directly with proper:
+    - Accept-Ranges: bytes header
+    - HTTP 206 Partial Content for Range requests
+    - Content-Range header for byte range responses
+    - Correct Content-Type: video/mp4
+    """
+    
+    url = "/api/rtsp_recorder/video/{camera}/{filename}"
+    name = "api:rtsp_recorder:video"
+    requires_auth = True  # Videos require authentication
+    
+    def __init__(self, hass):
+        self._hass = hass
+    
+    def _get_storage_path(self) -> str:
+        """Get current storage path from config."""
+        try:
+            domain_data = self._hass.data.get(DOMAIN, {})
+            return domain_data.get("storage_path", "/media/rtsp_recorder/ring_recordings")
+        except Exception:
+            return "/media/rtsp_recorder/ring_recordings"
+    
+    async def get(self, request: web.Request, camera: str, filename: str) -> web.StreamResponse:
+        """Handle video request with Range support for progressive playback."""
+        # Security: Prevent path traversal
+        if ".." in camera or ".." in filename or "/" in filename or "\\" in filename:
+            return web.Response(status=403, text="Forbidden")
+        
+        if not filename.lower().endswith(".mp4"):
+            return web.Response(status=400, text="Only MP4 supported")
+        
+        storage_path = self._get_storage_path()
+        file_path = os.path.join(storage_path, camera, filename)
+        
+        # Check file exists
+        if not os.path.isfile(file_path):
+            return web.Response(status=404, text="Not found")
+        
+        file_size = os.path.getsize(file_path)
+        
+        # Parse Range header
+        range_header = request.headers.get("Range")
+        
+        if range_header:
+            # Parse "bytes=START-END"
+            try:
+                range_spec = range_header.replace("bytes=", "")
+                parts = range_spec.split("-")
+                start = int(parts[0]) if parts[0] else 0
+                end = int(parts[1]) if parts[1] else file_size - 1
+                
+                # Clamp to file size
+                end = min(end, file_size - 1)
+                length = end - start + 1
+                
+                response = web.StreamResponse(
+                    status=206,
+                    headers={
+                        "Content-Type": "video/mp4",
+                        "Content-Length": str(length),
+                        "Content-Range": f"bytes {start}-{end}/{file_size}",
+                        "Accept-Ranges": "bytes",
+                        "Cache-Control": "public, max-age=3600",
+                    }
+                )
+                await response.prepare(request)
+                
+                # Stream the requested byte range
+                def _read_range():
+                    with open(file_path, "rb") as f:
+                        f.seek(start)
+                        return f.read(length)
+                
+                loop = asyncio.get_event_loop()
+                data = await loop.run_in_executor(None, _read_range)
+                await response.write(data)
+                return response
+                
+            except (ValueError, IndexError):
+                return web.Response(status=416, text="Invalid Range")
+        else:
+            # No Range header - serve full file with Accept-Ranges
+            response = web.StreamResponse(
+                status=200,
+                headers={
+                    "Content-Type": "video/mp4",
+                    "Content-Length": str(file_size),
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "public, max-age=3600",
+                }
+            )
+            await response.prepare(request)
+            
+            # Stream in 256KB chunks to avoid memory issues
+            CHUNK_SIZE = 256 * 1024
+            
+            def _read_chunks():
+                chunks = []
+                with open(file_path, "rb") as f:
+                    while True:
+                        chunk = f.read(CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                return chunks
+            
+            loop = asyncio.get_event_loop()
+            chunks = await loop.run_in_executor(None, _read_chunks)
+            for chunk in chunks:
+                await response.write(chunk)
+            return response
+
+
 async def _install_dashboard_card(hass) -> bool:
     """Install the dashboard card JS file to /config/www/ and register as Lovelace resource.
     
@@ -299,6 +419,17 @@ async def async_setup_entry(hass, entry: ConfigEntry) -> bool:
             log_to_file(f"Registered thumbnail endpoint: /api/rtsp_recorder/thumbnail/")
         else:
             log_to_file(f"Thumbnail endpoint already registered, path updated dynamically")
+        
+        # 2c. Register HTTP endpoint for video streaming with Range support (v1.3.3)
+        # Mobile browsers need Range requests for progressive MP4 playback
+        if not hass.data[DOMAIN].get("video_view_registered"):
+            hass.http.register_view(VideoStreamView(hass))
+            hass.data[DOMAIN]["video_view_registered"] = True
+            hass.data[DOMAIN]["storage_path"] = storage_path
+            log_to_file(f"Registered video stream endpoint: /api/rtsp_recorder/video/")
+        else:
+            hass.data[DOMAIN]["storage_path"] = storage_path
+            log_to_file(f"Video stream endpoint already registered, path updated dynamically")
 
         # 3. Initialize SQLite database backend (v1.1.0j: SQLite-only)
         log_to_file("Enabling SQLite backend for people database...")

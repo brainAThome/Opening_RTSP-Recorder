@@ -1610,7 +1610,7 @@ class RtspRecorderCard extends HTMLElement {
             
             <div class="fm-container animated" id="container" role="application" aria-label="Opening RTSP-Recorder">
                 <div class="fm-header" role="banner">
-                    <div class="fm-title"><img src="/local/opening_logo4.png" alt="Opening RTSP-Recorder" style="height:50px; vertical-align:middle; background:transparent;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.3.2</span></div>
+                    <div class="fm-title"><img src="/local/opening_logo4.png" alt="Opening RTSP-Recorder" style="height:50px; vertical-align:middle; background:transparent;"><span style="font-size:0.6em; opacity:0.5; margin-left:10px; border:1px solid #444; padding:2px 6px; border-radius:4px;">BETA v1.3.3</span></div>
                     <div class="fm-toolbar" role="toolbar" aria-label="Filteroptionen">
                         <button class="fm-btn active" id="btn-date" aria-haspopup="true" aria-expanded="false">Letzte 24 Std</button>
                         <button class="fm-btn" id="btn-cams" aria-haspopup="true" aria-expanded="false">Kameras</button>
@@ -5362,8 +5362,34 @@ class RtspRecorderCard extends HTMLElement {
                 }
                 
                 try {
-                    const info = await this._hass.callWS({ type: 'media_source/resolve_media', media_content_id: ev.id });
-                    this._currentVideoUrl = info.url;
+                    // v1.3.3: Use custom video endpoint with Range support for mobile
+                    // Extract camera and filename from media_content_id
+                    // Format: media-source://media_source/local/rtsp_recordings/Camera/File.mp4
+                    const idParts = ev.id.split('/');
+                    const videoFilename = idParts.pop(); // File.mp4
+                    const videoCamera = idParts.pop();   // Camera
+                    
+                    // Prefer our custom endpoint (proper Range/206 support for mobile)
+                    // Falls back to media_source if custom endpoint fails
+                    let videoUrl;
+                    try {
+                        const directUrl = `/api/rtsp_recorder/video/${encodeURIComponent(videoCamera)}/${encodeURIComponent(videoFilename)}`;
+                        // Quick HEAD check to verify endpoint works
+                        const check = await fetch(directUrl, { method: 'HEAD', credentials: 'same-origin' });
+                        if (check.ok || check.status === 206) {
+                            videoUrl = directUrl;
+                            console.log('[RTSP-Recorder] Using direct video endpoint:', directUrl);
+                        } else {
+                            throw new Error(`Direct endpoint returned ${check.status}`);
+                        }
+                    } catch (directErr) {
+                        // Fallback to media_source/resolve_media
+                        console.warn('[RTSP-Recorder] Direct endpoint unavailable, falling back to media_source:', directErr.message);
+                        const info = await this._hass.callWS({ type: 'media_source/resolve_media', media_content_id: ev.id });
+                        videoUrl = info.url;
+                    }
+                    
+                    this._currentVideoUrl = videoUrl;
                     
                     // v1.3.2: Use canplay event for mobile - ensures enough data buffered
                     video.oncanplay = () => {
@@ -5380,7 +5406,7 @@ class RtspRecorderCard extends HTMLElement {
                         console.error('[RTSP-Recorder] Video load error');
                     };
                     
-                    video.src = info.url;
+                    video.src = videoUrl;
                     video.load(); // Explicitly start loading
                 } catch (e) {
                     if (loadingSpinner) loadingSpinner.style.display = 'none';
