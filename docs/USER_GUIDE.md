@@ -738,4 +738,4 @@ tail -f /config/home-assistant.log | grep rtsp_recorder
 
 ---
 
-*RTSP Recorder v1.2.2 BETA - © 2026 brainAThome*
+*Opening RTSP Recorder v1.3.4 BETA - © 2026 brainAThome*

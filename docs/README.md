@@ -1,6 +1,6 @@
-# 📚 RTSP Recorder - Dokumentation
+# 📚 Opening RTSP Recorder - Dokumentation
 
-**Version:** 1.1.1 | **ISO 25010:** 93/100 | **ISO 27001:** 85/100
+**Version:** 1.3.4 | **ISO 25010:** 94/100 | **ISO 27001:** 88/100
 
 ---
 
@@ -62,13 +62,16 @@ Problemlösung & FAQ:
 |-------|--------------|
 | [CHANGELOG.md](../CHANGELOG.md) | Versionshistorie |
 | [README.md](../README.md) | Projekt-Übersicht |
-| [AUDIT_REPORT_v1.1.0_BETA.md](../AUDIT_REPORT_v1.1.0_BETA.md) | Qualitäts-Audit |
+| [RELEASE_HISTORY.md](RELEASE_HISTORY.md) | Release-Übersicht |
+| [FINAL_AUDIT_REPORT_v1.3.1.md](FINAL_AUDIT_REPORT_v1.3.1.md) | Qualitäts-Audit (ISO 25010 + ISO 27001) |
+| [FINAL_AUDIT_REPORT_v1.3.1_DE.md](FINAL_AUDIT_REPORT_v1.3.1_DE.md) | Qualitäts-Audit (Deutsch) |
 
 ### Technisch
 | Datei | Beschreibung |
 |-------|--------------|
-| [HANDOVER_v1.1.0.md](../HANDOVER_v1.1.0.md) | Entwickler-Übergabe |
-| [AGENT_PROMPT_v1.1.0.md](../AGENT_PROMPT_v1.1.0.md) | AI-Agent Kontext |
+| [SECURITY.md](../SECURITY.md) | Sicherheitsrichtlinie |
+| [CONTRIBUTING.md](../CONTRIBUTING.md) | Beitragsrichtlinien |
+| [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Verhaltenskodex |
 
 ---
 
@@ -84,16 +87,25 @@ Problemlösung & FAQ:
 
 ---
 
-## Version 1.1.0n BETA Highlights
+## Version 1.3.4 Highlights
 
-### Neue Features
+### Neue Features (v1.3.3-v1.3.4)
 | Feature | Beschreibung |
-|---------|--------------|
+|---------|-------------|
+| 📱 **Mobile Video Fix** | Videos laden sofort auf Mobilgeräten (fMP4 → MP4 Remux) |
+| 🌐 **Video Streaming Endpoint** | `/api/rtsp_recorder/video/` mit HTTP Range/206 Support |
+| 🔧 **Post-Recording Remux** | Automatisch nach jeder Aufnahme, <1 Sekunde |
+| 📦 **Batch Migration** | 497 bestehende Videos konvertiert |
+
+### Bisherige Features
+| Feature | Beschreibung |
+|---------|-------------|
 | 👤 **Person Detail Popup** | Klickbare Personennamen öffnen Übersicht aller Samples |
 | 🏠 **Person-Entities** | `binary_sensor.rtsp_person_{name}` für Automationen |
-| 📊 **Erkennungszähler** | Zeigt wie oft Person erkannt wurde |
-| ⏰ **Zuletzt gesehen** | Datum, Uhrzeit und Kamera der letzten Erkennung |
-| 🗑️ **Sample-Löschung** | Einzelne Samples im Popup entfernen |
+| 📊 **Sample Quality Analysis** | Qualitäts-Scores mit Outlier-Erkennung |
+| 📲 **Push Notifications** | Benachrichtigungen bei Personenerkennung |
+| 🔧 **Debug Mode** | Toggle für technische Anzeigen |
+| 🏷️ **Opening Branding** | Einheitliches Branding in 5 Sprachen |
 
 ### Neue Module
 | Modul | Zweck |
@@ -102,21 +114,15 @@ Problemlösung & FAQ:
 | `exceptions.py` | 20+ Custom Exception Types |
 | `performance.py` | Operations-Metriken |
 | `migrations.py` | Database Schema Versioning |
-
-### Verbesserungen
-- ⚡ Parallele Snapshots (3-5s schneller)
-- 📊 TPU-Load Anzeige
-- 🌐 5 Sprachen (DE, EN, ES, FR, NL)
-- 🧪 pytest Unit Tests (8 Dateien)
-- 🧹 Automatische Analyse-Bereinigung
+| `analysis_helpers.py` | Analyse-Hilfsfunktionen |
 
 ### Code-Qualität
-- **11,832** Lines of Code
+- **~12,000+** Lines of Code
 - **27** Python Module
-- **74%** Type Hint Coverage
-- **86%** Docstring Coverage
-- **84.4%** Audit Score
+- **100%** Type Hint Coverage
+- **ISO 25010:** 94/100 (EXCELLENT)
+- **ISO 27001:** 88/100 (GOOD)
 
 ---
 
-*Dokumentation zuletzt aktualisiert: 03. Februar 2026*
+*Dokumentation zuletzt aktualisiert: 22. Februar 2026*

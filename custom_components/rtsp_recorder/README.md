@@ -1,87 +1,73 @@
-# RTSP Recorder for Home Assistant
+# Opening RTSP Recorder for Home Assistant
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.1.1-brightgreen)
+![Version](https://img.shields.io/badge/version-1.3.4-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![ISO 25010](https://img.shields.io/badge/ISO%2025010-93%2F100-brightgreen)
-![ISO 27001](https://img.shields.io/badge/ISO%2027001-85%2F100-brightgreen)
-![Type Hints](https://img.shields.io/badge/Type%20Hints-88.2%25-brightgreen)
+![ISO 25010](https://img.shields.io/badge/ISO%2025010-94%2F100-brightgreen)
+![ISO 27001](https://img.shields.io/badge/ISO%2027001-88%2F100-brightgreen)
+![Type Hints](https://img.shields.io/badge/Type%20Hints-100%25-brightgreen)
 ![HACS](https://img.shields.io/badge/HACS-Compatible-orange)
 
-📋 **[Audit Report v4.0](../../COMPREHENSIVE_AUDIT_REPORT_v4.0_2026-02-03.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
+📋 **[Audit Report v1.3.1](../../docs/FINAL_AUDIT_REPORT_v1.3.1.md)** - ISO 25010 + ISO 27001 Quality & Security Analysis
 
 ## Version Comparison
 
-| Feature | v1.0.9 STABLE | v1.1.1 |
-|---------|---------------|--------|
-| **Database** | JSON + optional SQLite | ⚡ SQLite-Only |
-| **Recording** | Sequential (record → then snapshot) | ⚡ Parallel (snapshot DURING recording) |
-| **Timeline Update** | After recording saved | ⚡ Immediate on start |
-| **Recording Completion** | Polling/sleep | ⚡ Callback-based events |
-| **Time per Recording** | duration + 5-6s | ⚡ duration + 1-2s |
-| **TPU Load Display** | ❌ Not available | ✅ Real-time percentage |
-| **Performance Metrics** | ❌ Not available | ✅ METRIC logging |
-| **Recording Progress** | ❌ Not visible | ✅ Footer display |
-| **Movement Profile** | ❌ Not available | ✅ Recognition history |
-| **Analysis Cleanup** | ❌ Manual | ✅ Automatic with videos |
-| **Cleanup Interval** | Fixed 24h | ✅ Configurable 1-24h |
-| **Type Hints** | ~60% | ✅ 88.2% Coverage |
-| **Face Recognition** | ✅ | ✅ |
-| **Coral EdgeTPU** | ✅ | ✅ |
-| **HACS Compatible** | ✅ | ✅ |
-| **Production Ready** | ✅ Audited | 🔶 Beta Testing |
+| Feature | v1.0.9 STABLE | v1.2.0 | v1.3.4 BETA |
+|---------|---------------|--------|-------------|
+| **Database** | JSON + optional SQLite | ⚡ SQLite-Only | ⚡ SQLite-Only |
+| **Recording** | Sequential | ⚡ Parallel | ⚡ Parallel + Remux |
+| **Mobile Video** | ❌ Slow loading | ❌ Slow loading | ✅ Instant (faststart) |
+| **Video Endpoint** | ❌ None | ❌ None | ✅ HTTP Range/206 |
+| **Recording Completion** | Polling/sleep | ⚡ Callback-based | ⚡ Callback + Remux |
+| **Time per Recording** | duration + 5-6s | duration + 1-2s | duration + 1-2s |
+| **TPU Load Display** | ❌ Not available | ✅ Real-time | ✅ Real-time |
+| **Movement Profile** | ❌ Not available | ✅ Recognition history | ✅ Movement Tab |
+| **Languages** | 2 (DE, EN) | 5 (DE, EN, ES, FR, NL) | 5 (DE, EN, ES, FR, NL) |
+| **Person Entities** | ❌ | ✅ binary_sensor | ✅ binary_sensor |
+| **Push Notifications** | ❌ | ✅ | ✅ |
+| **Type Hints** | ~60% | 100% | 100% |
+| **Face Recognition** | ✅ | ✅ | ✅ |
+| **Coral EdgeTPU** | ✅ | ✅ | ✅ |
+| **HACS Compatible** | ✅ | ✅ | ✅ |
 
-## What's New in v1.1.0k BETA
+## What's New in v1.3.4 BETA
 
-### 🗄️ SQLite-Only Backend (NEW)
+### 📱 Mobile Video Fix (v1.3.3)
+- **Instant mobile playback**: Videos now load immediately on mobile devices
+  - Root cause: RTSP `-c copy` produces fragmented MP4 (fMP4) with 30+ moof/mdat atoms
+  - Fix: Automatic post-recording remux to MP4 with moov atom at start (faststart)
+  - Remux takes <1 second per file, runs automatically after every recording
+- **Video Streaming Endpoint**: `/api/rtsp_recorder/video/{camera}/{filename}`
+  - Proper HTTP Range/206 support for seek and progressive playback
+  - Content-Length and Accept-Ranges headers for all browsers
+  - Fallback to `/media/` path if endpoint unavailable
+- **Batch Migration**: 497 existing videos remuxed on deployment
+
+### 🏷️ Opening Branding (v1.3.1)
+- **Unified branding** across all 5 languages
+- **Person Detail Popup**: Click person names to see all samples
+- **Sample Quality Analysis**: Quality scores with outlier detection
+- **Push Notifications**: Alerts when trained persons are recognized
+- **Debug Mode**: Toggle for technical diagnostic displays
+
+### 🗄️ SQLite-Only Backend
 - **Complete Migration**: JSON database removed, SQLite is now the only backend
   - Automatic one-time migration from JSON on first start
-  - Cleaner codebase without dual-backend complexity
   - Faster queries and ACID-compliant storage
 
-### 🧹 Automatic Storage Management (NEW)
-- **Analysis Folder Cleanup**: `_analysis` folders are now automatically cleaned
-  - Removed together with expired videos based on retention settings
-  - Also cleaned when videos are manually deleted via service
-  - Respects per-camera retention overrides
-- **Configurable Cleanup Interval**: Slider in settings (1-24 hours)
-  - Set to 1h for cameras with short retention (e.g., 2 hours)
-  - Default: 24h for normal usage
-
-### 📊 Movement Profile (NEW)
-- **Recognition History**: Track who was seen when/where
-  - Visible in "Bewegung" (Movement) tab
-  - Timeline and statistics view
-  - Filter by time range
-
-### ⚡ Performance Optimizations
-- **Parallel Snapshots**: Thumbnails captured DURING recording
-  - Saves 3-5 seconds per recording
-  - Configurable `snapshot_delay` for best frame capture
-- **Callback-based Recording**: Event-driven completion instead of polling
-  - Uses `asyncio.Event()` for instant FFmpeg completion notification
-  - Eliminates busy-waiting loops
-- **Faster Timeline**: Recordings appear immediately when started
-  - New `rtsp_recorder_recording_started` event
-  - Live recording badge with countdown timer
+### ⚡ Performance & Architecture
+- **Parallel Snapshots**: Thumbnails captured DURING recording (saves 3-5s)
+- **Callback-based Recording**: Event-driven completion, no polling
+- **Faster Timeline**: Recordings appear immediately with live countdown
+- **Movement Profile Tab**: Recognition history with timeline and filters
+- **Person Entities**: `binary_sensor.rtsp_person_{name}` for automations
 
 ### 📊 Metrics & Monitoring
-- **TPU Load Display**: Real-time Coral EdgeTPU utilization
-  - Formula: (Coral inference time / 60s window) × 100
-  - Color coded: 🟢 <5% | 🟠 5-25% | 🔴 >25%
-- **Performance Metrics**: Structured logging for analysis
-  - `METRIC|camera|recording_to_saved|32.1s`
-  - `METRIC|camera|analysis_duration|6.2s`
-  - `METRIC|camera|total_pipeline_time|45.3s`
+- **TPU Load Display**: Real-time Coral EdgeTPU utilization (color coded)
+- **Performance Metrics**: Structured METRIC logging for analysis
 - **Recording Progress**: Live display in footer showing active recordings
-
-### 🔧 Technical Improvements
-- Inference stats history: 100 → 1000 entries (better TPU load accuracy)
-- CPU reading: 0.3s sampling with rolling average (smoother values)
-- File stability: 1s intervals, 2 checks (faster analysis start)
-- HA camera wait: +1s instead of +2s (reduced latency)
 
 ## Features (All Versions)
 
@@ -221,11 +207,12 @@ automation:
 flowchart TB
     subgraph HA["Home Assistant"]
         subgraph Integration["Custom Integration"]
-            INIT["__init__.py<br/>Main Controller"]
+            INIT["__init__.py<br/>Main Controller + VideoStreamView"]
             CONFIG["config_flow.py<br/>Configuration UI"]
-            RECORDER["recorder.py<br/>Recording Engine"]
+            RECORDER["recorder.py<br/>Recording Engine + Remux"]
             ANALYSIS["analysis.py<br/>Analysis Pipeline"]
             RETENTION["retention.py<br/>Cleanup Manager"]
+            SVCPY["services.py<br/>Service Handler + Post-Remux"]
         end
         
         subgraph Dashboard["Lovelace Card"]
@@ -251,20 +238,24 @@ flowchart TB
     subgraph Storage["File System"]
         RECORDINGS["/media/rtsp_recordings"]
         THUMBS["/config/www/thumbnails"]
-        PEOPLE["/config/rtsp_recorder_people.json"]
+        DB["/config/rtsp_recorder.db"]
         ANALYSISDIR["/media/rtsp_analysis"]
     end
     
     CAM["RTSP Cameras"] --> RECORDER
     MOTION["Motion Sensors"] --> INIT
     
+    INIT --> SVCPY
     INIT --> RECORDER
     INIT --> ANALYSIS
     INIT --> RETENTION
     INIT <--> WS
     INIT <--> SERVICES
     
+    SVCPY --> RECORDER
+    
     CARD <--> WS
+    CARD -->|"/api/rtsp_recorder/video/"| INIT
     
     ANALYSIS <-->|HTTP API| APP
     APP --> DETECT
@@ -280,7 +271,7 @@ flowchart TB
     RECORDER --> RECORDINGS
     RECORDER --> THUMBS
     ANALYSIS --> ANALYSISDIR
-    ANALYSIS <--> PEOPLE
+    ANALYSIS <--> DB
 ```
 
 ### Recording Flow
@@ -559,45 +550,55 @@ flowchart TB
 
 ### 1. Custom Integration (`/custom_components/rtsp_recorder/`)
 
-**16 Python Modules (~6,400 LOC):**
+**20+ Python Modules (~12,000 LOC):**
 
 | Module | Description | LOC |
 |--------|-------------|-----|
-| `__init__.py` | Main controller, service registration | ~850 |
+| `__init__.py` | Main controller, service registration, VideoStreamView | ~1,100 |
 | `config_flow.py` | Configuration UI wizard | ~1,200 |
 | `analysis.py` | AI analysis pipeline | ~1,400 |
-| `websocket_handlers.py` | Real-time WebSocket API | ~1,000 |
-| `services.py` | HA service implementations | ~800 |
+| `websocket_handlers.py` | Real-time WebSocket API (20+ commands) | ~1,100 |
+| `services.py` | HA service implementations + post-recording remux | ~1,000 |
 | `database.py` | SQLite database operations | ~750 |
 | `people_db.py` | Person/face database management | ~500 |
-| `recorder.py` | FFmpeg recording engine | ~350 |
+| `recorder.py` | FFmpeg recording engine + remux function | ~400 |
 | `retention.py` | Cleanup & retention manager | ~140 |
 | `helpers.py` | Utility functions | ~350 |
 | `face_matching.py` | Face embedding comparison | ~280 |
 | `analysis_helpers.py` | Analysis utility functions | ~220 |
+| `rate_limiter.py` | DoS protection via token bucket | ~100 |
+| `exceptions.py` | 20+ custom exception types | ~150 |
+| `performance.py` | Operations metrics | ~120 |
+| `migrations.py` | Database schema versioning | ~80 |
 | `const.py` | Constants & defaults | ~70 |
-| `strings.json` | UI strings definition | - |
+| `strings.json` | UI strings definition (5 languages) | - |
 | `services.yaml` | Service definitions | - |
 | `manifest.json` | Integration manifest | - |
 
 The main Home Assistant integration that handles:
 - Recording management with motion triggers
+- Post-recording MP4 remux for mobile compatibility (faststart)
+- Video streaming endpoint with HTTP Range/206 support
 - Per-camera configuration (retention, objects, thresholds)
 - Analysis job scheduling (auto, batch, manual)
 - Face matching with person database (positive & negative samples)
-- Optional person entities for automations
-- WebSocket API for the dashboard
+- Person entities (`binary_sensor.rtsp_person_{name}`) for automations
+- Push notifications on person recognition
+- WebSocket API for the dashboard (20+ commands)
 - Service calls for external automations
+- Movement profile tracking
 
 ### 2. Dashboard Card (`/www/rtsp-recorder-card.js`)
 A feature-rich Lovelace card providing:
-- Video playback with timeline navigation
+- Video playback with custom streaming endpoint + fallback
 - Camera selection and filtering
 - Performance monitoring panel (CPU, RAM, Coral)
 - Analysis configuration UI
 - Recording management (download, delete)
-- Persons tab with training workflow, thumbnails, and negative samples
+- Persons tab with detail popup, training workflow, and negative samples
+- Movement profile tab with recognition history
 - Detection overlay with bounding boxes
+- Opening branding with debug mode toggle
 
 ### 3. Detector Add-on (`/addons/rtsp-recorder-detector/`)
 A standalone add-on for object detection:
@@ -721,6 +722,9 @@ The integration supports multiple languages:
 |----------|------|--------|
 | 🇩🇪 German | `translations/de.json` | ✅ Complete |
 | 🇬🇧 English | `translations/en.json` | ✅ Complete |
+| 🇪🇸 Spanish | `translations/es.json` | ✅ Complete |
+| 🇫🇷 French | `translations/fr.json` | ✅ Complete |
+| 🇳🇱 Dutch | `translations/nl.json` | ✅ Complete |
 
 Language is automatically selected based on your Home Assistant locale settings.
 
@@ -802,6 +806,13 @@ thumb_path: /local/thumbnails
 | `rtsp_recorder/delete_person` | Delete person |
 | `rtsp_recorder/add_person_embedding` | Add positive sample to person |
 | `rtsp_recorder/add_negative_sample` | Add negative sample to person |
+| `rtsp_recorder/remove_person_embedding` | Remove a positive sample |
+| `rtsp_recorder/remove_negative_sample` | Remove a negative sample |
+| `rtsp_recorder/get_person_detail` | Get person detail with all samples |
+| `rtsp_recorder/get_movement_data` | Get movement profile data |
+| `rtsp_recorder/toggle_debug` | Toggle debug mode |
+| `rtsp_recorder/get_camera_thresholds` | Get per-camera thresholds |
+| `rtsp_recorder/set_camera_thresholds` | Set per-camera thresholds |
 
 ## Troubleshooting
 
@@ -831,44 +842,47 @@ thumb_path: /local/thumbnails
 
 ## Version History
 
-See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
+See [CHANGELOG.md](../../CHANGELOG.md) for detailed release notes.
 
-### v1.0.9 Highlights (STABLE) - February 2026
-- 🗄️ SQLite database with WAL mode for persistent storage
-- 🌐 Multi-language support (German, English)
-- 📦 HACS compatibility (hacs.json)
-- 🔧 UTF-8 encoding validation (BOM-free)
-- ✅ ISO 25010 audit: **93.8%** quality score
-- ✅ ISO 27001 audit: **91.2%** security score
-- ✅ Combined score: **92.5%** - PRODUCTION READY
+### v1.3.4 BETA - February 2026
+- 📱 Mobile video fix confirmed working
+- Version bump after production verification
 
-### v1.0.8 Highlights (STABLE)
-- 🔒 SHA256 model verification for supply-chain security
-- 🛡️ CORS restriction to local Home Assistant instances
-- ✅ ISO 25010 audit: 91.5% quality score
-- ✅ ISO 27001 audit: 88.5% security score
-- ✅ Hardcore test: 100% pass rate
+### v1.3.3 BETA - February 2026
+- 📱 **Mobile Video Fix**: fMP4 → MP4 remux with faststart
+- 🌐 **Video Streaming Endpoint**: HTTP Range/206 support
+- 🔧 **Post-Recording Remux**: Automatic in services.py after every recording
+- 📦 **Batch Migration**: 497 existing videos converted
 
-### v1.0.7 Highlights
-- Per-camera detection thresholds (detector, face, match)
-- Negative samples for person exclusion
-- MoveNet pose estimation integration
+### v1.3.2 BETA - February 2026
+- 🔍 Diagnostic version for mobile video investigation
+
+### v1.3.1 BETA - February 2026
+- 🏷️ Opening Branding mit einheitlichem Design
+- 👤 Person Detail Popup mit Sample-Übersicht
+- 📊 Sample Quality Analysis mit Outlier-Erkennung
+- 📲 Push Notifications bei Personenerkennung
+
+### v1.0.9 STABLE - February 2026
+- 🗄️ SQLite database with WAL mode
+- 🌐 Multi-language support (DE, EN)
+- 📦 HACS compatibility
+- ✅ ISO 25010: 93.8% | ISO 27001: 91.2%
 
 ## Audit Report
 
-See [AUDIT_REPORT_v1.0.9_FINAL_STABLE.md](AUDIT_REPORT_v1.0.9_FINAL_STABLE.md) for the comprehensive ISO 25010 + ISO 27001 audit report.
+See [FINAL_AUDIT_REPORT_v1.3.1.md](../../docs/FINAL_AUDIT_REPORT_v1.3.1.md) for the comprehensive ISO 25010 + ISO 27001 audit report.
 
-### Audit Summary v1.0.9
+### Audit Summary v1.3.1
 
 | Category | Score | Status |
 |----------|-------|--------|
-| **ISO 25010** (Software Quality) | 93.8% | ✅ Excellent |
-| **ISO 27001** (Information Security) | 91.2% | ✅ Excellent |
-| **Combined Score** | 92.5% | ✅ PRODUCTION READY |
+| **ISO 25010** (Software Quality) | 94/100 | ✅ Excellent |
+| **ISO 27001** (Information Security) | 88/100 | ✅ Good |
+| **Overall Score** | 91/100 | ✅ EXCELLENT |
 | Critical Findings | 0 | ✅ |
 | High Findings | 0 | ✅ |
 | Medium Findings | 0 | ✅ |
-| Low Findings | 2 | ℹ️ Recommendations |
 
 ## License
 

@@ -6,6 +6,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.3.4] - 2026-02-22
+
+### Changed
+- **Version Bump**: Confirmed mobile video loading fix working in production
+
+---
+
+## [1.3.3] - 2026-02-22
+
+### Fixed
+- **Mobile Video Loading (Root Cause Fix)**: Videos now load instantly on mobile devices
+  - **Root Cause**: RTSP `-c copy` recording produces fragmented MP4 (fMP4) with 30+ moof/mdat fragments. Mobile browsers (iOS Safari, Chrome Mobile) cannot progressively play fMP4 and must download the entire file (17-18 MB) before playback (~10 seconds delay).
+  - **Fix 1 - Post-Recording Remux**: After each recording, the file is automatically remuxed from fMP4 to regular MP4 with `faststart` (moov atom at front). Uses `ffmpeg -c copy -movflags +faststart`, takes <1 second, no re-encoding.
+  - **Fix 2 - Video Streaming Endpoint**: New HTTP endpoint `/api/rtsp_recorder/video/{camera}/{filename}` with full HTTP Range request support (206 Partial Content) for true progressive playback.
+  - **Fix 3 - Dashboard Card**: Video player now uses the custom streaming endpoint with automatic fallback to `media_source/resolve_media`.
+
+### Added
+- **VideoStreamView**: New authenticated HTTP view class in `__init__.py` with `Accept-Ranges: bytes` header, `Content-Range` responses, and 256KB chunked streaming
+- **`_remux_to_faststart()`**: New async function in `recorder.py` for post-recording MP4 remux with 30-second timeout and graceful fallback
+- **Post-recording remux in `services.py`**: Remux step after `camera.record` service completes (the actual recording code path)
+
+### Technical Details
+- Video specs: 1920×1080, H.264 High Profile, 40fps, ~2.4 Mbit/s, 60s = 17-18 MB
+- Before fix: moov=1,290 bytes + 30 moof/mdat pairs (fragmented)
+- After fix: moov=~44,000 bytes + single mdat (progressive-ready)
+- All 497 existing fragmented videos batch-migrated successfully
+
+---
+
+## [1.3.2] - 2026-02-15
+
+### Fixed
+- **Mobile Video UX Improvement**: Added poster frame, loading spinner, and `canplay` event handling
+  - Poster image shown while video loads (uses thumbnail)
+  - Animated spinner overlay during buffering
+  - Video controls only shown after `canplay` event fires
+  - Note: This was a cosmetic fix; the root cause (fMP4) was fixed in v1.3.3
+
+### Changed
+- **Documentation cleanup**: Removed obsolete ARCHIV references from repository
+
+---
+
 ## [1.3.1] - 2026-02-08
 
 ### Fixed

@@ -6,7 +6,37 @@ Quick overview of all releases with links to detailed changelogs.
 
 ---
 
-## Latest: v1.3.1 (February 8, 2026)
+## Latest: v1.3.4 (February 22, 2026)
+
+**Mobile Video Fix - Confirmed**
+
+- ✅ Version bump after confirming mobile video loading fix works in production
+
+---
+
+## v1.3.3 (February 22, 2026)
+
+**Mobile Video Loading Root Cause Fix**
+
+- 📱 Fixed: Videos now load instantly on mobile devices
+- 🔧 Post-recording remux: fMP4 → regular MP4 with faststart (<1s, no re-encoding)
+- 🌐 New video streaming endpoint with HTTP Range/206 support
+- 🎴 Dashboard card uses custom video endpoint with fallback
+- 📦 497 existing fragmented videos batch-migrated
+
+---
+
+## v1.3.2 (February 15, 2026)
+
+**Mobile Video UX Improvement**
+
+- 🖼️ Poster frame shown while video loads
+- ⏳ Loading spinner during buffering
+- 🎬 Video controls shown after `canplay` event
+
+---
+
+## v1.3.1 (February 8, 2026)
 
 **Debug Mode Bugfix Release**
 

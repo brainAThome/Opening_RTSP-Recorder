@@ -32,17 +32,18 @@
 
 ## 1. Einführung
 
-RTSP Recorder ist eine umfassende Videoüberwachungslösung für Home Assistant mit KI-gestützter Objekterkennung und Gesichtserkennung.
+Opening RTSP Recorder ist eine umfassende Videoüberwachungslösung für Home Assistant mit KI-gestützter Objekterkennung und Gesichtserkennung.
 
-### Was ist neu in v1.1.0?
+### Was ist neu in v1.3.4?
 
 | Feature | Beschreibung |
 |---------|--------------|
-| ⚡ **Parallele Snapshots** | Thumbnails während der Aufnahme |
-| 📊 **TPU-Load Anzeige** | Echtzeit Coral-Auslastung |
-| 🔒 **Rate Limiter** | DoS-Schutz für API |
-| 🌐 **5 Sprachen** | DE, EN, ES, FR, NL |
-| 🧪 **Unit Tests** | pytest Framework |
+| 📱 **Mobile Video Fix** | Videos laden sofort auf Mobilgeräten (fMP4 → MP4 Remux) |
+| 🌐 **Video Streaming** | HTTP Range/206 Endpoint für optimale Wiedergabe |
+| 🏷️ **Opening Branding** | Einheitliches Design in 5 Sprachen |
+| 👤 **Person Detail Popup** | Klickbare Personennamen mit Sample-Übersicht |
+| 📊 **Quality Analysis** | Sample-Qualitäts-Scores mit Outlier-Erkennung |
+| 📲 **Push Notifications** | Benachrichtigungen bei Personenerkennung |
 
 ### Hauptfunktionen
 
@@ -747,4 +748,4 @@ tail -f /config/home-assistant.log | grep rtsp_recorder
 
 ---
 
-*RTSP Recorder v1.0.9 STABLE - © 2026 brainAThome*
+*Opening RTSP Recorder v1.3.4 BETA - © 2026 brainAThome*

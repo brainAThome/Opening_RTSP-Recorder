@@ -6,7 +6,7 @@
 
 A complete video surveillance solution with AI-powered object detection using Coral USB EdgeTPU.
 
-![Version](https://img.shields.io/badge/version-1.3.1-brightgreen)
+![Version](https://img.shields.io/badge/version-1.3.4-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.2+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ISO 25010](https://img.shields.io/badge/ISO%2025010-94%25-brightgreen)
@@ -19,11 +19,20 @@ A complete video surveillance solution with AI-powered object detection using Co
 📋 **[Audit Report v1.3.1](docs/FINAL_AUDIT_REPORT_v1.3.1.md)** | **[DE](docs/FINAL_AUDIT_REPORT_v1.3.1_DE.md)** - Quality & Security tested according to ISO 25010:2011 (31 criteria) + ISO 27001:2022 (16 controls) (15.02.2026)
 🔒 **[Security Policy](SECURITY.md)** - Biometric Data Handling & Responsible Disclosure
 
-## What's New in v1.3.1
+## What's New in v1.3.4
 
-### 🐛 Bugfix: Debug Mode Performance Panel
-- Fixed: Performance panel now correctly displays when Debug Mode is enabled
-- Previously the panel remained hidden after toggling Debug Mode back on
+### 📱 Mobile Video Loading Fix (v1.3.3-v1.3.4)
+- **Root Cause Fixed**: RTSP recording produced fragmented MP4 (fMP4) — mobile browsers had to download entire 17 MB files before playback (~10s delay)
+- **Post-Recording Remux**: Each recording is automatically remuxed to regular MP4 with `faststart` (<1 second, no re-encoding)
+- **Video Streaming Endpoint**: New `/api/rtsp_recorder/video/` with HTTP Range/206 support for true progressive playback
+- **Dashboard Card**: Uses custom video endpoint with automatic fallback
+- **Batch Migration**: All 497 existing videos converted successfully
+
+### 🐛 v1.3.2: Mobile Video UX
+- Poster frame, loading spinner, `canplay` event handling for smoother video loading experience
+
+### 🐛 v1.3.1: Debug Mode Bugfix
+- Performance panel visibility fixed when toggling Debug Mode
 
 ### 🏷️ Rebranding: "Opening RTSP Recorder" (v1.3.0)
 **Unified branding for better recognition:**
@@ -38,6 +47,9 @@ A complete video surveillance solution with AI-powered object detection using Co
 <summary><b>📋 Full Changelog (v1.0.6 - v1.2.9)</b></summary>
 
 See **[CHANGELOG.md](CHANGELOG.md)** for the complete version history including:
+- v1.3.4: Version bump - mobile fix confirmed
+- v1.3.3: Mobile Video Loading Root Cause Fix (fMP4 remux)
+- v1.3.2: Mobile Video UX (poster, spinner, canplay)
 - v1.2.8: Debug Mode for Technical Displays
 - v1.2.7: Smart Dashboard Card Auto-Update
 - v1.2.6: Automatic Dashboard Card Installation
@@ -115,9 +127,9 @@ Replace expensive cloud subscriptions (Ring €200/yr, Nest €100/yr, Arlo €1
 
 ---
 
-## What's New in v1.3.1
+## What's New in v1.3.4
 
-🐛 **Debug Mode Bugfix** - Performance panel visibility fixed when toggling Debug Mode
+📱 **Mobile Video Fix** - Instant video playback on mobile (fMP4 → MP4 remux + HTTP Range support)
 
 📋 **[Full Release History](docs/RELEASE_HISTORY.md)** | **[Detailed CHANGELOG](CHANGELOG.md)**
 
@@ -125,12 +137,14 @@ Replace expensive cloud subscriptions (Ring €200/yr, Nest €100/yr, Arlo €1
 
 ## Version Comparison (Recent Releases)
 
-| Feature | v1.2.8 | v1.2.9 | v1.3.0 | v1.3.1 |
+| Feature | v1.3.1 | v1.3.2 | v1.3.3 | v1.3.4 |
 |---------|--------|--------|--------|--------|
-| **Debug Mode Toggle** | ✅ NEW | ✅ | ✅ | ✅ |
-| **Opening Branding** | ❌ | 🔄 Partial | ✅ Full | ✅ |
-| **Performance Panel Fix** | N/A | N/A | N/A | ✅ NEW |
-| **5 Languages Updated** | ❌ | ❌ | ✅ | ✅ |
+| **Mobile Video Fix** | ❌ | 🔄 UX only | ✅ Root cause | ✅ |
+| **Video Streaming Endpoint** | ❌ | ❌ | ✅ NEW | ✅ |
+| **Post-Recording Remux** | ❌ | ❌ | ✅ NEW | ✅ |
+| **HTTP Range/206 Support** | ❌ | ❌ | ✅ NEW | ✅ |
+| **Debug Mode Fix** | ✅ | ✅ | ✅ | ✅ |
+| **Opening Branding** | ✅ | ✅ | ✅ | ✅ |
 | **Push Notifications** | ✅ | ✅ | ✅ | ✅ |
 | **Type Hints** | 100% | 100% | 100% | 100% |
 | **ISO 25010 Score** | 94/100 | 94/100 | 94/100 | 94/100 |
@@ -657,7 +671,7 @@ flowchart TB
 | `const.py` | Constants & defaults | ~53 |
 | `strings.json` | UI strings definition | - |
 | `services.yaml` | Service definitions | - |
-| `manifest.json` | Integration manifest (v1.2.3) | - |
+| `manifest.json` | Integration manifest (v1.3.4) | - |
 
 **Code Statistics:**
 - Total Functions: 318
@@ -1010,6 +1024,16 @@ thumb_path: /local/thumbnails
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
+### v1.3.4 Highlights - February 2026
+- 📱 **Mobile Video Loading Fix** confirmed working in production
+- 🔧 Post-recording fMP4→MP4 remux with faststart
+- 🌐 HTTP Range/206 video streaming endpoint
+- 📦 497 existing videos batch-migrated
+
+### v1.3.1 Highlights - February 2026
+- 🐛 Debug Mode Performance Panel fix
+- 🏷️ "Opening RTSP Recorder" unified branding (v1.3.0)
+
 ### v1.1.1 Highlights - February 2026
 - 🔍 **Deep Analysis Audit v4.0** with 10 Hardcore Security Tests
 - ✅ ISO 25010 audit: **93/100** quality score (EXCELLENT)
@@ -1063,17 +1087,17 @@ Complete documentation is available in English (primary) with German translation
 
 ## Audit Report
 
-See [FINAL_AUDIT_REPORT_v1.2.2](docs/FINAL_AUDIT_REPORT_v1.2.2.md) for the comprehensive ISO 25010 + ISO 27001 audit report.
+See [FINAL_AUDIT_REPORT_v1.3.1](docs/FINAL_AUDIT_REPORT_v1.3.1.md) for the comprehensive ISO 25010 + ISO 27001 audit report.
 
-**Deutsche Version:** [FINAL_AUDIT_REPORT_v1.2.2_DE](docs/FINAL_AUDIT_REPORT_v1.2.2_DE.md)
+**Deutsche Version:** [FINAL_AUDIT_REPORT_v1.3.1_DE](docs/FINAL_AUDIT_REPORT_v1.3.1_DE.md)
 
-### Audit Summary v1.2.2
+### Audit Summary v1.3.1
 
 | Category | Score | Status |
 |----------|-------|--------|
-| **ISO 25010** (Software Quality) | 91/100 | ✅ EXCELLENT |
+| **ISO 25010** (Software Quality) | 94/100 | ✅ EXCELLENT |
 | **ISO 27001** (Information Security) | 88/100 | ✅ GOOD |
-| **Overall** | 90/100 | ✅ PRODUCTION READY |
+| **Overall** | 91/100 | ✅ PRODUCTION READY |
 | Security Findings (Critical/High) | 0 | ✅ |
 | Inference Performance | 70ms | ✅ |
 | High Findings | 0 | ✅ FIXED (was: CC=140) |
