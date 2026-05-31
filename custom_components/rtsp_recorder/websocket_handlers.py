@@ -33,6 +33,7 @@ from .analysis_helpers import (
 )
 from .analysis import detect_available_devices
 from .services import get_batch_analysis_progress, get_single_analysis_progress, get_recording_progress, cancel_batch_analysis
+from . import camera_settings as _cam
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -591,6 +592,149 @@ def register_websocket_handlers(
             })
 
     websocket_api.async_register_command(hass, ws_set_camera_objects)
+
+    # ===== v1.4.0: per-camera analysis settings (clean global/per-cam separation) =====
+    def _merged_config() -> dict:
+        """Current merged config (options shadow data), freshly read from the entry."""
+        return {**entry.data, **(entry.options or {})}
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_camera_settings",
+        vol.Optional("camera"): str,
+    })
+    @websocket_api.async_response
+    async def ws_get_camera_settings(hass, connection, msg):
+        """Return per-camera analysis settings.
+
+        Without ``camera``: returns the global defaults plus, for every camera that
+        has at least one override, the raw overridden values. With ``camera``: returns
+        that camera's effective (resolved) values AND which of them are overrides.
+        Reads the entry live so values are correct even before a reload.
+        """
+        try:
+            cfg = _merged_config()
+            fields = [f.global_key for f in _cam.PER_CAMERA_FIELDS]
+            globals_ = {k: cfg.get(k) for k in fields}
+            camera = msg.get("camera")
+            if camera:
+                connection.send_result(msg["id"], {
+                    "success": True,
+                    "camera": camera,
+                    "globals": globals_,
+                    "effective": _cam.resolve_all(cfg, camera),
+                    "overrides": _cam.camera_overrides(cfg, camera),
+                })
+                return
+            # Map of camera -> overrides for every camera that has any override.
+            overrides_map: dict = {}
+            for key in cfg:
+                for f in _cam.PER_CAMERA_FIELDS:
+                    if key.startswith(f.prefix):
+                        cam = key[len(f.prefix):]
+                        overrides_map.setdefault(cam, {})[f.global_key] = cfg.get(key)
+            connection.send_result(msg["id"], {
+                "success": True,
+                "globals": globals_,
+                "fields": fields,
+                "overrides_by_camera": overrides_map,
+            })
+        except Exception as e:  # noqa: BLE001 - report any failure to the UI
+            log_to_file(f"get_camera_settings error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_get_camera_settings)
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/set_camera_setting",
+        vol.Required("camera"): str,
+        vol.Required("field"): str,
+        # value may be float/int/bool/list/null; vol.Any keeps it permissive,
+        # camera_settings coerces to the field's declared type.
+        vol.Required("value"): vol.Any(float, int, bool, list, str, None),
+    })
+    @websocket_api.async_response
+    async def ws_set_camera_setting(hass, connection, msg):
+        """Set or clear a single per-camera analysis override.
+
+        ``field`` is a global key (e.g. ``analysis_detector_confidence``). A value
+        meaning "use global" (None/empty/0 for legacy zero-sentinel fields) clears
+        the override. Writes BOTH entry.data and entry.options (Phase-1 data/options
+        duality) and reloads the entry so the running analysis picks it up.
+        """
+        try:
+            camera = msg["camera"]
+            field = msg["field"]
+            value = msg["value"]
+            if _cam.get_field(field) is None:
+                connection.send_result(msg["id"], {
+                    "success": False,
+                    "message": f"{field} is not a per-camera field",
+                })
+                return
+            new_data = dict(entry.data)
+            new_options = dict(entry.options) if entry.options else {}
+            _cam.set_override(new_data, field, camera, value)
+            _cam.set_override(new_options, field, camera, value)
+            # async_update_entry triggers the registered update_listener
+            # (__init__.py) which performs async_reload itself; no explicit
+            # reload here (would double-reload / race).
+            hass.config_entries.async_update_entry(entry, data=new_data, options=new_options)
+            log_to_file(f"Set camera setting {field} for {camera} = {value}")
+            connection.send_result(msg["id"], {
+                "success": True,
+                "camera": camera,
+                "field": field,
+                "value": value,
+            })
+        except Exception as e:  # noqa: BLE001
+            log_to_file(f"set_camera_setting error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_set_camera_setting)
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/delete_camera",
+        vol.Required("camera"): str,
+    })
+    @websocket_api.async_response
+    async def ws_delete_camera(hass, connection, msg):
+        """Delete all config keys for a camera (config/entities only; recordings stay).
+
+        Removes every per-camera key (sensors_, duration_, rtsp_url_, all analysis
+        overrides, ...) from BOTH entry.data and entry.options, then reloads the
+        entry so motion listeners / watchdog for the camera are torn down. On-disk
+        recordings, snapshots and analysis results are intentionally left untouched.
+        """
+        try:
+            camera = msg["camera"]
+            new_data = dict(entry.data)
+            new_options = dict(entry.options) if entry.options else {}
+            removed = _cam.delete_camera(new_data, new_options, camera)
+            if not removed:
+                connection.send_result(msg["id"], {
+                    "success": False,
+                    "camera": camera,
+                    "message": "No config keys found for this camera",
+                })
+                return
+            # async_update_entry triggers the registered update_listener which
+            # reloads the entry (tears down the camera's motion listeners/watchdog).
+            hass.config_entries.async_update_entry(entry, data=new_data, options=new_options)
+            log_to_file(f"Deleted camera '{camera}' config keys: {removed}")
+            connection.send_result(msg["id"], {
+                "success": True,
+                "camera": camera,
+                "removed_keys": removed,
+                "message": (
+                    f"Removed {len(removed)} config keys for {camera}. "
+                    "Recordings on disk were kept."
+                ),
+            })
+        except Exception as e:  # noqa: BLE001
+            log_to_file(f"delete_camera error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_delete_camera)
 
 
 def register_people_websocket_handlers(
