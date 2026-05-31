@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.4.0-beta1] - 2026-05-31
+
+### Added
+- Per-camera analysis settings: every analysis option can now be overridden per
+  camera instead of only globally. New per-camera fields in the camera config
+  step: frame interval, face detection on/off, multi-scale, overlay smoothing
+  (in addition to the existing objects + 3 thresholds).
+- New WebSocket commands: `get_camera_settings`, `set_camera_setting`,
+  `delete_camera` (delete removes config/entities only; recordings on disk stay).
+- Central `camera_settings` module as single source of truth for per-camera key
+  normalisation and global/per-camera value resolution.
+
+### Fixed
+- Detection threshold (and other analysis settings) set in the global "Offline
+  Analysis" dialog no longer silently apply to all cameras — per-camera overrides
+  are now resolved consistently across auto/batch/manual analysis.
+- Added missing German/English labels for overlay smoothing fields.
+
+### Notes
+- Beta: dashboard card editor for per-camera settings + delete button is not yet
+  included; per-camera settings are configurable via the integration options flow.
+
 ## [1.3.4] - 2026-02-22
 
 ### Changed
