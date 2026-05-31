@@ -79,7 +79,9 @@
                     "analysis_perf_cpu_entity": "💻 CPU Sensor",
                     "analysis_perf_igpu_entity": "🎮 iGPU Sensor",
                     "analysis_perf_coral_entity": "🪸 Coral Sensor",
-                    "analysis_max_concurrent": "🧮 Max. parallele Analysen"
+                    "analysis_max_concurrent": "🧮 Max. parallele Analysen",
+                    "analysis_overlay_smoothing": "Overlay-Glaettung",
+                    "analysis_overlay_smoothing_alpha": "Overlay-Glaettung Staerke"
                 },
                 "data_description": {
                     "analysis_enabled": "Aktiviert die Offline-Analyse",
@@ -121,7 +123,11 @@
                     "camera_detector_confidence": "📊 Erkennungs-Schwelle",
                     "camera_face_confidence": "👁️ Gesichts-Erkennungsschwelle",
                     "camera_face_match_threshold": "🎚️ Gesichts-Matching-Schwelle",
-                    "configure_another": "🔄 Weitere Kamera konfigurieren"
+                    "configure_another": "🔄 Weitere Kamera konfigurieren",
+                    "camera_frame_interval": "Frame-Intervall (0 = Global)",
+                    "camera_face_enabled": "Gesichtserkennung (Global/An/Aus)",
+                    "camera_face_multiscale": "Multi-Scale Erkennung (Global/An/Aus)",
+                    "camera_overlay_smoothing": "Overlay-Glaettung (Global/An/Aus)"
                 },
                 "data_description": {
                     "motion_sensors": "Sensoren die die Aufnahme starten (z.B. Bewegung, Türklingel). Mehrere möglich.",

@@ -310,7 +310,12 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         key_detector_conf = f"detector_confidence_{safe_name}"
         key_face_conf = f"face_confidence_{safe_name}"
         key_face_threshold = f"face_match_threshold_{safe_name}"
-        
+        # v1.4.0: weitere per-Kamera-Analyse-Felder (Praefixe identisch zu camera_settings)
+        key_frame_interval = f"frame_interval_{safe_name}"
+        key_face_enabled = f"face_enabled_{safe_name}"
+        key_face_multiscale = f"face_multiscale_{safe_name}"
+        key_overlay = f"overlay_smoothing_{safe_name}"
+
         if user_input is not None:
             # Save sensors (list of trigger entities)
             sensors = user_input.get("motion_sensors", [])
@@ -367,7 +372,29 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
                 self.config_cache[key_face_threshold] = face_threshold
             elif key_face_threshold in self.config_cache:
                 del self.config_cache[key_face_threshold]
-            
+
+            # v1.4.0: frame_interval (0 = global, sonst gespeichert)
+            try:
+                fi = int(user_input.get("camera_frame_interval", 0) or 0)
+            except (TypeError, ValueError):
+                fi = 0
+            if fi > 0:
+                self.config_cache[key_frame_interval] = fi
+            elif key_frame_interval in self.config_cache:
+                del self.config_cache[key_frame_interval]
+
+            # v1.4.0: 3-Status-Bool-Felder (global=loeschen, on/off=True/False)
+            for _field, _key in (
+                ("camera_face_enabled", key_face_enabled),
+                ("camera_face_multiscale", key_face_multiscale),
+                ("camera_overlay_smoothing", key_overlay),
+            ):
+                _val = user_input.get(_field, "global")
+                if _val == "global":
+                    self.config_cache.pop(_key, None)
+                else:
+                    self.config_cache[_key] = (_val == "on")
+
             # Check if user wants to configure another camera
             if user_input.get("configure_another", False):
                 return await self.async_step_init()
@@ -397,7 +424,17 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
         cur_detector_conf = self.config_cache.get(key_detector_conf, 0)
         cur_face_conf = self.config_cache.get(key_face_conf, 0)
         cur_face_threshold = self.config_cache.get(key_face_threshold, 0)
-        
+        # v1.4.0: aktuelle per-cam-Werte; Bool-Felder als 3-Status (global/on/off)
+        cur_frame_interval = self.config_cache.get(key_frame_interval, 0)  # 0 = global
+        cur_face_enabled = ("on" if self.config_cache.get(key_face_enabled) else "off") if key_face_enabled in self.config_cache else "global"
+        cur_face_multiscale = ("on" if self.config_cache.get(key_face_multiscale) else "off") if key_face_multiscale in self.config_cache else "global"
+        cur_overlay = ("on" if self.config_cache.get(key_overlay) else "off") if key_overlay in self.config_cache else "global"
+        tri_options = [
+            {"value": "global", "label": "Global"},
+            {"value": "on", "label": "An"},
+            {"value": "off", "label": "Aus"},
+        ]
+
         # Objektliste fuer Kamera-Auswahl
         cam_object_options = [
             {"value": "person", "label": "Person"},
@@ -472,6 +509,19 @@ class RtspRecorderOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional("camera_face_match_threshold", default=cur_face_threshold): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=0.9, step=0.05, mode=selector.NumberSelectorMode.SLIDER)
+            ),
+            # v1.4.0: weitere per-Kamera-Felder
+            vol.Optional("camera_frame_interval", default=cur_frame_interval): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=10, step=1, mode=selector.NumberSelectorMode.SLIDER)
+            ),
+            vol.Optional("camera_face_enabled", default=cur_face_enabled): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=tri_options, mode=selector.SelectSelectorMode.DROPDOWN)
+            ),
+            vol.Optional("camera_face_multiscale", default=cur_face_multiscale): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=tri_options, mode=selector.SelectSelectorMode.DROPDOWN)
+            ),
+            vol.Optional("camera_overlay_smoothing", default=cur_overlay): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=tri_options, mode=selector.SelectSelectorMode.DROPDOWN)
             ),
             vol.Optional("configure_another", default=False): selector.BooleanSelector(),
         })
