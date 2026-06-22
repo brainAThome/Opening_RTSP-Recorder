@@ -10,6 +10,8 @@ import os
 import shutil
 from typing import Callable, Optional, Any
 
+from .helpers import log_to_file
+
 _LOGGER = logging.getLogger(__name__)
 
 # Type alias for recording completion callback
@@ -63,22 +65,6 @@ async def check_ffmpeg_available() -> bool:
     
     return _ffmpeg_available
 
-
-def log_to_file(msg: str) -> None:
-    """Write debug message to fallback log file.
-    
-    Args:
-        msg: Message to log
-    
-    Note:
-        This is a fallback for debugging when standard logging
-        is not available or for persistent debug logs.
-    """
-    try:
-        with open("/config/rtsp_debug.log", "a") as f:
-            f.write(f"RECORDER: {msg}\n")
-    except OSError:
-        pass
 
 async def _remux_to_faststart(tmp_path: str, final_path: str) -> tuple[bool, str | None]:
     """Remux fragmented MP4 to non-fragmented MP4 with faststart.
