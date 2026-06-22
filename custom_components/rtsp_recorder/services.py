@@ -889,23 +889,25 @@ def register_services(
             
             # v1.1.0k: Delete associated analysis folder first (before video is gone)
             if os.path.exists(video_path):
-                deleted_analysis = delete_analysis_for_video(video_path, storage_path)
+                deleted_analysis = await hass.async_add_executor_job(
+                    delete_analysis_for_video, video_path, storage_path
+                )
                 if deleted_analysis:
                     log_to_file(f"Deleted analysis for: {video_path}")
-            
+
             if os.path.exists(video_path):
-                os.remove(video_path)
+                await hass.async_add_executor_job(os.remove, video_path)
                 log_to_file(f"Deleted video: {video_path}")
             else:
                 log_to_file(f"Video not found: {video_path}")
-            
+
             filename = os.path.basename(video_path).replace('.mp4', '.jpg')
             parts = video_path.split('/')
             if len(parts) >= 2:
                 cam_folder = parts[-2]
                 thumb_path = os.path.join(snapshot_path_base, cam_folder, filename)
                 if os.path.exists(thumb_path):
-                    os.remove(thumb_path)
+                    await hass.async_add_executor_job(os.remove, thumb_path)
                     log_to_file(f"Deleted thumbnail: {thumb_path}")
             
         except Exception as e:

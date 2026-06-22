@@ -15,6 +15,7 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 from .analysis import detect_available_devices
+from .helpers import log_to_file
 
 DOMAIN = "rtsp_recorder"
 _LOGGER = logging.getLogger(__name__)
@@ -28,20 +29,6 @@ MIN_DURATION_SECONDS = 5
 MAX_DURATION_SECONDS = 3600
 VALID_PATH_PREFIXES = ("/media", "/config", "/share")
 # ===== End Validation Constants =====
-
-
-def log_to_file(msg: str) -> None:
-    """Write debug message to log file.
-    
-    Args:
-        msg: Message to log
-    """
-    _LOGGER.debug(msg)
-    try:
-        with open("/config/rtsp_debug.log", "a") as f:
-            f.write(f"FLOW: {msg}\n")
-    except OSError:
-        pass
 
 
 def normalize_camera_name(name: str) -> str:
