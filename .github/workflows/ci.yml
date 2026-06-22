@@ -1,0 +1,39 @@
+# CI für die Home-Assistant-Custom-Component `rtsp_recorder` (pytest).
+#
+# Test-Dependencies sind PRIMÄRQUELLEN-abgeleitet (nicht geraten):
+#   - tests/conftest.py            -> pytest-asyncio (asyncio_mode=auto), pytest-homeassistant-custom-component
+#   - custom_components/.../manifest.json -> aiohttp, voluptuous
+#   - Quelle nutzt (lazy, in Funktionen) numpy + PIL/Pillow -> mitinstalliert, damit Tests,
+#     die diese Codepfade treffen, nicht an fehlenden Imports scheitern.
+#
+# CAVEAT (ehrlich): Das Repo deklariert KEINE test-requirements und KEINE Versionspins.
+#   Daher unpinned. Der ERSTE Lauf bestätigt, ob `pytest-homeassistant-custom-component`
+#   zur Ziel-HA-Version (2026.6.x) passt. Bei Versionskonflikt: pHcc auf die zu HA 2026.6
+#   passende Version pinnen (und python-version ggf. anpassen).
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio pytest-homeassistant-custom-component aiohttp voluptuous numpy Pillow
+
+      - name: Run tests
+        run: pytest -q tests
