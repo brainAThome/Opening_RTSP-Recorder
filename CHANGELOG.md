@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.4.0-beta3] - 2026-06-23
+
+### Fixed
+- `ws_get_movement_profile` führte als letzter WebSocket-Handler noch eine
+  synchrone SQLite-Query (`db.conn.execute` + `fetchall`) direkt im Event-Loop
+  aus — die in beta2 übersehene Lücke der Blocking-I/O-Bereinigung. Der gesamte
+  inline-DB-Block (Öffnen inkl. `os.makedirs`, Query, `fetchall`, Schließen) läuft
+  jetzt über `hass.async_add_executor_job` off-loop.
+- Dabei wird die inline angelegte DB-Connection nun in `try/finally` geschlossen
+  (sie wurde zuvor **nie** geschlossen → behebt ein Connection-/FD-Leak).
+- Query, `person_name`-Filter, selektierte Spalten, `LIMIT 500` und das
+  movements/summary-Mapping sind bit-identisch geblieben (neuer Regressionstest
+  `tests/test_websocket_movement_profile.py` pinnt diesen Kontrakt).
+
+### Changed
+- README: Die Beschreibung des `rate_limiter`-Moduls wurde korrigiert — das Modul
+  ist vorhanden, in v1.4.0 aber **nicht aktiv** (nicht an die WebSocket-Handler
+  verdrahtet); eine Opt-in-Aktivierung ist als Follow-up geplant. Es bestand kein
+  aktiver DoS-Schutz.
+
 ## [1.4.0-beta2] - 2026-06-23
 
 ### Added

@@ -566,7 +566,7 @@ flowchart TB
 | `helpers.py` | Utility functions | ~350 |
 | `face_matching.py` | Face embedding comparison | ~280 |
 | `analysis_helpers.py` | Analysis utility functions | ~220 |
-| `rate_limiter.py` | DoS protection via token bucket | ~100 |
+| `rate_limiter.py` | DoS protection via token bucket (module present; **inactive** in v1.4.0, opt-in planned) | ~100 |
 | `exceptions.py` | 20+ custom exception types | ~150 |
 | `performance.py` | Operations metrics | ~120 |
 | `migrations.py` | Database schema versioning | ~80 |

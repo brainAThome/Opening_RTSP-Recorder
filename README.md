@@ -236,7 +236,7 @@ flowchart TB
             RECORDER["recorder.py<br/>Recording Engine"]
             ANALYSIS["analysis.py<br/>Analysis Pipeline"]
             RETENTION["retention.py<br/>Cleanup Manager"]
-            RATELIMIT["rate_limiter.py<br/>DoS Protection"]
+            RATELIMIT["rate_limiter.py<br/>DoS Protection (inactive, opt-in)"]
             EXCEPTIONS["exceptions.py<br/>Error Handling"]
         end
         
@@ -666,7 +666,7 @@ flowchart TB
 | `retention.py` | Cleanup, retention, analysis folder management | ~255 |
 | `helpers.py` | Utility functions | ~420 |
 | `face_matching.py` | Face embedding comparison | ~274 |
-| `rate_limiter.py` | Token Bucket DoS protection | ~202 |
+| `rate_limiter.py` | Token Bucket DoS protection (module present; **inactive** in v1.4.0, opt-in planned) | ~202 |
 | `exceptions.py` | 20+ custom exception types | ~251 |
 | `const.py` | Constants & defaults | ~53 |
 | `strings.json` | UI strings definition | - |
@@ -1053,7 +1053,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 ### v1.1.0 Highlights (BETA)
 - ⚡ Parallel snapshot recording (3-5s faster)
 - 📊 TPU load display and performance metrics
-- 🔒 Rate limiter and custom exceptions
+- 🔒 Rate limiter (module present, inactive/opt-in in v1.4.0) and custom exceptions
 - 🌐 5 languages (DE, EN, ES, FR, NL)
 - 🗄️ SQLite-only backend (Schema v2)
 
