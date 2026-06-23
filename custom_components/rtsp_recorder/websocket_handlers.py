@@ -1262,7 +1262,6 @@ def register_people_websocket_handlers(
             from pathlib import Path
             
             db_path = Path(hass.config.path("rtsp_recorder")) / "rtsp_recorder.db"
-            db = DatabaseManager(str(db_path))
             
             # Get history entries
             since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
@@ -1280,8 +1279,17 @@ def register_people_websocket_handlers(
             
             query += " ORDER BY recognized_at DESC LIMIT 500"
             
-            cursor = db.conn.execute(query, params)
-            rows = cursor.fetchall()
+            # Run the blocking DB work off the event loop: opening the DatabaseManager
+            # (incl. os.makedirs) + query + fetchall. The inline connection is closed in
+            # finally so it no longer leaks (it was previously never closed).
+            def _fetch_rows():
+                db = DatabaseManager(str(db_path))
+                try:
+                    return db.conn.execute(query, params).fetchall()
+                finally:
+                    db.close()
+
+            rows = await hass.async_add_executor_job(_fetch_rows)
             
             movements = []
             for row in rows:
