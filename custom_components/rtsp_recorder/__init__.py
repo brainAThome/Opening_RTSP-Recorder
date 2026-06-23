@@ -17,13 +17,15 @@ import traceback
 import asyncio
 import datetime
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import aiohttp
 from aiohttp import web
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.components.frontend import add_extra_js_url
-from homeassistant.components.http import HomeAssistantView
+from homeassistant.components.frontend import add_extra_js_url, async_remove_panel
+from homeassistant.components.http import HomeAssistantView, StaticPathConfig
+from homeassistant.components import panel_custom
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.event import async_track_state_change_event
@@ -927,6 +929,43 @@ async def async_setup_entry(hass, entry: ConfigEntry) -> bool:
 
         log_to_file("Setup Success.")
 
+        # v1.4.0: Register dedicated config panel + sidebar entry.
+        # Static path is registered ONCE per HA process (aiohttp routes cannot be
+        # safely re-added); the panel itself is removed on unload and re-registered
+        # on reload to avoid "Overwriting panel" ValueError (see async_unload_entry).
+        try:
+            merged_cfg = {**entry.data, **(entry.options or {})}
+            panel_enabled = merged_cfg.get("sidebar_panel_enabled", True)
+            panel_dir = str(Path(__file__).parent / "panel")
+            if panel_enabled and not hass.data[DOMAIN].get("panel_static_registered"):
+                await hass.http.async_register_static_paths(
+                    [StaticPathConfig("/rtsp_recorder_panel", panel_dir, False)]
+                )
+                hass.data[DOMAIN]["panel_static_registered"] = True
+                log_to_file("Registered panel static path: /rtsp_recorder_panel")
+            if panel_enabled and not hass.data[DOMAIN].get("panel_registered"):
+                await panel_custom.async_register_panel(
+                    hass,
+                    frontend_url_path="rtsp_recorder",
+                    webcomponent_name="rtsp-recorder-panel",
+                    module_url="/rtsp_recorder_panel/rtsp-recorder-panel.js",
+                    sidebar_title="RTSP Recorder",
+                    sidebar_icon="mdi:cctv",
+                    require_admin=False,
+                    embed_iframe=False,
+                    config_panel_domain="rtsp_recorder",
+                )
+                hass.data[DOMAIN]["panel_registered"] = True
+                log_to_file("Registered sidebar panel: /rtsp_recorder")
+            elif not panel_enabled and hass.data[DOMAIN].get("panel_registered"):
+                # User turned the sidebar panel off -> remove it on this reload.
+                async_remove_panel(hass, "rtsp_recorder", warn_if_unknown=False)
+                hass.data[DOMAIN]["panel_registered"] = False
+                log_to_file("Sidebar panel disabled via setting (sidebar_panel_enabled=False)")
+        except Exception as panel_err:
+            # Non-fatal: a panel problem must never break recording/analysis.
+            log_to_file(f"Panel registration failed (non-fatal): {panel_err}")
+
     except Exception as e:
         log_to_file(f"CRITICAL SETUP ERROR: {e}\n{traceback.format_exc()}")
         raise e
@@ -936,6 +975,17 @@ async def async_setup_entry(hass, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    # v1.4.0: Remove the sidebar panel so the next setup (e.g. options-flow reload
+    # via update_listener) can re-register it without an "Overwriting panel"
+    # ValueError. The static path stays registered for the HA process lifetime
+    # (aiohttp routes cannot be safely removed/re-added).
+    try:
+        if hass.data.get(DOMAIN, {}).get("panel_registered"):
+            async_remove_panel(hass, "rtsp_recorder", warn_if_unknown=False)
+            hass.data[DOMAIN]["panel_registered"] = False
+            log_to_file("Removed sidebar panel during unload")
+    except Exception as e:
+        log_to_file(f"Panel removal during unload failed (non-fatal): {e}")
     return True
 
 

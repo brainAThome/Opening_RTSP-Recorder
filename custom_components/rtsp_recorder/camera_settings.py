@@ -156,6 +156,88 @@ def get_field(global_key: str) -> PerCameraField | None:
     return _FIELD_BY_GLOBAL_KEY.get(global_key)
 
 
+# Non-analysis per-camera RECORDING settings (what the old config_flow's
+# camera_config / manual_camera steps wrote). Maps the panel form-field name to
+# (stored-key prefix, value kind). Mirrors config_flow.py exactly so the panel
+# writes the same keys the recorder already reads.
+CAMERA_BASE_FIELDS: dict[str, tuple[str, str]] = {
+    "motion_sensors": ("sensors_", "list"),
+    "recording_duration": ("duration_", "int"),
+    "snapshot_delay": ("snapshot_delay_", "int"),
+    "rtsp_url": ("rtsp_url_", "str"),
+    "camera_retention": ("retention_hours_", "float"),
+}
+
+
+def read_camera_base(config: dict, camera: str) -> dict[str, Any]:
+    """Return the stored base recording settings for ``camera`` (form-field keyed)."""
+    safe = camera_key(camera)
+    out: dict[str, Any] = {}
+    for field, (prefix, _kind) in CAMERA_BASE_FIELDS.items():
+        key = f"{prefix}{safe}"
+        if key in config:
+            out[field] = config[key]
+    if "motion_sensors" not in out:  # legacy single-sensor fallback
+        legacy = config.get(f"sensor_{safe}")
+        if legacy:
+            out["motion_sensors"] = [legacy] if isinstance(legacy, str) else legacy
+    return out
+
+
+def set_camera_base(data: dict, options: dict, camera: str, fields: dict) -> list[str]:
+    """Write the provided base recording settings into BOTH dicts (in place).
+
+    Mirrors config_flow.py semantics: empty list/url removes the key; retention
+    <= 0 removes the key (0 == use global); duration/delay are stored as ints.
+    Returns the list of touched keys. Unknown ``fields`` entries are ignored.
+    """
+    safe = camera_key(camera)
+    touched: list[str] = []
+    for field, value in fields.items():
+        spec = CAMERA_BASE_FIELDS.get(field)
+        if spec is None:
+            continue
+        prefix, kind = spec
+        key = f"{prefix}{safe}"
+        for store in (data, options):
+            if kind in ("list", "str"):
+                if value:
+                    store[key] = value
+                else:
+                    store.pop(key, None)
+            elif kind == "int":
+                store[key] = int(value)
+            elif kind == "float":
+                fv = float(value)
+                if fv > 0:
+                    store[key] = fv
+                else:
+                    store.pop(key, None)
+        touched.append(key)
+    return touched
+
+
+def list_cameras(config: Iterable[str]) -> list[str]:
+    """Return the sorted camera key-suffixes that have at least one BASE config key.
+
+    A camera counts as "configured" when it has a base key (``sensors_``,
+    ``rtsp_url_``, ``duration_`` ...). Analysis-only override keys are deliberately
+    NOT used to detect a camera, so a stale override cannot resurrect a deleted one.
+    Every camera created via the config flow has a ``duration_<suffix>`` key, so
+    this reliably enumerates all configured cameras. ``config`` may be any iterable
+    of key names (e.g. ``dict.keys()``).
+    """
+    suffixes: set[str] = set()
+    for key in config:
+        for prefix in CAMERA_BASE_PREFIXES:
+            if key.startswith(prefix):
+                suffix = key[len(prefix):]
+                if suffix:
+                    suffixes.add(suffix)
+                break
+    return sorted(suffixes)
+
+
 # ===== Resolution (read with per-camera -> global fallback) =====
 def _is_unset(value: Any, field: PerCameraField) -> bool:
     """Return True if ``value`` should be treated as 'not overridden'."""
