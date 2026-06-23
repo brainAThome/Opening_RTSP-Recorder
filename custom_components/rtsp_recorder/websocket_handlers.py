@@ -14,7 +14,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 
 from .helpers import log_to_file, get_system_stats, get_inference_stats
-from .const import DEFAULT_STORAGE_PATH, DEFAULT_SNAPSHOT_PATH
+from .const import DEFAULT_STORAGE_PATH, DEFAULT_SNAPSHOT_PATH, DOMAIN
 from .face_matching import _normalize_embedding_simple, _cosine_similarity_simple
 from .people_db import (
     _load_people_db, 
@@ -34,6 +34,7 @@ from .analysis_helpers import (
 from .analysis import detect_available_devices
 from .services import get_batch_analysis_progress, get_single_analysis_progress, get_recording_progress, cancel_batch_analysis
 from . import camera_settings as _cam
+from .rate_limiter import limit
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -347,6 +348,7 @@ def register_websocket_handlers(
         vol.Required("type"): "rtsp_recorder/reset_detector_stats",
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/reset_detector_stats")
     async def ws_reset_detector_stats(hass, connection, msg):
         """Reset detector statistics (inference count, timing, etc.)."""
         result = {"success": False, "message": "Unknown error"}
@@ -383,6 +385,7 @@ def register_websocket_handlers(
         vol.Required("type"): "rtsp_recorder/test_inference",
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/test_inference")
     async def ws_test_inference(hass, connection, msg):
         """Run a single test inference to populate Coral statistics."""
         import time as _t
@@ -508,6 +511,7 @@ def register_websocket_handlers(
         vol.Optional("analysis_auto_new"): bool,
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/set_analysis_config")
     async def ws_set_analysis_config(hass, connection, msg):
         """Update analysis schedule configuration."""
         try:
@@ -555,6 +559,7 @@ def register_websocket_handlers(
         vol.Required("objects"): list,
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/set_camera_objects")
     async def ws_set_camera_objects(hass, connection, msg):
         """Set camera-specific analysis objects."""
         try:
@@ -653,6 +658,7 @@ def register_websocket_handlers(
         vol.Required("value"): vol.Any(float, int, bool, list, str, None),
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/set_camera_setting")
     async def ws_set_camera_setting(hass, connection, msg):
         """Set or clear a single per-camera analysis override.
 
@@ -697,6 +703,7 @@ def register_websocket_handlers(
         vol.Required("camera"): str,
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/delete_camera")
     async def ws_delete_camera(hass, connection, msg):
         """Delete all config keys for a camera (config/entities only; recordings stay).
 
@@ -787,6 +794,8 @@ def register_websocket_handlers(
         "snapshot_retention_days", "cleanup_interval_hours", "retention_hours",
         # --- UI ---
         "sidebar_panel_enabled",
+        # --- rate limiter (HIGH-001); takes effect on reload via __init__ ---
+        "rate_limit_mode", "rate_limit_requests_per_window", "rate_limit_burst_size",
     })
     _GLOBAL_PATH_KEYS = frozenset({
         "storage_path", "snapshot_path", "analysis_output_path",
@@ -797,6 +806,7 @@ def register_websocket_handlers(
         vol.Required("settings"): dict,
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/set_global_settings")
     async def ws_set_global_settings(hass, connection, msg):
         """Persist one or more GLOBAL settings (defaults that apply to all cameras).
 
@@ -860,6 +870,21 @@ def register_websocket_handlers(
     websocket_api.async_register_command(hass, ws_get_global_settings)
 
     @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_rate_limit_stats",
+    })
+    @websocket_api.async_response
+    async def ws_get_rate_limit_stats(hass, connection, msg):
+        """Return rate limiter stats (read-only; for the panel / shadow-mode profiling)."""
+        try:
+            limiter = (hass.data.get(DOMAIN, {}) or {}).get("rate_limiter")
+            stats = limiter.get_stats() if limiter is not None else {"mode": "off"}
+            connection.send_result(msg["id"], {"success": True, "stats": stats})
+        except Exception as e:  # noqa: BLE001
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_get_rate_limit_stats)
+
+    @websocket_api.websocket_command({
         vol.Required("type"): "rtsp_recorder/get_camera_base",
         vol.Required("camera"): str,
     })
@@ -889,6 +914,7 @@ def register_websocket_handlers(
         vol.Optional("camera_retention"): vol.Any(int, float),
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/set_camera_base")
     async def ws_set_camera_base(hass, connection, msg):
         """Set a camera's base recording settings. Writes entry.data+options; reload via listener."""
         try:
@@ -918,6 +944,7 @@ def register_websocket_handlers(
         vol.Optional("camera_retention"): vol.Any(int, float),
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/add_camera")
     async def ws_add_camera(hass, connection, msg):
         """Add a new manual RTSP camera (mirrors the old manual_camera config step).
 
@@ -993,6 +1020,7 @@ def register_people_websocket_handlers(
         vol.Required("name"): str,
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/add_person")
     async def ws_add_person(hass, connection, msg):
         """Add a new person to database."""
         name = (msg.get("name") or "").strip()
@@ -1022,6 +1050,7 @@ def register_people_websocket_handlers(
         vol.Required("name"): str,
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/rename_person")
     async def ws_rename_person(hass, connection, msg):
         """Rename an existing person."""
         person_id = str(msg.get("id"))
@@ -1056,6 +1085,7 @@ def register_people_websocket_handlers(
         vol.Optional("created_utc"): str,
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/delete_person")
     async def ws_delete_person(hass, connection, msg):
         """Delete a person from database."""
         log_to_file(f"WS delete_person payload: {msg}")
@@ -1084,6 +1114,7 @@ def register_people_websocket_handlers(
         vol.Optional("source", default="manual"): str,
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/add_person_embedding")
     async def ws_add_person_embedding(hass, connection, msg):
         """Add embedding to a person for face training."""
         log_to_file(f"INIT: add_person_embedding called with person_id={msg.get('person_id')}, embedding_len={len(msg.get('embedding') or [])}")
@@ -1133,6 +1164,7 @@ def register_people_websocket_handlers(
         vol.Optional("source"): str,
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/add_negative_sample")
     async def ws_add_negative_sample(hass, connection, msg):
         """Add a negative sample to a person (mark as 'NOT this person')."""
         log_to_file(f"INIT: add_negative_sample called for person_id={msg.get('person_id')}")
@@ -1193,6 +1225,7 @@ def register_people_websocket_handlers(
         vol.Optional("thumb"): str,
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/add_ignored_embedding")
     async def ws_add_ignored_embedding(hass, connection, msg):
         """Add an embedding to the ignored list (skip this face in future)."""
         log_to_file("INIT: add_ignored_embedding called")
@@ -1369,6 +1402,7 @@ def register_people_websocket_handlers(
         vol.Required("embedding_type"): str,  # "positive" or "negative"
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/delete_embedding")
     async def ws_delete_embedding(hass, connection, msg):
         """Delete a specific embedding by ID.
         
@@ -1447,6 +1481,7 @@ def register_people_websocket_handlers(
         vol.Optional("embedding_type", default="positive"): str,
     })
     @websocket_api.async_response
+    @limit("rtsp_recorder/bulk_delete_embeddings")
     async def ws_bulk_delete_embeddings(hass, connection, msg):
         """Delete multiple embeddings at once."""
         embedding_ids = msg["embedding_ids"]
