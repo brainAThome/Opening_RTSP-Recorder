@@ -60,6 +60,7 @@ from .analysis_helpers import _find_analysis_for_video
 # NEW: Modularized handlers (HIGH-001 Fix)
 from .websocket_handlers import register_websocket_handlers, register_people_websocket_handlers
 from .services import register_services
+from .rate_limiter import RateLimiter, RateLimitConfig
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -907,7 +908,34 @@ async def async_setup_entry(hass, entry: ConfigEntry) -> bool:
         hass.loop.call_later(5, lambda: hass.async_create_task(push_detector_stats()))
 
         # ===== Register WebSocket Handlers (from websocket_handlers.py) =====
-        
+
+        # Rate limiter (HIGH-001): ONE process-stable instance in hass.data
+        # (get-or-create). On reload we only reconfigure() so token state + shadow
+        # profile survive the reloads that write-handlers trigger via async_reload.
+        # Default mode 'off' => fully inert; operators opt in via global settings.
+        def _rl_int(key, default, lo):
+            try:
+                return max(lo, int(config_data.get(key, default)))
+            except (TypeError, ValueError):
+                return default
+
+        _rl_mode = config_data.get("rate_limit_mode", "off")
+        if _rl_mode not in ("off", "monitor", "enforce"):
+            _rl_mode = "off"
+        _rl_cfg = RateLimitConfig(
+            mode=_rl_mode,
+            requests_per_window=_rl_int("rate_limit_requests_per_window", 120, 1),
+            window_seconds=60,
+            burst_size=_rl_int("rate_limit_burst_size", 60, 0),
+        )
+        _rl_store = hass.data.setdefault(DOMAIN, {})
+        if _rl_store.get("rate_limiter") is None:
+            _rl_store["rate_limiter"] = RateLimiter(_rl_cfg)
+        else:
+            _rl_store["rate_limiter"].reconfigure(_rl_cfg)
+        _LOGGER.info("rtsp_recorder rate limiter mode=%s (requests/60s=%s, burst=%s)",
+                     _rl_cfg.mode, _rl_cfg.requests_per_window, _rl_cfg.burst_size)
+
         register_websocket_handlers(
             hass=hass,
             entry=entry,

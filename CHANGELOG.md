@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.4.0-beta4] - 2026-06-23
+
+### Added
+- **Rate limiting wired up (HIGH-001), enterprise-grade and opt-in.** The
+  `rate_limiter` module was dead code; it is now connected to 17 expensive/writing
+  WebSocket handlers (config writes, person/embedding CRUD, bulk delete, test
+  inference). Read/poll handlers (stats, progress, get_*) are intentionally **not**
+  limited.
+- Three modes via the global setting `rate_limit_mode`: `off` (default — fully
+  inert), `monitor` (shadow mode: counts what *would* be throttled, mirroring
+  enforce, without ever blocking → real load profile), `enforce` (drops only the
+  single over-budget request).
+- New read-only WebSocket command `rtsp_recorder/get_rate_limit_stats` (mode,
+  active clients, monotone request/would-block counters, per-endpoint would-block).
+- Configurable via global settings: `rate_limit_mode`,
+  `rate_limit_requests_per_window` (default 120/60s), `rate_limit_burst_size`
+  (default 60). Window fixed at 60s.
+
+### Changed / Fixed (rate limiter internals)
+- Process-stable single instance in `hass.data` (get-or-create); on config-entry
+  reload it is `reconfigure()`d, not rebuilt, so token state + shadow profile
+  survive the reloads that write-handlers trigger.
+- Removed the global cooldown (was a 3s full lockout across all tabs/endpoints per
+  user); enforce now drops only the individual over-budget request.
+- Memory-leak fix: client buckets are keyed strictly by `user_<id>` (anonymous/
+  system connections are never limited), plus inline idle-pruning.
+- Lazy `asyncio.Lock` (created in the running loop) and defensive clamping
+  (no ZeroDivision from bad config).
+- **Fail-open:** any limiter error or a missing limiter lets the handler run; the
+  enforce block sends `send_result({success: False, rate_limited: True})` (not
+  `send_error`) so the frontend can distinguish throttling from a real error.
+
+### Notes
+- **Default is `off` → shipping/deploying this changes no behaviour.** Rollout is
+  staged: set `rate_limit_mode=monitor`, gather a load profile via
+  `get_rate_limit_stats` during real use incl. a stress/enrollment session, then
+  switch to `enforce` only if no legitimate write-handler shows would-block.
+- Deliberately NOT done (tracked in issue #8): per-endpoint buckets (weakens
+  aggregate DoS protection — one write-pool per user instead), a diagnostics/sensor
+  platform, and a dedicated panel UI for mode/limits + the optimistic-enroll-flag
+  reset (the latter recommended before enabling `enforce`). Scope limit: HTTP views
+  (thumbnail/video) and HA-core media_source remain out of scope.
+- `exceptions.RateLimitExceededError` stays intentionally unused (the WS-conformant
+  signal is `rate_limited: True`).
+
 ## [1.4.0-beta3] - 2026-06-23
 
 ### Fixed
