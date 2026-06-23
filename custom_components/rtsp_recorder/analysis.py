@@ -38,17 +38,29 @@ import io
 _LOGGER = logging.getLogger(__name__)
 
 # LOW-003 Fix: Import defaults from const.py instead of hardcoding
-from .const import (
-    DEFAULT_DETECTOR_CONFIDENCE,
-    DEFAULT_FACE_CONFIDENCE,
-    DEFAULT_FACE_MATCH_THRESHOLD,
-    DEFAULT_ANALYSIS_FRAME_INTERVAL,
-    DEFAULT_OVERLAY_SMOOTHING,
-    DEFAULT_OVERLAY_SMOOTHING_ALPHA,
-)
+try:
+    from .const import (
+        DEFAULT_DETECTOR_CONFIDENCE,
+        DEFAULT_FACE_CONFIDENCE,
+        DEFAULT_FACE_MATCH_THRESHOLD,
+        DEFAULT_ANALYSIS_FRAME_INTERVAL,
+        DEFAULT_OVERLAY_SMOOTHING,
+        DEFAULT_OVERLAY_SMOOTHING_ALPHA,
+    )
 
-# Import database for analysis runs tracking
-from .database import get_database
+    # Import database for analysis runs tracking
+    from .database import get_database
+except ImportError:  # pragma: no cover - fallback for direct module import in tests
+    from const import (
+        DEFAULT_DETECTOR_CONFIDENCE,
+        DEFAULT_FACE_CONFIDENCE,
+        DEFAULT_FACE_MATCH_THRESHOLD,
+        DEFAULT_ANALYSIS_FRAME_INTERVAL,
+        DEFAULT_OVERLAY_SMOOTHING,
+        DEFAULT_OVERLAY_SMOOTHING_ALPHA,
+    )
+
+    from database import get_database
 
 # ===== Memory Management Constants (HIGH-005 Fix) =====
 # Limit the number of faces with embedded thumbnails to prevent memory exhaustion

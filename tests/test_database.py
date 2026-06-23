@@ -102,13 +102,14 @@ class TestDatabaseManager:
             camera_name="Front Door",
             confidence=0.95
         )
-        assert result is True
+        # add_recognition returns the new history entry ID (>0), or -1 on failure
+        assert result > 0
     
     def test_get_recognition_history(self, db_manager):
         """Test getting recognition history."""
         db_manager.add_person("test-1", "John")
-        db_manager.add_recognition("test-1", "John", "Camera1", 0.9)
-        db_manager.add_recognition("test-1", "John", "Camera2", 0.85)
+        db_manager.add_recognition(camera_name="Camera1", person_id="test-1", person_name="John", confidence=0.9)
+        db_manager.add_recognition(camera_name="Camera2", person_id="test-1", person_name="John", confidence=0.85)
         
         history = db_manager.get_recognition_history(limit=10)
         assert len(history) >= 2
@@ -116,8 +117,8 @@ class TestDatabaseManager:
     def test_cleanup_old_history(self, db_manager):
         """Test cleaning up old history."""
         db_manager.add_person("test-1", "John")
-        db_manager.add_recognition("test-1", "John", "Camera1", 0.9)
-        
+        db_manager.add_recognition(camera_name="Camera1", person_id="test-1", person_name="John", confidence=0.9)
+
         # Cleanup with 0 days should remove everything
         deleted = db_manager.cleanup_old_history(days=0)
         # Note: This may or may not delete depending on timing

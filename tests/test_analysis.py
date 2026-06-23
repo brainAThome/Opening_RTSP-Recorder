@@ -162,8 +162,9 @@ class TestFaceMatching:
         from analysis import _check_negative_samples
         
         embedding = [0.6, 0.8]
-        person = {"negative_embeddings": [[0.0, 1.0]]}
-        
+        # Orthogonal to embedding -> cosine similarity 0.0, well below the 0.75 threshold
+        person = {"negative_embeddings": [[0.8, -0.6]]}
+
         result = _check_negative_samples(embedding, person)
         assert result is False
     
@@ -202,8 +203,9 @@ class TestFaceMatching:
         from analysis import _is_no_face
         
         embedding = [0.6, 0.8]
-        no_faces = [{"vector": [0.0, 1.0]}]
-        
+        # Orthogonal to embedding -> cosine similarity 0.0, well below the 0.75 threshold
+        no_faces = [{"vector": [0.8, -0.6]}]
+
         result = _is_no_face(embedding, no_faces)
         assert result is False
 

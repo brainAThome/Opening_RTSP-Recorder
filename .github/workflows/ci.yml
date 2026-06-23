@@ -28,7 +28,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-          cache: 'pip'
+          # NOTE: no 'cache: pip' here — the repo declares no requirements.txt/pyproject.toml,
+          # so actions/setup-python's pip cache has no file to key on and fails the step hard.
 
       - name: Install test dependencies
         run: |

@@ -6,6 +6,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.4.0-beta2] - 2026-06-23
+
+### Added
+- 7-tab custom panel, registered via `panel_custom` + `StaticPathConfig`
+  (idempotent registration; defensive — a panel error never breaks
+  recording/analysis).
+- 6 new in-memory WebSocket handlers for the panel: `get_cameras`,
+  `get_global_settings` / `set_global_settings` (with key whitelist +
+  absolute-path validation), `get_camera_base` / `set_camera_base`, and
+  `add_camera` (rtsp:// scheme + duplicate check).
+
+### Fixed
+- Event-loop blocking I/O moved off the loop: synchronous file/SQLite calls in
+  `recorder`, `config_flow`, `people_db`, `services` and the people WebSocket
+  handlers (~8 DB calls) now run via `asyncio.to_thread` /
+  `async_add_executor_job`.
+- Rate limiter denied the very first request of every client (the token bucket
+  started empty on init). New clients now start with a full bucket, so initial
+  requests and bursts up to `burst_size` are allowed as intended.
+- Test suite repaired — 33 pre-existing failures, all unrelated to the panel
+  feature: `analysis` is now importable standalone in tests (relative-import
+  fallback, matching the `camera_settings` pattern); `test_database` used a wrong
+  `add_recognition` signature/return assertion; two `analysis` test vectors were
+  not actually dissimilar; the rate-limiter tests exercised the bug fixed above.
+- CI workflow no longer fails on `actions/setup-python`'s pip cache (the repo
+  declares no requirements file to key on). A new `pytest.ini` sets the import
+  path so the suite runs green without a manual `PYTHONPATH`.
+
+### Changed
+- Dependencies: manifest now declares `http`, `frontend`, `panel_custom`
+  (required by the panel registration).
+- `hacs.json`: removed the unused `filename` — the declared `rtsp_recorder.zip`
+  never matched any uploaded release asset, so HACS has effectively always
+  installed from the repository source (`content_in_root: false`). This makes the
+  declaration match the path that actually works.
+
+### Notes
+- Beta: panel runtime is verified by static analysis + unit tests (incl. 17
+  panel-backend tests), not yet by full browser/integration testing.
+- Known limitation: `ws_get_movement_profile` still runs a synchronous SQLite
+  query (tracked as a follow-up).
+- The WebSocket async fixes are published in this release but are **not yet
+  deployed** to the running HA instance — the live server keeps the previous
+  `websocket_handlers.py` until a separate deploy.
+- `1.4.0-beta1` was never published as a git tag or GitHub release; this is the
+  first tagged 1.4.x release.
+- The canonical dashboard card source is
+  `custom_components/rtsp_recorder/rtsp-recorder-card.js`;
+  `www/rtsp-recorder-card.js` is an auto-generated copy created at runtime.
+
 ## [1.4.0-beta1] - 2026-05-31
 
 ### Added
