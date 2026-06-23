@@ -33,6 +33,7 @@ from .analysis_helpers import (
 )
 from .analysis import detect_available_devices
 from .services import get_batch_analysis_progress, get_single_analysis_progress, get_recording_progress, cancel_batch_analysis
+from . import camera_settings as _cam
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -592,6 +593,371 @@ def register_websocket_handlers(
 
     websocket_api.async_register_command(hass, ws_set_camera_objects)
 
+    # ===== v1.4.0: per-camera analysis settings (clean global/per-cam separation) =====
+    def _merged_config() -> dict:
+        """Current merged config (options shadow data), freshly read from the entry."""
+        return {**entry.data, **(entry.options or {})}
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_camera_settings",
+        vol.Optional("camera"): str,
+    })
+    @websocket_api.async_response
+    async def ws_get_camera_settings(hass, connection, msg):
+        """Return per-camera analysis settings.
+
+        Without ``camera``: returns the global defaults plus, for every camera that
+        has at least one override, the raw overridden values. With ``camera``: returns
+        that camera's effective (resolved) values AND which of them are overrides.
+        Reads the entry live so values are correct even before a reload.
+        """
+        try:
+            cfg = _merged_config()
+            fields = [f.global_key for f in _cam.PER_CAMERA_FIELDS]
+            globals_ = {k: cfg.get(k) for k in fields}
+            camera = msg.get("camera")
+            if camera:
+                connection.send_result(msg["id"], {
+                    "success": True,
+                    "camera": camera,
+                    "globals": globals_,
+                    "effective": _cam.resolve_all(cfg, camera),
+                    "overrides": _cam.camera_overrides(cfg, camera),
+                })
+                return
+            # Map of camera -> overrides for every camera that has any override.
+            overrides_map: dict = {}
+            for key in cfg:
+                for f in _cam.PER_CAMERA_FIELDS:
+                    if key.startswith(f.prefix):
+                        cam = key[len(f.prefix):]
+                        overrides_map.setdefault(cam, {})[f.global_key] = cfg.get(key)
+            connection.send_result(msg["id"], {
+                "success": True,
+                "globals": globals_,
+                "fields": fields,
+                "overrides_by_camera": overrides_map,
+            })
+        except Exception as e:  # noqa: BLE001 - report any failure to the UI
+            log_to_file(f"get_camera_settings error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_get_camera_settings)
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/set_camera_setting",
+        vol.Required("camera"): str,
+        vol.Required("field"): str,
+        # value may be float/int/bool/list/null; vol.Any keeps it permissive,
+        # camera_settings coerces to the field's declared type.
+        vol.Required("value"): vol.Any(float, int, bool, list, str, None),
+    })
+    @websocket_api.async_response
+    async def ws_set_camera_setting(hass, connection, msg):
+        """Set or clear a single per-camera analysis override.
+
+        ``field`` is a global key (e.g. ``analysis_detector_confidence``). A value
+        meaning "use global" (None/empty/0 for legacy zero-sentinel fields) clears
+        the override. Writes BOTH entry.data and entry.options (Phase-1 data/options
+        duality) and reloads the entry so the running analysis picks it up.
+        """
+        try:
+            camera = msg["camera"]
+            field = msg["field"]
+            value = msg["value"]
+            if _cam.get_field(field) is None:
+                connection.send_result(msg["id"], {
+                    "success": False,
+                    "message": f"{field} is not a per-camera field",
+                })
+                return
+            new_data = dict(entry.data)
+            new_options = dict(entry.options) if entry.options else {}
+            _cam.set_override(new_data, field, camera, value)
+            _cam.set_override(new_options, field, camera, value)
+            # async_update_entry triggers the registered update_listener
+            # (__init__.py) which performs async_reload itself; no explicit
+            # reload here (would double-reload / race).
+            hass.config_entries.async_update_entry(entry, data=new_data, options=new_options)
+            log_to_file(f"Set camera setting {field} for {camera} = {value}")
+            connection.send_result(msg["id"], {
+                "success": True,
+                "camera": camera,
+                "field": field,
+                "value": value,
+            })
+        except Exception as e:  # noqa: BLE001
+            log_to_file(f"set_camera_setting error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_set_camera_setting)
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/delete_camera",
+        vol.Required("camera"): str,
+    })
+    @websocket_api.async_response
+    async def ws_delete_camera(hass, connection, msg):
+        """Delete all config keys for a camera (config/entities only; recordings stay).
+
+        Removes every per-camera key (sensors_, duration_, rtsp_url_, all analysis
+        overrides, ...) from BOTH entry.data and entry.options, then reloads the
+        entry so motion listeners / watchdog for the camera are torn down. On-disk
+        recordings, snapshots and analysis results are intentionally left untouched.
+        """
+        try:
+            camera = msg["camera"]
+            new_data = dict(entry.data)
+            new_options = dict(entry.options) if entry.options else {}
+            removed = _cam.delete_camera(new_data, new_options, camera)
+            if not removed:
+                connection.send_result(msg["id"], {
+                    "success": False,
+                    "camera": camera,
+                    "message": "No config keys found for this camera",
+                })
+                return
+            # async_update_entry triggers the registered update_listener which
+            # reloads the entry (tears down the camera's motion listeners/watchdog).
+            hass.config_entries.async_update_entry(entry, data=new_data, options=new_options)
+            log_to_file(f"Deleted camera '{camera}' config keys: {removed}")
+            connection.send_result(msg["id"], {
+                "success": True,
+                "camera": camera,
+                "removed_keys": removed,
+                "message": (
+                    f"Removed {len(removed)} config keys for {camera}. "
+                    "Recordings on disk were kept."
+                ),
+            })
+        except Exception as e:  # noqa: BLE001
+            log_to_file(f"delete_camera error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_delete_camera)
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_cameras",
+    })
+    @websocket_api.async_response
+    async def ws_get_cameras(hass, connection, msg):
+        """Return the list of configured cameras (canonical key + display name).
+
+        Derived from the camera base keys in the live entry config (sensors_,
+        rtsp_url_, duration_, ...). ``key`` is the canonical config-key suffix used
+        by set_camera_setting/delete_camera; ``name`` is a human-friendly label.
+        Provides the complete, reliable camera list that the panel's Per-Camera and
+        Delete tabs need (no get_cameras command existed before v1.4.0).
+        """
+        try:
+            cfg = _merged_config()
+            cams = [
+                {"key": k, "name": k.replace("_", " ")}
+                for k in _cam.list_cameras(cfg)
+            ]
+            connection.send_result(msg["id"], {"success": True, "cameras": cams})
+        except Exception as e:  # noqa: BLE001
+            log_to_file(f"get_cameras error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_get_cameras)
+
+    # Whitelist of GLOBAL (non-per-camera) config keys the panel may persist via
+    # set_global_settings. Per-camera keys are handled exclusively by
+    # set_camera_setting; writing them here is rejected so the flat per-camera
+    # schema is never clobbered.
+    _GLOBAL_SETTINGS_WHITELIST = frozenset({
+        # --- analysis core ---
+        "analysis_enabled", "analysis_device", "analysis_objects",
+        "analysis_output_path", "analysis_frame_interval", "analysis_max_concurrent",
+        "analysis_detector_url", "analysis_detector_confidence",
+        "analysis_face_enabled", "analysis_face_confidence",
+        "analysis_face_match_threshold", "analysis_face_multiscale",
+        "analysis_overlay_smoothing", "analysis_overlay_smoothing_alpha",
+        "person_entities_enabled",
+        # --- auto scheduler ---
+        "analysis_auto_enabled", "analysis_auto_mode", "analysis_auto_time",
+        "analysis_auto_interval_hours", "analysis_auto_since_days",
+        "analysis_auto_limit", "analysis_auto_skip_existing", "analysis_auto_new",
+        # --- performance sensor entities ---
+        "analysis_perf_cpu_entity", "analysis_perf_igpu_entity",
+        "analysis_perf_coral_entity",
+        # --- storage / retention ---
+        "storage_path", "snapshot_path", "retention_days",
+        "snapshot_retention_days", "cleanup_interval_hours", "retention_hours",
+        # --- UI ---
+        "sidebar_panel_enabled",
+    })
+    _GLOBAL_PATH_KEYS = frozenset({
+        "storage_path", "snapshot_path", "analysis_output_path",
+    })
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/set_global_settings",
+        vol.Required("settings"): dict,
+    })
+    @websocket_api.async_response
+    async def ws_set_global_settings(hass, connection, msg):
+        """Persist one or more GLOBAL settings (defaults that apply to all cameras).
+
+        Only whitelisted, non-per-camera keys are accepted; path keys must be
+        absolute (mirror config_flow validation). Writes BOTH entry.data and
+        entry.options; async_update_entry triggers the registered update_listener
+        which reloads the entry, so no explicit reload here (would double-reload).
+        """
+        try:
+            incoming = msg["settings"] or {}
+            rejected = [k for k in incoming if k not in _GLOBAL_SETTINGS_WHITELIST]
+            if rejected:
+                connection.send_result(msg["id"], {
+                    "success": False,
+                    "message": f"Not global-settable keys: {sorted(rejected)}",
+                })
+                return
+            for pkey in _GLOBAL_PATH_KEYS:
+                if pkey in incoming:
+                    val = incoming[pkey]
+                    if not isinstance(val, str) or not val.startswith("/"):
+                        connection.send_result(msg["id"], {
+                            "success": False,
+                            "message": f"{pkey} must be an absolute path (start with '/')",
+                        })
+                        return
+            updates = dict(incoming)
+            new_data = dict(entry.data)
+            new_options = dict(entry.options) if entry.options else {}
+            new_data.update(updates)
+            new_options.update(updates)
+            hass.config_entries.async_update_entry(entry, data=new_data, options=new_options)
+            log_to_file(f"Set global settings: {sorted(updates.keys())}")
+            connection.send_result(msg["id"], {
+                "success": True,
+                "updated": updates,
+                "message": f"Saved {len(updates)} global setting(s).",
+            })
+        except Exception as e:  # noqa: BLE001
+            log_to_file(f"set_global_settings error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_set_global_settings)
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_global_settings",
+    })
+    @websocket_api.async_response
+    async def ws_get_global_settings(hass, connection, msg):
+        """Return current values of every global-settable key (for the panel forms)."""
+        try:
+            cfg = _merged_config()
+            connection.send_result(msg["id"], {
+                "success": True,
+                "settings": {k: cfg.get(k) for k in _GLOBAL_SETTINGS_WHITELIST},
+            })
+        except Exception as e:  # noqa: BLE001
+            log_to_file(f"get_global_settings error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_get_global_settings)
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/get_camera_base",
+        vol.Required("camera"): str,
+    })
+    @websocket_api.async_response
+    async def ws_get_camera_base(hass, connection, msg):
+        """Return a camera's base recording settings (sensors/duration/delay/url/retention)."""
+        try:
+            cfg = _merged_config()
+            connection.send_result(msg["id"], {
+                "success": True,
+                "camera": msg["camera"],
+                "base": _cam.read_camera_base(cfg, msg["camera"]),
+            })
+        except Exception as e:  # noqa: BLE001
+            log_to_file(f"get_camera_base error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_get_camera_base)
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/set_camera_base",
+        vol.Required("camera"): str,
+        vol.Optional("motion_sensors"): list,
+        vol.Optional("recording_duration"): vol.Any(int, float),
+        vol.Optional("snapshot_delay"): vol.Any(int, float),
+        vol.Optional("rtsp_url"): str,
+        vol.Optional("camera_retention"): vol.Any(int, float),
+    })
+    @websocket_api.async_response
+    async def ws_set_camera_base(hass, connection, msg):
+        """Set a camera's base recording settings. Writes entry.data+options; reload via listener."""
+        try:
+            fields = {k: msg[k] for k in _cam.CAMERA_BASE_FIELDS if k in msg}
+            if not fields:
+                connection.send_result(msg["id"], {"success": False, "message": "no base fields provided"})
+                return
+            new_data = dict(entry.data)
+            new_options = dict(entry.options) if entry.options else {}
+            touched = _cam.set_camera_base(new_data, new_options, msg["camera"], fields)
+            hass.config_entries.async_update_entry(entry, data=new_data, options=new_options)
+            log_to_file(f"set_camera_base {msg['camera']}: {touched}")
+            connection.send_result(msg["id"], {"success": True, "camera": msg["camera"], "touched_keys": touched})
+        except Exception as e:  # noqa: BLE001
+            log_to_file(f"set_camera_base error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_set_camera_base)
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "rtsp_recorder/add_camera",
+        vol.Required("camera_name"): str,
+        vol.Required("rtsp_url"): str,
+        vol.Optional("motion_sensors"): list,
+        vol.Optional("recording_duration"): vol.Any(int, float),
+        vol.Optional("snapshot_delay"): vol.Any(int, float),
+        vol.Optional("camera_retention"): vol.Any(int, float),
+    })
+    @websocket_api.async_response
+    async def ws_add_camera(hass, connection, msg):
+        """Add a new manual RTSP camera (mirrors the old manual_camera config step).
+
+        Validates name + rtsp:// scheme and rejects duplicates, then writes the base
+        keys for the camera. Reload happens via the update_listener.
+        """
+        try:
+            name = (msg.get("camera_name") or "").strip()
+            url = (msg.get("rtsp_url") or "").strip()
+            if not name:
+                connection.send_result(msg["id"], {"success": False, "message": "Bitte einen Kameranamen angeben"})
+                return
+            if not (url.startswith("rtsp://") or url.startswith("rtsps://")):
+                connection.send_result(msg["id"], {"success": False, "message": "RTSP-URL muss mit rtsp:// oder rtsps:// beginnen"})
+                return
+            cfg = _merged_config()
+            safe = _cam.camera_key(name)
+            if any(f"{p}{safe}" in cfg for p in _cam.CAMERA_BASE_PREFIXES):
+                connection.send_result(msg["id"], {"success": False, "message": f"Kamera '{name}' existiert bereits"})
+                return
+            fields = {
+                "rtsp_url": url,
+                "recording_duration": int(msg.get("recording_duration", 120)),
+                "snapshot_delay": int(msg.get("snapshot_delay", 0)),
+                "camera_retention": float(msg.get("camera_retention", 0)),
+            }
+            if msg.get("motion_sensors"):
+                fields["motion_sensors"] = msg["motion_sensors"]
+            new_data = dict(entry.data)
+            new_options = dict(entry.options) if entry.options else {}
+            touched = _cam.set_camera_base(new_data, new_options, name, fields)
+            hass.config_entries.async_update_entry(entry, data=new_data, options=new_options)
+            log_to_file(f"add_camera '{name}' (key={safe}): {touched}")
+            connection.send_result(msg["id"], {"success": True, "camera": safe, "name": name, "touched_keys": touched})
+        except Exception as e:  # noqa: BLE001
+            log_to_file(f"add_camera error: {e}")
+            connection.send_result(msg["id"], {"success": False, "message": str(e)})
+
+    websocket_api.async_register_command(hass, ws_add_camera)
+
 
 def register_people_websocket_handlers(
     hass,
@@ -794,15 +1160,17 @@ def register_people_websocket_handlers(
                 connection.send_error(msg["id"], "db_error", "Database not available")
                 return
             
-            result = db.add_negative_embedding(person_id, embedding, source=source, thumb=thumb)
+            result = await asyncio.to_thread(
+                db.add_negative_embedding, person_id, embedding, source=source, thumb=thumb
+            )
             if result <= 0:
                 connection.send_error(msg["id"], "db_error", "Failed to add negative embedding")
                 return
-            
-            neg_count = db.get_negative_count_for_person(person_id)
-            
+
+            neg_count = await hass.async_add_executor_job(db.get_negative_count_for_person, person_id)
+
             # Get person name for logging
-            person = db.get_person(person_id)
+            person = await hass.async_add_executor_job(db.get_person, person_id)
             person_name = person.get("name", "Unknown") if person else "Unknown"
             log_to_file(f"INIT: Added negative sample to {person_name} (total: {neg_count})")
             
@@ -972,7 +1340,7 @@ def register_people_websocket_handlers(
                 connection.send_error(msg["id"], "db_error", "Database not available")
                 return
             
-            details = db.get_person_details(person_id)
+            details = await hass.async_add_executor_job(db.get_person_details, person_id)
             if not details:
                 connection.send_error(msg["id"], "not_found", f"Person {person_id} not found")
                 return
@@ -1014,9 +1382,9 @@ def register_people_websocket_handlers(
                 return
             
             if embedding_type == "positive":
-                success = db.delete_positive_embedding(embedding_id)
+                success = await hass.async_add_executor_job(db.delete_positive_embedding, embedding_id)
             else:
-                success = db.delete_negative_embedding(embedding_id)
+                success = await hass.async_add_executor_job(db.delete_negative_embedding, embedding_id)
             
             if success:
                 log_to_file(f"INIT: Deleted {embedding_type} embedding {embedding_id}")
@@ -1047,8 +1415,10 @@ def register_people_websocket_handlers(
         try:
             from .database import get_database
             db = get_database()
-            details = db.get_person_details_with_quality(person_id, outlier_threshold)
-            
+            details = await hass.async_add_executor_job(
+                db.get_person_details_with_quality, person_id, outlier_threshold
+            )
+
             if details is None:
                 connection.send_error(msg["id"], "not_found", f"Person {person_id} not found")
                 return
@@ -1079,8 +1449,10 @@ def register_people_websocket_handlers(
         try:
             from .database import get_database
             db = get_database()
-            result = db.bulk_delete_embeddings(embedding_ids, embedding_type)
-            
+            result = await hass.async_add_executor_job(
+                db.bulk_delete_embeddings, embedding_ids, embedding_type
+            )
+
             log_to_file(f"INIT: bulk_delete_embeddings result: {result['success_count']} deleted, {result['failure_count']} failed")
             connection.send_result(msg["id"], result)
             

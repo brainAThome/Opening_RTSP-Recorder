@@ -1705,9 +1705,11 @@ class RtspRecorderCard extends HTMLElement {
                             <div class="fm-tab active" data-tab="general" role="tab" aria-selected="true" tabindex="0">Allgemein</div>
                             <div class="fm-tab" data-tab="storage" role="tab" aria-selected="false" tabindex="-1">Speicher</div>
                             <div class="fm-tab" data-tab="analysis" role="tab" aria-selected="false" tabindex="-1">Analyse</div>
+                            <div class="fm-tab" data-tab="percamera" role="tab" aria-selected="false" tabindex="-1">Pro-Kamera</div>
                             <div class="fm-tab" data-tab="people" role="tab" aria-selected="false" tabindex="-1">Personen</div>
                             <div class="fm-tab" data-tab="movement" role="tab" aria-selected="false" tabindex="-1">Bewegung</div>
                             <div class="fm-tab ${this._showPerfTab ? '' : 'hidden'}" data-tab="performance" role="tab" aria-selected="false" tabindex="-1">Leistung</div>
+                            <div class="fm-tab" data-tab="delete" role="tab" aria-selected="false" tabindex="-1">Löschen</div>
                         </div>
                         <div class="fm-menu-content" id="menu-content" role="tabpanel"></div>
                     </div>
@@ -1925,6 +1927,7 @@ class RtspRecorderCard extends HTMLElement {
                         </div>
                         <input type="checkbox" id="chk-debug" ${this._debugMode ? 'checked' : ''} style="transform:scale(1.3);cursor:pointer;">
                     </div>
+                    <div id="pc-global-settings" style="margin-top:10px;">Lade Einstellungen…</div>
                 </div>
             `;
             container.querySelector('#chk-kiosk').onchange = () => {
@@ -1945,12 +1948,17 @@ class RtspRecorderCard extends HTMLElement {
                 this.updateDebugVisibility();
                 this.saveLocalSettings();
             };
+            this._pcInjectGlobalSettings(container);
         } else if (this._activeTab === 'storage') {
             // Storage Tab
             this.renderStorageTab(container);
         } else if (this._activeTab === 'people') {
             // People Tab
             this.renderPeopleTab(container);
+        } else if (this._activeTab === 'percamera') {
+            this.renderPerCameraTab(container);
+        } else if (this._activeTab === 'delete') {
+            this.renderDeleteTab(container);
         } else if (this._activeTab === 'movement') {
             // Movement Profile Tab
             this.renderMovementTab(container);
@@ -2458,6 +2466,7 @@ class RtspRecorderCard extends HTMLElement {
 
         container.innerHTML = `
             <div style="padding:10px;">
+                <div style="background:rgba(3,169,244,0.14);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:0.88em;line-height:1.4;">🌐 <b>Globale Standardwerte</b> — gelten für <b>ALLE</b> Kameras (Standard). Eigene Werte je Kamera: Tab <b>„Pro-Kamera"</b>.</div>
                 <div style="margin-bottom:10px; font-weight:500;">Objekte auswaehlen</div>
                 <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
                     ${profileButtons}
@@ -5615,6 +5624,247 @@ class RtspRecorderCard extends HTMLElement {
                 recordings: totalEvents
             };
         }
+    }
+
+    // ===== v1.4.0: per-camera & delete config tabs (added to the card menu) =====
+    _pcFields() {
+        return [
+            { key: "analysis_objects", label: "🎯 Objekte", kind: "list" },
+            { key: "analysis_detector_confidence", label: "📊 Erkennungs-Schwelle", kind: "float", min: 0.1, max: 0.9, step: 0.05, zeroIsGlobal: true },
+            { key: "analysis_face_confidence", label: "👁️ Gesichts-Erkennungsschwelle", kind: "float", min: 0.1, max: 0.8, step: 0.05, zeroIsGlobal: true },
+            { key: "analysis_face_match_threshold", label: "🎚️ Gesichts-Matching-Schwelle", kind: "float", min: 0.2, max: 0.9, step: 0.05, zeroIsGlobal: true },
+            { key: "analysis_frame_interval", label: "⏱️ Frame-Intervall (Sek)", kind: "int", min: 1, max: 10, step: 1 },
+            { key: "analysis_face_enabled", label: "👤 Gesichtserkennung", kind: "bool" },
+            { key: "analysis_face_multiscale", label: "🔍 Multi-Scale", kind: "bool" },
+            { key: "analysis_overlay_smoothing", label: "Overlay-Glättung", kind: "bool" },
+        ];
+    }
+    _pcBaseFields() {
+        return [
+            { key: "motion_sensors", label: "🏃 Auslöser-Sensoren (Komma-getrennt)", kind: "list" },
+            { key: "recording_duration", label: "⏱️ Aufnahmedauer (Sek)", kind: "int", min: 10, max: 600, step: 10 },
+            { key: "snapshot_delay", label: "📸 Snapshot-Verzögerung (Sek)", kind: "int", min: 0, max: 60, step: 1 },
+            { key: "rtsp_url", label: "🔗 RTSP-URL", kind: "text" },
+            { key: "camera_retention", label: "🗑️ Eigene Aufbewahrung (Std, 0=global)", kind: "float", min: 0, max: 168, step: 0.5 },
+        ];
+    }
+    async _pcLoadAll() {
+        try { const res = await this._hass.callWS({ type: "rtsp_recorder/get_cameras" }); this._pcCameras = (res && res.cameras) || []; }
+        catch (e) { this._pcCameras = []; }
+        if (!this._pcSelected && this._pcCameras.length) this._pcSelected = this._pcCameras[0].key;
+        try { const g = await this._hass.callWS({ type: "rtsp_recorder/get_global_settings" }); this._pcGlobals = (g && g.settings) || {}; }
+        catch (e) { this._pcGlobals = {}; }
+        await this._pcLoadCam();
+        this._pcLoaded = true;
+    }
+    async _pcLoadCam() {
+        if (!this._pcSelected) { this._pcData = null; this._pcBase = {}; return; }
+        try { const r = await this._hass.callWS({ type: "rtsp_recorder/get_camera_settings", camera: this._pcSelected }); this._pcData = r && r.success ? r : null; }
+        catch (e) { this._pcData = null; }
+        try { const b = await this._hass.callWS({ type: "rtsp_recorder/get_camera_base", camera: this._pcSelected }); this._pcBase = b && b.success ? (b.base || {}) : {}; }
+        catch (e) { this._pcBase = {}; }
+    }
+    _pcRefresh() {
+        setTimeout(async () => {
+            try { const res = await this._hass.callWS({ type: "rtsp_recorder/get_cameras" }); this._pcCameras = (res && res.cameras) || []; } catch (e) {}
+            try { const g = await this._hass.callWS({ type: "rtsp_recorder/get_global_settings" }); this._pcGlobals = (g && g.settings) || {}; } catch (e) {}
+            await this._pcLoadCam();
+            const c = this.shadowRoot.querySelector('#menu-content');
+            if (c && this._activeTab === 'percamera') this.renderPerCameraTab(c);
+            if (c && this._activeTab === 'delete') this.renderDeleteTab(c);
+        }, 600);
+    }
+    renderPerCameraTab(container) {
+        if (!this._pcLoaded) {
+            container.innerHTML = `<div style="padding:20px;color:#888;">Lade Kameras…</div>`;
+            this._pcLoadAll().then(() => { if (this._activeTab === 'percamera') this.renderPerCameraTab(container); });
+            return;
+        }
+        const head = "margin:18px 0 8px;font-size:0.95em;color:#bbb;font-weight:500;";
+        if (!this._pcCameras.length) {
+            container.innerHTML = `<div style="padding:14px;"><div style="color:#888;margin-bottom:14px;">Keine konfigurierten Kameras. Füge unten eine hinzu.</div>${this._pcAddCardHtml(head)}</div>`;
+            this._pcWireAdd(container);
+            return;
+        }
+        const opts = this._pcCameras.map(c => `<option value="${this._pcEsc(c.key)}" ${c.key === this._pcSelected ? 'selected' : ''}>${this._pcEsc(c.name)}</option>`).join("");
+        const eff = (this._pcData && this._pcData.effective) || {};
+        const ov = (this._pcData && this._pcData.overrides) || {};
+        const base = this._pcBase || {};
+        const baseRows = this._pcBaseFields().map(f => this._pcRow(f, base[f.key], "b")).join("");
+        const anRows = this._pcFields().map(f => this._pcCamRow(f, eff[f.key], (f.key in ov), (this._pcGlobals || {})[f.key])).join("");
+        container.innerHTML = `<div style="padding:14px;">
+            <div style="background:rgba(255,152,0,0.14);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:0.88em;line-height:1.4;">Einstellungen <b>nur für die gewählte Kamera</b>. „Global" = diese Kamera nutzt den globalen Standardwert (Tab „Analyse").</div>
+            <label style="font-weight:500;">Kamera</label>
+            <select id="pc-cam" style="width:100%;margin:6px 0 4px;padding:8px;background:#222;color:#eee;border:1px solid #444;border-radius:6px;">${opts}</select>
+            <h4 style="${head}">🎥 Aufnahme-Einstellungen</h4>${baseRows}
+            <button id="pc-base-save" style="margin-top:10px;padding:8px 16px;background:var(--primary-color,#03a9f4);color:#fff;border:none;border-radius:6px;cursor:pointer;">Aufnahme-Einstellungen speichern</button>
+            <h4 style="${head}">🧠 Analyse pro Kamera <span style="color:#888;font-weight:400;">(speichert sofort)</span></h4>${anRows}
+            ${this._pcAddCardHtml(head)}
+        </div>`;
+        container.querySelector('#pc-cam').addEventListener('change', async (e) => { this._pcSelected = e.target.value; await this._pcLoadCam(); this.renderPerCameraTab(container); });
+        container.querySelector('#pc-base-save').addEventListener('click', () => this._pcSaveBase(container));
+        this._pcFields().forEach(f => this._pcWire(container, f, (f.key in ov)));
+        this._pcWireAdd(container);
+    }
+    _pcRow(f, value, ns) {
+        return `<div style="margin:8px 0;"><label style="display:block;font-size:0.9em;margin-bottom:3px;">${f.label}</label>${this._pcInput(f, value, ns)}</div>`;
+    }
+    _pcCamRow(f, eff, isOv, glob) {
+        const badge = isOv
+            ? `<span style="font-size:0.7em;background:var(--primary-color,#03a9f4);color:#fff;padding:1px 6px;border-radius:8px;">eigen</span>`
+            : `<span style="font-size:0.7em;background:#333;color:#aaa;padding:1px 6px;border-radius:8px;">global: ${this._pcEsc(this._pcFmt(glob))}</span>`;
+        let ctrl;
+        if (f.kind === 'bool') {
+            const cur = isOv ? (eff ? 'on' : 'off') : 'global';
+            ctrl = `<select class="pc-an" data-f="${f.key}" style="padding:6px;background:#222;color:#eee;border:1px solid #444;border-radius:6px;"><option value="global" ${cur === 'global' ? 'selected' : ''}>Global</option><option value="on" ${cur === 'on' ? 'selected' : ''}>An</option><option value="off" ${cur === 'off' ? 'selected' : ''}>Aus</option></select>`;
+        } else if (f.kind === 'list') {
+            const v = isOv && Array.isArray(eff) ? eff.join(", ") : "";
+            ctrl = `<input type="text" class="pc-an" data-f="${f.key}" placeholder="(global)" value="${this._pcEsc(v)}" style="width:100%;padding:6px;background:#222;color:#eee;border:1px solid #444;border-radius:6px;">`;
+        } else {
+            const num = isOv ? eff : (glob ?? f.min ?? 0);
+            ctrl = `<label style="font-size:0.85em;"><input type="checkbox" class="pc-anchk" data-f="${f.key}" ${isOv ? 'checked' : ''}> eigen</label> <input type="number" class="pc-annum" data-f="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" value="${num}" ${isOv ? '' : 'disabled'} style="width:90px;padding:6px;background:#222;color:#eee;border:1px solid #444;border-radius:6px;">`;
+        }
+        return `<div style="margin:8px 0;"><label style="display:block;font-size:0.9em;margin-bottom:3px;">${f.label} ${badge}</label>${ctrl}</div>`;
+    }
+    _pcWire(container, f, isOv) {
+        if (f.kind === 'bool') {
+            const s = container.querySelector(`select.pc-an[data-f="${f.key}"]`);
+            s.addEventListener('change', () => this._pcSetSetting(f.key, s.value === 'global' ? null : s.value === 'on'));
+        } else if (f.kind === 'list') {
+            const i = container.querySelector(`input.pc-an[data-f="${f.key}"]`);
+            i.addEventListener('change', () => this._pcSetSetting(f.key, i.value.split(",").map(x => x.trim()).filter(Boolean)));
+        } else {
+            const chk = container.querySelector(`input.pc-anchk[data-f="${f.key}"]`);
+            const num = container.querySelector(`input.pc-annum[data-f="${f.key}"]`);
+            chk.addEventListener('change', () => { num.disabled = !chk.checked; this._pcSetSetting(f.key, chk.checked ? this._pcCoerce(f, num.value) : (f.zeroIsGlobal ? 0 : null)); });
+            num.addEventListener('change', () => { if (chk.checked) this._pcSetSetting(f.key, this._pcCoerce(f, num.value)); });
+        }
+    }
+    async _pcSetSetting(field, value) {
+        if (!this._pcSelected || this._pcBusy) return;
+        this._pcBusy = true;
+        try { const r = await this._hass.callWS({ type: "rtsp_recorder/set_camera_setting", camera: this._pcSelected, field, value }); if (!r || !r.success) throw new Error((r && r.message) || "Fehler"); this.showToast('Gespeichert', 'success'); this._pcRefresh(); }
+        catch (e) { this.showToast('⚠️ ' + e.message, 'error'); }
+        finally { this._pcBusy = false; }
+    }
+    async _pcSaveBase(container) {
+        if (!this._pcSelected || this._pcBusy) return;
+        const msg = { type: "rtsp_recorder/set_camera_base", camera: this._pcSelected };
+        this._pcBaseFields().forEach(f => { const v = this._pcRead(container, f, "b"); if (v !== undefined) msg[f.key] = v; });
+        this._pcBusy = true;
+        try { const r = await this._hass.callWS(msg); if (!r || !r.success) throw new Error((r && r.message) || "Fehler"); this.showToast('Aufnahme-Einstellungen gespeichert', 'success'); this._pcRefresh(); }
+        catch (e) { this.showToast('⚠️ ' + e.message, 'error'); }
+        finally { this._pcBusy = false; }
+    }
+    _pcAddCardHtml(head) {
+        return `<h4 style="${head}">➕ Neue Kamera hinzufügen</h4>
+            <input type="text" id="pc-add-name" placeholder="Kamera-Name (z.B. Garage)" style="width:100%;margin:4px 0;padding:7px;background:#222;color:#eee;border:1px solid #444;border-radius:6px;">
+            <input type="text" id="pc-add-url" placeholder="rtsp://..." style="width:100%;margin:4px 0;padding:7px;background:#222;color:#eee;border:1px solid #444;border-radius:6px;">
+            <input type="text" id="pc-add-sensors" placeholder="Sensoren (optional, Komma-getrennt)" style="width:100%;margin:4px 0;padding:7px;background:#222;color:#eee;border:1px solid #444;border-radius:6px;">
+            <button id="pc-add-btn" style="margin-top:8px;padding:8px 16px;background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer;">Kamera hinzufügen</button>`;
+    }
+    _pcWireAdd(container) { const b = container.querySelector('#pc-add-btn'); if (b) b.addEventListener('click', () => this._pcAddCamera(container)); }
+    async _pcAddCamera(container) {
+        if (this._pcBusy) return;
+        const name = (container.querySelector('#pc-add-name').value || "").trim();
+        const url = (container.querySelector('#pc-add-url').value || "").trim();
+        const sensors = (container.querySelector('#pc-add-sensors').value || "").split(",").map(x => x.trim()).filter(Boolean);
+        if (!name || !url) { this.showToast('Name und RTSP-URL nötig', 'warning'); return; }
+        const msg = { type: "rtsp_recorder/add_camera", camera_name: name, rtsp_url: url };
+        if (sensors.length) msg.motion_sensors = sensors;
+        this._pcBusy = true;
+        try { const r = await this._hass.callWS(msg); if (!r || !r.success) throw new Error((r && r.message) || "Fehler"); this.showToast(`Kamera „${name}" hinzugefügt`, 'success'); this._pcSelected = r.camera; this._pcRefresh(); }
+        catch (e) { this.showToast('⚠️ ' + e.message, 'error'); }
+        finally { this._pcBusy = false; }
+    }
+    renderDeleteTab(container) {
+        if (!this._pcLoaded) {
+            container.innerHTML = `<div style="padding:20px;color:#888;">Lade…</div>`;
+            this._pcLoadAll().then(() => { if (this._activeTab === 'delete') this.renderDeleteTab(container); });
+            return;
+        }
+        if (!this._pcCameras.length) { container.innerHTML = `<div style="padding:20px;color:#888;">Keine Kameras zum Löschen.</div>`; return; }
+        const opts = this._pcCameras.map(c => `<option value="${this._pcEsc(c.key)}" ${c.key === this._pcSelected ? 'selected' : ''}>${this._pcEsc(c.name)}</option>`).join("");
+        container.innerHTML = `<div style="padding:14px;">
+            <div style="background:rgba(244,67,54,0.14);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:0.88em;line-height:1.4;">Entfernt die <b>Konfiguration</b> einer Kamera (Sensoren, Dauer, RTSP, Analyse-Overrides). <b>Aufnahmen auf der Platte bleiben.</b></div>
+            <label style="font-weight:500;">Kamera</label>
+            <select id="del-cam" style="width:100%;margin:6px 0 14px;padding:8px;background:#222;color:#eee;border:1px solid #444;border-radius:6px;">${opts}</select>
+            <div id="del-area">${this._pcDelArmed
+                ? `<button id="del-confirm" style="padding:8px 16px;background:#c62828;color:#fff;border:none;border-radius:6px;cursor:pointer;">Wirklich löschen: „${this._pcEsc(this._pcName(this._pcSelected))}"</button> <button id="del-cancel" style="margin-left:8px;padding:8px 16px;background:#333;color:#eee;border:none;border-radius:6px;cursor:pointer;">Abbrechen</button>`
+                : `<button id="del-arm" style="padding:8px 16px;background:transparent;border:1px solid #c62828;color:#ef9a9a;border-radius:6px;cursor:pointer;">Kamera-Konfiguration löschen…</button>`}</div>
+        </div>`;
+        container.querySelector('#del-cam').addEventListener('change', (e) => { this._pcSelected = e.target.value; this._pcDelArmed = false; this.renderDeleteTab(container); });
+        if (this._pcDelArmed) {
+            container.querySelector('#del-confirm').addEventListener('click', () => this._pcDelete(container));
+            container.querySelector('#del-cancel').addEventListener('click', () => { this._pcDelArmed = false; this.renderDeleteTab(container); });
+        } else {
+            container.querySelector('#del-arm').addEventListener('click', () => { this._pcDelArmed = true; this.renderDeleteTab(container); });
+        }
+    }
+    async _pcDelete(container) {
+        const cam = this._pcSelected;
+        if (!cam || this._pcBusy) return;
+        this._pcBusy = true;
+        try { const r = await this._hass.callWS({ type: "rtsp_recorder/delete_camera", camera: cam }); if (!r || !r.success) throw new Error((r && r.message) || "Löschen fehlgeschlagen"); this.showToast(`Kamera „${this._pcName(cam)}" gelöscht`, 'success'); this._pcDelArmed = false; this._pcSelected = null; this._pcRefresh(); }
+        catch (e) { this.showToast('⚠️ ' + e.message, 'error'); }
+        finally { this._pcBusy = false; }
+    }
+    _pcInput(f, value, ns) {
+        if (f.kind === 'bool') return `<label><input type="checkbox" class="pc-${ns}" data-f="${f.key}" ${value === true ? 'checked' : ''}> aktiv</label>`;
+        if (f.kind === 'list') { const v = Array.isArray(value) ? value.join(", ") : (value || ""); return `<input type="text" class="pc-${ns}" data-f="${f.key}" value="${this._pcEsc(v)}" style="width:100%;padding:6px;background:#222;color:#eee;border:1px solid #444;border-radius:6px;">`; }
+        if (f.kind === 'text') { const v = value == null ? "" : String(value); return `<input type="text" class="pc-${ns}" data-f="${f.key}" value="${this._pcEsc(v)}" style="width:100%;padding:6px;background:#222;color:#eee;border:1px solid #444;border-radius:6px;">`; }
+        const num = value ?? f.min ?? 0; return `<input type="number" class="pc-${ns}" data-f="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" value="${num}" style="width:120px;padding:6px;background:#222;color:#eee;border:1px solid #444;border-radius:6px;">`;
+    }
+    _pcRead(container, f, ns) {
+        const el = container.querySelector(`.pc-${ns}[data-f="${f.key}"]`);
+        if (!el) return undefined;
+        if (f.kind === 'bool') return el.checked;
+        if (f.kind === 'text') return el.value;
+        if (f.kind === 'list') return el.value.split(",").map(x => x.trim()).filter(Boolean);
+        return this._pcCoerce(f, el.value);
+    }
+    _pcCoerce(f, raw) { return f.kind === 'int' ? parseInt(raw, 10) : parseFloat(raw); }
+    _pcEsc(s) { return s == null ? "" : String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+    _pcFmt(v) { if (v == null) return "—"; if (Array.isArray(v)) return v.length ? v.join(", ") : "—"; if (typeof v === 'boolean') return v ? 'an' : 'aus'; return String(v); }
+    _pcName(key) { const c = (this._pcCameras || []).find(x => x.key === key); return c ? c.name : (key || ""); }
+    _pcGlobalSettingsFields() {
+        return [
+            { key: "storage_path", label: "📁 Speicherpfad", kind: "text" },
+            { key: "snapshot_path", label: "📸 Thumbnail-Pfad", kind: "text" },
+            { key: "retention_days", label: "🎬 Video-Aufbewahrung (Tage)", kind: "int", min: 1, max: 365, step: 1 },
+            { key: "snapshot_retention_days", label: "📸 Thumbnail-Aufbewahrung (Tage)", kind: "int", min: 1, max: 365, step: 1 },
+            { key: "cleanup_interval_hours", label: "🧹 Aufräum-Intervall (Std)", kind: "int", min: 1, max: 24, step: 1 },
+        ];
+    }
+    async _pcInjectGlobalSettings(container) {
+        const host = container.querySelector('#pc-global-settings');
+        if (!host) return;
+        let g = {};
+        try { const r = await this._hass.callWS({ type: "rtsp_recorder/get_global_settings" }); g = (r && r.settings) || {}; } catch (e) {}
+        this._pcGlobals = g;
+        const head = "margin:18px 0 8px;font-size:0.95em;color:#bbb;font-weight:500;";
+        const rows = this._pcGlobalSettingsFields().map(f => this._pcRow(f, g[f.key], "s")).join("");
+        const sidebarOn = g.sidebar_panel_enabled !== false;
+        host.innerHTML = `
+            <h4 style="${head}">📁 Speicher & Aufbewahrung</h4>${rows}
+            <button id="pc-glob-save" style="margin-top:8px;padding:8px 16px;background:var(--primary-color,#03a9f4);color:#fff;border:none;border-radius:6px;cursor:pointer;">Speicher-Einstellungen speichern</button>
+            <h4 style="${head}">🧩 Sidebar-Panel</h4>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div><span style="font-weight:500;">Sidebar-Eintrag „RTSP Recorder" anzeigen</span><div style="font-size:0.8em;color:#888;margin-top:4px;">Zeigt diese Card auch als eigenen Sidebar-Eintrag. Wirkt nach Reload/Neustart.</div></div>
+                <input type="checkbox" id="pc-sidebar-toggle" ${sidebarOn ? 'checked' : ''} style="transform:scale(1.3);cursor:pointer;">
+            </div>`;
+        host.querySelector('#pc-glob-save').addEventListener('click', async () => {
+            if (this._pcBusy) return; this._pcBusy = true;
+            const settings = {};
+            this._pcGlobalSettingsFields().forEach(f => { const v = this._pcRead(host, f, "s"); if (v !== undefined) settings[f.key] = v; });
+            try { const r = await this._hass.callWS({ type: "rtsp_recorder/set_global_settings", settings }); if (!r || !r.success) throw new Error((r && r.message) || "Fehler"); this.showToast('Speicher-Einstellungen gespeichert', 'success'); }
+            catch (e) { this.showToast('⚠️ ' + e.message, 'error'); } finally { this._pcBusy = false; }
+        });
+        host.querySelector('#pc-sidebar-toggle').addEventListener('change', async (e) => {
+            const on = e.target.checked;
+            try { const r = await this._hass.callWS({ type: "rtsp_recorder/set_global_settings", settings: { sidebar_panel_enabled: on } }); if (!r || !r.success) throw new Error((r && r.message) || "Fehler"); this.showToast(on ? 'Sidebar-Panel aktiviert (nach Reload sichtbar)' : 'Sidebar-Panel deaktiviert (nach Reload weg)', 'success'); }
+            catch (err) { this.showToast('⚠️ ' + err.message, 'error'); }
+        });
     }
 }
 

@@ -67,13 +67,20 @@ class RateLimiter:
             config: Rate limit configuration, uses defaults if None
         """
         self.config = config or RateLimitConfig()
-        self._clients: dict[str, ClientState] = defaultdict(ClientState)
         self._lock = asyncio.Lock()
-        
+
         # Calculate token refill rate
         # tokens_per_second = requests_per_window / window_seconds
         self._refill_rate = self.config.requests_per_window / self.config.window_seconds
         self._max_tokens = self.config.requests_per_window + self.config.burst_size
+
+        # New clients start with a FULL bucket so initial requests (and bursts up to
+        # burst_size) are allowed immediately. Otherwise the very first request from each
+        # client would be denied: an empty bucket (tokens=0) with ~0 elapsed time refills
+        # 0 tokens, hitting the "tokens < 1" cooldown path on request #1.
+        self._clients: dict[str, ClientState] = defaultdict(
+            lambda: ClientState(tokens=float(self._max_tokens))
+        )
         
     def _get_client_id(self, connection) -> str:
         """Extract client identifier from WebSocket connection."""

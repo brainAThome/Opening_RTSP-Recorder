@@ -37,6 +37,12 @@ from .recorder import async_record_stream, async_take_snapshot, _remux_to_fastst
 from .analysis import analyze_recording
 from .people_db import _load_people_db
 from .analysis_helpers import _build_analysis_index
+from . import camera_settings as _cam
+
+try:
+    from . import camera_settings as cam_settings
+except ImportError:  # pragma: no cover - fallback for flat test PYTHONPATH
+    import camera_settings as cam_settings
 
 
 # v1.1.0: Metrics System for performance measurement
@@ -492,17 +498,14 @@ def register_services(
                         perf_snapshot = get_sensor_snapshot_func()
                         semaphore = _get_analysis_semaphore()
 
-                        cam_objects_key = f"analysis_objects_{cam_name}"
-                        cam_specific_objects = config_data.get(cam_objects_key, [])
-                        objects_to_use = cam_specific_objects if cam_specific_objects else analysis_objects
-
-                        cam_detector_conf = config_data.get(f"detector_confidence_{cam_name}", 0)
-                        cam_face_conf = config_data.get(f"face_confidence_{cam_name}", 0)
-                        cam_face_threshold = config_data.get(f"face_match_threshold_{cam_name}", 0)
-                        
-                        detector_conf_to_use = cam_detector_conf if cam_detector_conf > 0 else analysis_detector_confidence
-                        face_conf_to_use = cam_face_conf if cam_face_conf > 0 else analysis_face_confidence
-                        face_threshold_to_use = cam_face_threshold if cam_face_threshold > 0 else analysis_face_match_threshold
+                        objects_to_use = cam_settings.resolve(config_data, "analysis_objects", cam_name)
+                        detector_conf_to_use = cam_settings.resolve(config_data, "analysis_detector_confidence", cam_name)
+                        face_conf_to_use = cam_settings.resolve(config_data, "analysis_face_confidence", cam_name)
+                        face_threshold_to_use = cam_settings.resolve(config_data, "analysis_face_match_threshold", cam_name)
+                        interval_to_use = cam_settings.resolve(config_data, "analysis_frame_interval", cam_name)
+                        face_enabled_to_use = cam_settings.resolve(config_data, "analysis_face_enabled", cam_name)
+                        face_multiscale_to_use = cam_settings.resolve(config_data, "analysis_face_multiscale", cam_name)
+                        overlay_smoothing_to_use = cam_settings.resolve(config_data, "analysis_overlay_smoothing", cam_name)
 
                         people_data = await _load_people_db()
                         people = people_data.get("people", [])
@@ -513,19 +516,19 @@ def register_services(
                                 output_root=analysis_output_path,
                                 objects=objects_to_use,
                                 device=auto_device,
-                                interval_s=analysis_frame_interval,
+                                interval_s=interval_to_use,
                                 perf_snapshot=perf_snapshot,
                                 detector_url=analysis_detector_url,
                                 detector_confidence=detector_conf_to_use,
-                                face_enabled=analysis_face_enabled,
+                                face_enabled=face_enabled_to_use,
                                 face_confidence=face_conf_to_use,
                                 face_match_threshold=face_threshold_to_use,
-                                overlay_smoothing=analysis_overlay_smoothing,
+                                overlay_smoothing=overlay_smoothing_to_use,
                                 overlay_smoothing_alpha=analysis_overlay_smoothing_alpha,
                                 face_store_embeddings=analysis_face_store_embeddings,
                                 people_db=people,
                                 face_detector_url=analysis_detector_url,
-                                face_multiscale=analysis_face_multiscale,
+                                face_multiscale=face_multiscale_to_use,
                             )
                         if person_entities_enabled:
                             try:
@@ -654,35 +657,33 @@ def register_services(
                     perf_snapshot = get_sensor_snapshot_func()
                     
                     cam_name = _extract_camera_name_from_path(path)
-                    cam_detector_conf = config_data.get(f"detector_confidence_{cam_name}", 0)
-                    cam_face_conf = config_data.get(f"face_confidence_{cam_name}", 0)
-                    cam_face_threshold = config_data.get(f"face_match_threshold_{cam_name}", 0)
-                    
-                    detector_conf_to_use = cam_detector_conf if cam_detector_conf > 0 else analysis_detector_confidence
-                    face_conf_to_use = cam_face_conf if cam_face_conf > 0 else analysis_face_confidence
-                    face_threshold_to_use = cam_face_threshold if cam_face_threshold > 0 else analysis_face_match_threshold
-                    
-                    cam_objects = config_data.get(f"analysis_objects_{cam_name}", [])
-                    objects_to_use = cam_objects if cam_objects else objects
-                    
+                    objects_to_use = cam_settings.resolve(config_data, "analysis_objects", cam_name)
+                    detector_conf_to_use = cam_settings.resolve(config_data, "analysis_detector_confidence", cam_name)
+                    face_conf_to_use = cam_settings.resolve(config_data, "analysis_face_confidence", cam_name)
+                    face_threshold_to_use = cam_settings.resolve(config_data, "analysis_face_match_threshold", cam_name)
+                    interval_to_use = cam_settings.resolve(config_data, "analysis_frame_interval", cam_name)
+                    face_enabled_to_use = cam_settings.resolve(config_data, "analysis_face_enabled", cam_name)
+                    face_multiscale_to_use = cam_settings.resolve(config_data, "analysis_face_multiscale", cam_name)
+                    overlay_smoothing_to_use = cam_settings.resolve(config_data, "analysis_overlay_smoothing", cam_name)
+
                     result = await analyze_recording(
                         video_path=path,
                         output_root=analysis_output_path,
                         objects=objects_to_use,
                         device=device,
-                        interval_s=analysis_frame_interval,
+                        interval_s=interval_to_use,
                         perf_snapshot=perf_snapshot,
                         detector_url=analysis_detector_url,
                         detector_confidence=detector_conf_to_use,
-                        face_enabled=analysis_face_enabled,
+                        face_enabled=face_enabled_to_use,
                         face_confidence=face_conf_to_use,
                         face_match_threshold=face_threshold_to_use,
-                        overlay_smoothing=analysis_overlay_smoothing,
+                        overlay_smoothing=overlay_smoothing_to_use,
                         overlay_smoothing_alpha=analysis_overlay_smoothing_alpha,
                         face_store_embeddings=analysis_face_store_embeddings,
                         people_db=people,
                         face_detector_url=analysis_detector_url,
-                        face_multiscale=analysis_face_multiscale,
+                        face_multiscale=face_multiscale_to_use,
                     )
                     if person_entities_enabled and result:
                         updated = update_person_entities_func(result)
@@ -760,15 +761,14 @@ def register_services(
             output_dir = analysis_output_path
             
             cam_name = _extract_camera_name_from_path(video_path)
-            cam_detector_conf = config_data.get(f"detector_confidence_{cam_name}", 0)
-            cam_face_conf = config_data.get(f"face_confidence_{cam_name}", 0)
-            cam_face_threshold = config_data.get(f"face_match_threshold_{cam_name}", 0)
-            cam_objects = config_data.get(f"analysis_objects_{cam_name}", [])
-            
-            detector_conf_to_use = cam_detector_conf if cam_detector_conf > 0 else analysis_detector_confidence
-            face_conf_to_use = cam_face_conf if cam_face_conf > 0 else analysis_face_confidence
-            face_threshold_to_use = cam_face_threshold if cam_face_threshold > 0 else analysis_face_match_threshold
-            objects_to_use = cam_objects if cam_objects else objects
+            objects_to_use = cam_settings.resolve(config_data, "analysis_objects", cam_name)
+            detector_conf_to_use = cam_settings.resolve(config_data, "analysis_detector_confidence", cam_name)
+            face_conf_to_use = cam_settings.resolve(config_data, "analysis_face_confidence", cam_name)
+            face_threshold_to_use = cam_settings.resolve(config_data, "analysis_face_match_threshold", cam_name)
+            interval_to_use = cam_settings.resolve(config_data, "analysis_frame_interval", cam_name)
+            face_enabled_to_use = cam_settings.resolve(config_data, "analysis_face_enabled", cam_name)
+            face_multiscale_to_use = cam_settings.resolve(config_data, "analysis_face_multiscale", cam_name)
+            overlay_smoothing_to_use = cam_settings.resolve(config_data, "analysis_overlay_smoothing", cam_name)
 
             async def _run_analysis():
                 global _single_analysis_progress
@@ -801,19 +801,19 @@ def register_services(
                             output_root=output_dir,
                             objects=objects_to_use,
                             device=device,
-                            interval_s=analysis_frame_interval,
+                            interval_s=interval_to_use,
                             perf_snapshot=perf_snapshot,
                             detector_url=analysis_detector_url,
                             detector_confidence=detector_conf_to_use,
-                            face_enabled=analysis_face_enabled,
+                            face_enabled=face_enabled_to_use,
                             face_confidence=face_conf_to_use,
                             face_match_threshold=face_threshold_to_use,
-                            overlay_smoothing=analysis_overlay_smoothing,
+                            overlay_smoothing=overlay_smoothing_to_use,
                             overlay_smoothing_alpha=analysis_overlay_smoothing_alpha,
                             face_store_embeddings=analysis_face_store_embeddings,
                             people_db=people,
                             face_detector_url=analysis_detector_url,
-                            face_multiscale=analysis_face_multiscale,
+                            face_multiscale=face_multiscale_to_use,
                         )
                     if person_entities_enabled and result:
                         updated = update_person_entities_func(result)
@@ -889,23 +889,25 @@ def register_services(
             
             # v1.1.0k: Delete associated analysis folder first (before video is gone)
             if os.path.exists(video_path):
-                deleted_analysis = delete_analysis_for_video(video_path, storage_path)
+                deleted_analysis = await hass.async_add_executor_job(
+                    delete_analysis_for_video, video_path, storage_path
+                )
                 if deleted_analysis:
                     log_to_file(f"Deleted analysis for: {video_path}")
-            
+
             if os.path.exists(video_path):
-                os.remove(video_path)
+                await hass.async_add_executor_job(os.remove, video_path)
                 log_to_file(f"Deleted video: {video_path}")
             else:
                 log_to_file(f"Video not found: {video_path}")
-            
+
             filename = os.path.basename(video_path).replace('.mp4', '.jpg')
             parts = video_path.split('/')
             if len(parts) >= 2:
                 cam_folder = parts[-2]
                 thumb_path = os.path.join(snapshot_path_base, cam_folder, filename)
                 if os.path.exists(thumb_path):
-                    os.remove(thumb_path)
+                    await hass.async_add_executor_job(os.remove, thumb_path)
                     log_to_file(f"Deleted thumbnail: {thumb_path}")
             
         except Exception as e:

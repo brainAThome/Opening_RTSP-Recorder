@@ -77,7 +77,9 @@
                     "analysis_perf_cpu_entity": "💻 CPU Sensor",
                     "analysis_perf_igpu_entity": "🎮 iGPU Sensor",
                     "analysis_perf_coral_entity": "🪸 Coral Sensor",
-                    "analysis_max_concurrent": "🧮 Max Concurrent Analyses"
+                    "analysis_max_concurrent": "🧮 Max Concurrent Analyses",
+                    "analysis_overlay_smoothing": "Overlay smoothing",
+                    "analysis_overlay_smoothing_alpha": "Overlay smoothing strength"
                 },
                 "data_description": {
                     "analysis_enabled": "Enables offline analysis",
@@ -119,7 +121,11 @@
                     "camera_detector_confidence": "📊 Detection Threshold",
                     "camera_face_confidence": "👁️ Face Detection Threshold",
                     "camera_face_match_threshold": "🎚️ Face Matching Threshold",
-                    "configure_another": "🔄 Configure Another Camera"
+                    "configure_another": "🔄 Configure Another Camera",
+                    "camera_frame_interval": "Frame interval (0 = global)",
+                    "camera_face_enabled": "Face detection (global/on/off)",
+                    "camera_face_multiscale": "Multi-scale detection (global/on/off)",
+                    "camera_overlay_smoothing": "Overlay smoothing (global/on/off)"
                 },
                 "data_description": {
                     "motion_sensors": "Binary sensor that starts recording (e.g. Trigger Sensors)",

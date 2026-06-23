@@ -70,26 +70,26 @@ async def _load_people_from_sqlite() -> dict[str, Any]:
     """
     if not _sqlite_db:
         return _default_people_db()
-    
-    try:
+
+    def _build_people_dict() -> dict[str, Any]:
         people_list = []
         sqlite_people = _sqlite_db.get_all_people()
-        
+
         for p in sqlite_people:
             person_id = p.get("id")
-            
+
             # Get embeddings with thumbnails
             if hasattr(_sqlite_db, 'get_embeddings_with_thumbs_for_person'):
                 embeddings = _sqlite_db.get_embeddings_with_thumbs_for_person(person_id)
             else:
                 embeddings_raw = _sqlite_db.get_embeddings_for_person(person_id)
                 embeddings = [{"vector": emb_vector, "thumb": None} for emb_vector in embeddings_raw]
-            
+
             # Get negative embeddings
             negative_embeddings = []
             if hasattr(_sqlite_db, 'get_negative_embeddings_for_person'):
                 negative_embeddings = _sqlite_db.get_negative_embeddings_for_person(person_id)
-            
+
             people_list.append({
                 "id": person_id,
                 "name": p.get("name"),
@@ -98,11 +98,11 @@ async def _load_people_from_sqlite() -> dict[str, Any]:
                 "negative_embeddings": negative_embeddings,
                 "centroid": None,
             })
-        
+
         # Get ignored embeddings
         raw_ignored = _sqlite_db.get_ignored_embeddings() if hasattr(_sqlite_db, 'get_ignored_embeddings') else []
         ignored = [{"embedding": emb} for emb in raw_ignored if emb]
-        
+
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         return {
             "version": PEOPLE_DB_VERSION,
@@ -111,6 +111,9 @@ async def _load_people_from_sqlite() -> dict[str, Any]:
             "created_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
             "updated_utc": now_utc.strftime("%Y%m%d_%H%M%S"),
         }
+
+    try:
+        return await asyncio.to_thread(_build_people_dict)
     except sqlite3.Error as e:
         _LOGGER.error(f"Failed to load people from SQLite: {e}")
         return _default_people_db()
@@ -176,7 +179,9 @@ async def add_ignored_embedding(embedding: list[float], thumb: str | None = None
         return False
     
     try:
-        result = _sqlite_db.add_ignored_embedding(embedding, reason="User ignored")
+        result = await asyncio.to_thread(
+            _sqlite_db.add_ignored_embedding, embedding, reason="User ignored"
+        )
         return result > 0
     except sqlite3.Error as e:
         _LOGGER.error(f"Failed to add ignored embedding: {e}")
@@ -230,16 +235,19 @@ async def _save_person_to_sqlite(person_id: str, name: str, embeddings: list = N
     if not _sqlite_db:
         return False
     
-    try:
+    def _write_person() -> bool:
         _sqlite_db.add_person(person_id, name)
-        
+
         if embeddings:
             for emb in embeddings:
                 vector = emb.get("vector") if isinstance(emb, dict) else emb
                 if vector:
                     _sqlite_db.add_embedding(person_id, vector)
-        
+
         return True
+
+    try:
+        return await asyncio.to_thread(_write_person)
     except sqlite3.Error as e:
         _LOGGER.error(f"Failed to save person to SQLite: {e}")
         return False
@@ -258,7 +266,9 @@ async def _delete_person_from_sqlite(person_id: str) -> bool:
         return False
     
     try:
-        return _sqlite_db.delete_person(person_id, hard_delete=True)
+        return await asyncio.to_thread(
+            _sqlite_db.delete_person, person_id, hard_delete=True
+        )
     except sqlite3.Error as e:
         _LOGGER.error(f"Failed to delete person from SQLite: {e}")
         return False
@@ -278,7 +288,9 @@ async def _rename_person_in_sqlite(person_id: str, new_name: str) -> bool:
         return False
     
     try:
-        return _sqlite_db.update_person(person_id, name=new_name)
+        return await asyncio.to_thread(
+            _sqlite_db.update_person, person_id, name=new_name
+        )
     except sqlite3.Error as e:
         _LOGGER.error(f"Failed to rename person in SQLite: {e}")
         return False
@@ -299,7 +311,9 @@ async def _add_embedding_to_sqlite(person_id: str, embedding: list, thumb: str =
         return False
     
     try:
-        result = _sqlite_db.add_embedding(person_id, embedding, source_image=thumb)
+        result = await asyncio.to_thread(
+            _sqlite_db.add_embedding, person_id, embedding, source_image=thumb
+        )
         return result > 0
     except sqlite3.Error as e:
         _LOGGER.error(f"Failed to add embedding to SQLite: {e}")
@@ -385,8 +399,9 @@ async def log_recognition_event(
     """
     if not _sqlite_db:
         return -1
-    
-    return _sqlite_db.add_recognition(
+
+    return await asyncio.to_thread(
+        _sqlite_db.add_recognition,
         camera_name=camera_name,
         person_id=person_id,
         person_name=person_name,
@@ -409,8 +424,8 @@ async def get_recognition_stats(days: int = 7) -> dict:
     """
     if not _sqlite_db:
         return {}
-    
-    return _sqlite_db.get_recognition_stats(days)
+
+    return await asyncio.to_thread(_sqlite_db.get_recognition_stats, days)
 
 
 async def get_database_stats() -> dict:
@@ -420,8 +435,8 @@ async def get_database_stats() -> dict:
         Dict with counts and sizes
     """
     if _sqlite_db:
-        return _sqlite_db.get_db_stats()
-    
+        return await asyncio.to_thread(_sqlite_db.get_db_stats)
+
     return {
         "backend": "sqlite",
         "initialized": False
