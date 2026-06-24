@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.4.0-beta5] - 2026-06-24
+
+### Added
+- Panel-UI für den Rate-Limiter (im Settings-Tab, isolierter Block mit eigenem
+  Save): Modus-Dropdown `off`/`monitor`/`enforce`, Felder „Requests / 60s" und
+  „Burst", plus eine read-only Status-Zeile aus `get_rate_limit_stats`
+  (mode / would-block gesamt / Requests gesehen / aktive Clients).
+
+### Fixed
+- Enroll-Flag-Bug: `addEmbeddingToPerson` / `addNegativeSample` /
+  `addIgnoredEmbedding` werteten den `rate_limited`-Rückgabewert nicht aus und
+  meldeten/​markierten fälschlich Erfolg. Sie prüfen jetzt die Antwort, nehmen den
+  optimistisch gesetzten „enrolled"-Key bei `rate_limited` zurück und zeigen einen
+  Rate-Limit-Hinweis statt „gespeichert". Voraussetzung für `enforce` (unter
+  `off`/`monitor` war der Pfad inert, da nie gedrosselt wird).
+
+### Notes
+- Reiner Frontend-Change an `custom_components/rtsp_recorder/rtsp-recorder-card.js`
+  (kanonische Quelle; `www/` ist generiertes Kopierziel). Backend unverändert.
+- Rollout weiterhin gestaffelt (`RUNBOOK_ratelimiter_rollout_2026-06-23.md`):
+  `monitor` läuft → Last-Profil → `enforce` erst nach `total_would_block_seen==0`
+  über eine Stress-/Enroll-Session.
+
 ## [1.4.0-beta4] - 2026-06-23
 
 ### Added
