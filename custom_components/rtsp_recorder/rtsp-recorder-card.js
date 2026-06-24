@@ -3447,14 +3447,23 @@ class RtspRecorderCard extends HTMLElement {
                 payload.name = person.name || null;
                 payload.created_utc = person.created_utc || null;
             }
-            await this._hass.callWS(payload);
+            const res = await this._hass.callWS(payload);
+            const rl = !!(res && res.rate_limited);
             if (this._analysisFaceSamples) {
                 const sample = this._analysisFaceSamples.find(s => s.embedding === embedding && s.thumb === thumb);
                 if (sample) {
                     const key = `${sample.time_s}|${sample.thumb || ''}`;
                     if (!this._enrolledSampleKeys) this._enrolledSampleKeys = new Set();
-                    this._enrolledSampleKeys.add(key);
+                    // bei Rate-Limit den optimistisch gesetzten Key zuruecknehmen (kein falsches Gruen)
+                    if (rl) this._enrolledSampleKeys.delete(key); else this._enrolledSampleKeys.add(key);
                 }
+            }
+            if (rl) {
+                this.showToast('⏳ Rate-Limit erreicht – kurz warten und erneut versuchen', 'error');
+                if (this._activeTab === 'people') {
+                    this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
+                }
+                return;
             }
             await this.refreshPeople();
             this.showToast('Embedding hinzugefuegt', 'success');
@@ -3475,8 +3484,12 @@ class RtspRecorderCard extends HTMLElement {
                 embedding,
                 thumb
             };
-            await this._hass.callWS(payload);
-            
+            const res = await this._hass.callWS(payload);
+            if (res && res.rate_limited) {
+                this.showToast('⏳ Rate-Limit erreicht – kurz warten und erneut versuchen', 'error');
+                return;
+            }
+
             // Markiere das Sample als bearbeitet
             if (this._analysisFaceSamples) {
                 const sample = this._analysisFaceSamples.find(s => s.embedding === embedding && s.thumb === thumb);
@@ -3486,7 +3499,7 @@ class RtspRecorderCard extends HTMLElement {
                     this._enrolledSampleKeys.add(key);
                 }
             }
-            
+
             await this.refreshPeople();
             this.showToast(`Negativ-Sample fuer "${personName}" gespeichert`, 'success');
             if (this._activeTab === 'people') {
@@ -3506,7 +3519,11 @@ class RtspRecorderCard extends HTMLElement {
                 thumb
             };
             const result = await this._hass.callWS(payload);
-            
+            if (result && result.rate_limited) {
+                this.showToast('⏳ Rate-Limit erreicht – kurz warten und erneut versuchen', 'error');
+                return false;
+            }
+
             // Markiere das Sample als bearbeitet
             if (this._analysisFaceSamples) {
                 const sample = this._analysisFaceSamples.find(s => s.embedding === embedding && s.thumb === thumb);
@@ -3516,7 +3533,7 @@ class RtspRecorderCard extends HTMLElement {
                     this._enrolledSampleKeys.add(key);
                 }
             }
-            
+
             this.showToast(`Gesicht ignoriert (${result.ignored_count} insgesamt)`, 'info');
             if (this._activeTab === 'people') {
                 this.renderPeopleTab(this.shadowRoot.querySelector('#menu-content'));
@@ -5845,6 +5862,17 @@ class RtspRecorderCard extends HTMLElement {
         const head = "margin:18px 0 8px;font-size:0.95em;color:#bbb;font-weight:500;";
         const rows = this._pcGlobalSettingsFields().map(f => this._pcRow(f, g[f.key], "s")).join("");
         const sidebarOn = g.sidebar_panel_enabled !== false;
+        // --- Rate-Limiter (HIGH-001): isolierter Block + eigener Save; teilt NICHT den Storage-Save ---
+        const rlMode = g.rate_limit_mode || 'off';
+        const rlRpw = (g.rate_limit_requests_per_window != null) ? g.rate_limit_requests_per_window : 120;
+        const rlBurst = (g.rate_limit_burst_size != null) ? g.rate_limit_burst_size : 60;
+        let rlStats = 'Status nicht verfügbar';
+        try {
+            const sr = await this._hass.callWS({ type: 'rtsp_recorder/get_rate_limit_stats' });
+            const st = (sr && sr.stats) || {};
+            rlStats = `mode=${st.mode} · would-block gesamt=${st.total_would_block_seen ?? '?'} · Requests gesehen=${st.total_requests_seen ?? '?'} · aktive Clients=${st.active_clients ?? '?'}`;
+        } catch (e) {}
+        const rlOpt = (v) => `<option value="${v}"${rlMode === v ? ' selected' : ''}>${v}</option>`;
         host.innerHTML = `
             <h4 style="${head}">📁 Speicher & Aufbewahrung</h4>${rows}
             <button id="pc-glob-save" style="margin-top:8px;padding:8px 16px;background:var(--primary-color,#03a9f4);color:#fff;border:none;border-radius:6px;cursor:pointer;">Speicher-Einstellungen speichern</button>
@@ -5852,7 +5880,23 @@ class RtspRecorderCard extends HTMLElement {
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div><span style="font-weight:500;">Sidebar-Eintrag „RTSP Recorder" anzeigen</span><div style="font-size:0.8em;color:#888;margin-top:4px;">Zeigt diese Card auch als eigenen Sidebar-Eintrag. Wirkt nach Reload/Neustart.</div></div>
                 <input type="checkbox" id="pc-sidebar-toggle" ${sidebarOn ? 'checked' : ''} style="transform:scale(1.3);cursor:pointer;">
-            </div>`;
+            </div>
+            <h4 style="${head}">🛡️ Rate-Limiter (DoS-Schutz, HIGH-001)</h4>
+            <div style="font-size:0.8em;color:#888;margin-bottom:6px;"><b>off</b>=aus · <b>monitor</b>=nur messen (Shadow) · <b>enforce</b>=aktiv drosseln. Jede Änderung löst einen Integrations-Reload aus.</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;">
+                <span style="font-weight:500;">Modus</span>
+                <select id="pc-rl-mode" style="padding:6px;border-radius:6px;background:#2a2a2a;color:#fff;border:1px solid #444;cursor:pointer;">${rlOpt('off')}${rlOpt('monitor')}${rlOpt('enforce')}</select>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;">
+                <span style="font-weight:500;">Requests / 60s</span>
+                <input type="number" id="pc-rl-rpw" min="1" max="100000" step="1" value="${rlRpw}" style="width:110px;padding:6px;border-radius:6px;background:#2a2a2a;color:#fff;border:1px solid #444;">
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;">
+                <span style="font-weight:500;">Burst</span>
+                <input type="number" id="pc-rl-burst" min="0" max="100000" step="1" value="${rlBurst}" style="width:110px;padding:6px;border-radius:6px;background:#2a2a2a;color:#fff;border:1px solid #444;">
+            </div>
+            <button id="pc-rl-save" style="margin-top:6px;padding:8px 16px;background:var(--primary-color,#03a9f4);color:#fff;border:none;border-radius:6px;cursor:pointer;">Rate-Limit-Limits speichern</button>
+            <div id="pc-rl-stats" style="font-size:0.78em;color:#9aa;margin-top:8px;">${this._pcEsc(rlStats)}</div>`;
         host.querySelector('#pc-glob-save').addEventListener('click', async () => {
             if (this._pcBusy) return; this._pcBusy = true;
             const settings = {};
@@ -5864,6 +5908,21 @@ class RtspRecorderCard extends HTMLElement {
             const on = e.target.checked;
             try { const r = await this._hass.callWS({ type: "rtsp_recorder/set_global_settings", settings: { sidebar_panel_enabled: on } }); if (!r || !r.success) throw new Error((r && r.message) || "Fehler"); this.showToast(on ? 'Sidebar-Panel aktiviert (nach Reload sichtbar)' : 'Sidebar-Panel deaktiviert (nach Reload weg)', 'success'); }
             catch (err) { this.showToast('⚠️ ' + err.message, 'error'); }
+        });
+        // --- Rate-Limiter-Handler (isoliert: eigene settings-Objekte, nur rate_limit_*-Keys) ---
+        const rlSet = async (settings, okMsg) => {
+            if (this._pcBusy) return; this._pcBusy = true;
+            try { const r = await this._hass.callWS({ type: "rtsp_recorder/set_global_settings", settings }); if (!r || !r.success) throw new Error((r && r.message) || "Fehler"); this.showToast(okMsg, 'success'); }
+            catch (e) { this.showToast('⚠️ ' + e.message, 'error'); } finally { this._pcBusy = false; }
+        };
+        const rlModeEl = host.querySelector('#pc-rl-mode');
+        if (rlModeEl) rlModeEl.addEventListener('change', (e) => rlSet({ rate_limit_mode: e.target.value }, 'Rate-Limit-Modus: ' + e.target.value + ' (nach Reload aktiv)'));
+        const rlSaveEl = host.querySelector('#pc-rl-save');
+        if (rlSaveEl) rlSaveEl.addEventListener('click', () => {
+            const rpw = parseInt(host.querySelector('#pc-rl-rpw').value, 10);
+            const burst = parseInt(host.querySelector('#pc-rl-burst').value, 10);
+            if (!Number.isFinite(rpw) || rpw < 1 || !Number.isFinite(burst) || burst < 0) { this.showToast('⚠️ Ungültige Limit-Werte', 'error'); return; }
+            rlSet({ rate_limit_requests_per_window: rpw, rate_limit_burst_size: burst }, 'Rate-Limit-Limits gespeichert (nach Reload aktiv)');
         });
     }
 }
